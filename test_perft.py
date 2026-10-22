@@ -6,10 +6,11 @@ référence publiées (Chess Programming Wiki). C'est la validation de référen
 générateur de coups : broches, échecs, roque, en passant, promotions, échec à la
 découverte en prise en passant.
 
-Les cas profonds (lents) ne tournent qu'avec RUN_SLOW_PERFT=1.
+Les cas profonds (lents) portent le marqueur ``slow`` : ``pytest -m slow``.
 """
-import os
 import unittest
+
+import pytest
 
 from fen_utils import load_fen, perft
 
@@ -19,8 +20,6 @@ POS3 = "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1"
 POS4 = "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1"
 POS5 = "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"
 POS6 = "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"
-
-RUN_SLOW = os.environ.get("RUN_SLOW_PERFT") == "1"
 
 
 class TestPerft(unittest.TestCase):
@@ -47,7 +46,7 @@ class TestPerft(unittest.TestCase):
     def test_position_6(self):
         self._check(POS6, [(1, 46), (2, 2079), (3, 89890)])
 
-    @unittest.skipUnless(RUN_SLOW, "RUN_SLOW_PERFT=1 pour activer")
+    @pytest.mark.slow
     def test_slow_deep(self):
         self._check(START, [(5, 4865609)])
         self._check(KIWIPETE, [(4, 4085603)])

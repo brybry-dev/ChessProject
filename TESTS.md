@@ -3,17 +3,14 @@
 ## Installation
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install -e ".[dev]"
 ```
 
 ## Lancer les tests
 
 ```bash
-# Suite complète (rapide, ~5 s)
-python -m unittest discover -p 'test_*.py' -v
-
-# Ou avec pytest
-pytest -q
+# Suite rapide (~7 s) — les tests marqués `slow` sont exclus par défaut
+python -m pytest -q
 ```
 
 ## Contenu
@@ -29,7 +26,7 @@ pytest -q
 ## Perft profond (lent, ~100 s)
 
 ```bash
-RUN_SLOW_PERFT=1 python -m unittest test_perft -v
+python -m pytest -m slow -q
 ```
 
 Vérifie jusqu'à ~4 millions de nœuds par position (perft(5) sur la position
