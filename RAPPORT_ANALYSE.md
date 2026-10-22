@@ -1,5 +1,249 @@
 # Rapport d'analyse — ChessProject
 
+Jeu d'échecs Python / Pygame avec IA NegaMax. Projet personnel et **vitrine technique** :
+priorité à la rigueur, à la maintenabilité, aux tests et à la robustesse.
+
+**Cadre validé (2026-10-22)**
+- IA visée : un **bon adversaire pour un humain** (pas de moteur de compétition).
+- Fonctionnalités attendues : import/export **PGN**, **cadence** (temps + incrément),
+  **niveaux de difficulté** clairs, **packaging** propre en fin de parcours.
+- Interface : refonte visuelle « pro » prévue plus tard (phase dédiée).
+- Méthode : phase par phase, avec validation entre chaque phase.
+
+| Phase | Contenu | État |
+|---|---|---|
+| 1. Vérification | Tests, outils statiques, contrôle des correctifs B1–B25 | ✅ ce document, §1 |
+| 2. Bilan | Avancement global, points forts | ⏳ |
+| 3. Audit | Dette, bugs cachés, typage, cas limites (suite de B26–B40) | ⏳ |
+| 4. Feuille de route | Plan court / moyen terme, tâches incrémentales | ⏳ |
+
+Le rapport du 2026-09-06 (étapes 0 à 2, bugs B1–B25) est conservé tel quel en
+**Annexe A**, en fin de document.
+
+---
+
+## 1. Phase 1 — Vérification de l'état réel (2026-10-22)
+
+Environnement : Python 3.13, pygame 2.6.1, numpy 2.5.3, pytest 8, ruff 0.16.9,
+mypy 2.3.1. SDL en mode `dummy` (sans écran).
+
+### 1.1 Suite de tests
+
+| Commande | Résultat |
+|---|---|
+| `pytest -q` | **35 réussis, 1 ignoré** (perft lent), 20 sous-tests réussis, ~7 s |
+| `RUN_SLOW_PERFT=1 pytest test_perft.py` | **7 réussis, 25 sous-tests réussis** (~150 s) : perft profond toujours exact |
+
+Le chiffre annoncé (« 35 tests verts ») est exact. Deux avertissements :
+- `DeprecationWarning` de `fork()` dans un processus multi-thread (`test_ai_performance`).
+  C'est le signe avant-coureur de **B32** : Python 3.14 change la méthode de démarrage
+  par défaut sous Linux.
+- `pkg_resources` déprécié, côté pygame (sans action de notre part).
+
+Ce que les tests **ne couvrent pas**, et qui cache les bugs de §1.4 :
+- aucune partie jouée en orientation retournée (`flip_board=True`) ;
+- aucun test tactique de l'IA (mat en 1 ou 2, éviter le pat quand on gagne) ;
+- aucun test du choix de sous-promotion **passant par l'UI** (popup puis `makeMove`) ;
+- aucun test de `R` / `L` quand l'IA a le trait ;
+- `test_ai_performance` repose sur le temps réel (5 s) : fragile sur une CI lente, et le
+  processus n'est pas tué en cas de dépassement.
+
+### 1.2 Outils statiques
+
+Le dépôt n'a **aucune configuration** ruff ou mypy (pas de `pyproject.toml`) et **aucune CI**.
+Les résultats dépendent donc de la version installée.
+
+| Outil | Résultat | Lecture |
+|---|---|---|
+| `ruff check .` (règles par défaut 0.16) | 156 constats, 115 corrigibles automatiquement | Surtout de la modernisation (`List` → `list`, `Optional` → `X \| None`) |
+| `ruff check --select F,B` | **4 constats** : 3 imports inutilisés (`F401`), 1 `B023` (lambda dans une boucle, `ChessMain.py:628`) | Le `B023` est inoffensif ici (lambda appelée tout de suite), mais c'est à nettoyer |
+| `ruff check --select E501` | 124 lignes > 88 caractères | Pas de longueur de ligne fixée |
+| `ruff format --check` | 10 fichiers sur 12 à reformater | Pas de formateur adopté |
+| `mypy .` | **9 erreurs** dans 3 fichiers | Voir ci-dessous |
+| `mypy --strict .` | 239 erreurs | `ChessMain.py` n'est pas annoté |
+
+Les erreurs mypy (mode normal) révèlent de vrais défauts de modélisation :
+- `enpassant_possible: Tuple[int, int] = ()` (`ChessEngine.py:135,236`) et
+  `possiblePin = ()` (`:691`) : la valeur « absente » est un tuple vide au lieu
+  d'`Optional[...]`. C'est masqué par des `# type: ignore`.
+- `ChessAI.py:28-48` : la table de transposition est typée `Dict[int, ...]` mais indexée par
+  une `str`. Signe que la clé de position n'a jamais été fixée (voir B32).
+- `ChessAI.py:98,120` : l'évaluation mélange `int` et `float`, puis tronque le résultat (voir B30).
+- `fen_utils.py:44` : réutilisation d'une variable `row` avec deux types différents.
+
+### 1.3 Contrôle des correctifs annoncés (B1–B25)
+
+Légende : ✅ conforme au code · ⚠️ corrigé, mais avec un défaut résiduel · ⏳ ouvert
+(non annoncé comme corrigé).
+
+| Bug | Statut | Vérification dans le code |
+|---|---|---|
+| B1 ordre broches/échecs | ✅ | `checkForPinsAndChecks()` est appelé avant la génération (`ChessEngine.py:334`) |
+| B2 pat | ✅ | `ChessEngine.py:375-378` |
+| B3 matériel insuffisant | ✅ | R/R, R+F/R, R+C/R, fous de même couleur (`:169-198`) |
+| B4 pion qui contrôle une case vide | ✅ | `squareUnderAttack` fait une détection directe (`:392-436`) |
+| B5 bornes du roque | ⚠️ | Les indices sont bornés, mais rien ne vérifie que **le roi est sur sa case et la tour présente**. En mode retourné, c'est la **dame** qui roque (B26) |
+| B6 table de transposition sans bornes | ⏳ | Toujours présent (`ChessAI.py:28,48`) |
+| B7 clé de position complète | ⚠️ | Contenu complet, mais la clé est un `hash()` aléatoire d'un processus à l'autre (B32). La case en passant est comptée même sans prise possible |
+| B8 promotion dans `Move` | ⚠️ | Moteur conforme. **Le chemin UI perd la pièce choisie** (B29) |
+| B9 `__hash__` | ✅ | `ChessEngine.py:772` |
+| B10 annulation en PvP | ✅ | `ChessMain.py:683-695` |
+| B11 mobilité à chaque feuille | ⏳ | `ChessAI.py:127` |
+| B12 jouer/annuler chaque coup pour l'ordonnancement | ⏳ | `ChessAI.py:62-64` |
+| B13 texte de fin | ✅ | `ChessMain.py:309-317` |
+| B14 `R` qui conserve l'orientation | ⚠️ | Cohérent, mais cela **pérennise la permutation roi/dame**, qui est elle-même un bug critique (B26) |
+| B15 défilement | ✅ | `max_scroll` borné (`:144-161`) |
+| B16 chronomètre | ✅ | `reset_timer()` (`:77-83`) |
+| B17 pickle → JSON | ✅ | JSON versionné, coups rejoués. Les données de promotion sont toutefois faussées en amont (B29) |
+| B18 tour promue capturée | ✅ | `:296-305` |
+| B19 notation | ⏳ | `return "error"` mort, notation non SAN (`O-O` écrit avec des zéros, pas de `+`, `#` ni désambiguïsation) |
+| B20 / B21 effets de bord à l'import | ✅ | `_load_sounds()` / `_configure_logging()`. Reste l'import groupé `import sys, os, logging` |
+| B22 `flip_board` global | ⚠️ | Le global a disparu, mais `Renderer` ne retourne que les **rangées** (effet miroir). D'où le bricolage roi/dame (B26) |
+| B23 FPS | ✅ | 30 |
+| B24 alias des droits de roque | ✅ | Copie défensive (`:274-276`) |
+| B25 prise en passant du pion qui donne échec | ✅ | `:355-357` |
+
+**Bilan** : 15 correctifs ✅, 5 ⚠️ (B5, B7, B8, B14, B22) et 4 bugs encore ouverts
+(B6, B11, B12, B19), qui étaient bien annoncés comme tels. Le générateur de coups est fiable
+**en orientation normale**. Les points ⚠️ mènent tous à des bugs nouveaux (§1.4).
+
+### 1.4 Nouveaux bugs découverts pendant la vérification
+
+Chaque bug ci-dessous a été **reproduit par un script** (fichier hors dépôt). Sa reproduction
+deviendra un test de non-régression au moment de la correction.
+
+#### 🔴 Critiques
+
+**B26. Mode retourné : position illégale et roi « perdu » par le moteur.**
+`GameState(flip_board=True)` permute roi et dame (`ChessEngine.py:116-120`) pour compenser
+un `Renderer` qui ne fait qu'un miroir vertical (`display_row`, colonnes intactes). Or
+`white_king_location` reste `(7, 4)`, case qui contient désormais la **dame**. Reproduit :
+- un roi attaqué par une tour sur sa colonne donne `in_check == False` (échecs non détectés,
+  donc coups illégaux acceptés) ;
+- une fois f1 et g1 dégagés, le moteur propose `0-0` **joué par la dame** ;
+- la notation, la FEN et la sauvegarde décrivent la position permutée (cases fausses, roi en d1).
+Ce mode est activé dès qu'un humain joue les Noirs contre l'IA.
+→ Corriger dans la **vue** : rotation à 180° (rangées **et** colonnes) dans `Renderer` et
+`square_from_pixel`, libellés a–h et 1–8 en conséquence. Retirer `flip_board` du moteur.
+Passer la sauvegarde en version 2 (les fichiers v1 avec `flip_board=true` contiennent une
+position permutée : les refuser ou les migrer).
+
+**B27. L'IA prend le pat (et toute nulle) pour une victoire.**
+`negamax` renvoie `max_score = -CHECKMATE` quand un nœud interne n'a aucun coup, sans
+distinguer mat, pat, 50 coups, répétition ou matériel (`ChessAI.py:34-49`). Reproduit avec
+R+D contre R (`7k/8/6K1/8/8/8/8/5Q2 w`) : à profondeur 1, l'IA mate (`Qf8#`) ; à
+profondeur 2 (et au-delà), elle joue **`Qf7`, pat**, et l'évalue à +1000.
+Les scores de mat ne dépendent pas non plus de la distance : aucune préférence pour le
+mat le plus court, et risque de tourner en rond au lieu de conclure.
+→ Au nœud sans coup : `-MATE + ply` si échec, `0` sinon. Bornes de recherche `±INF`
+strictement supérieures au score de mat.
+
+**B28. Blocage définitif après `R` ou `L` quand l'IA a le trait.**
+`_new_game` met `move_undone = True` (`ChessMain.py:601`). Ce drapeau n'est remis à `False`
+que dans la branche `move_made` de `run()`, qui n'est jamais atteinte ensuite. Reproduit :
+en PvC avec l'humain aux Noirs, après `R` l'IA ne joue plus, et l'humain ne peut pas jouer
+non plus (ce n'est pas son trait). En IA contre IA, `R` fige la partie. Seul `Z` débloque,
+par effet de bord.
+→ Remplacer les drapeaux `move_made` / `move_undone` / `animate` par un état explicite du
+contrôleur (machine à états), avec un test pour chaque transition.
+
+#### 🟠 Importants
+
+**B29. La sous-promotion choisie dans l'UI est perdue dans l'historique et la sauvegarde.**
+`_try_move` retient la **première** variante légale (promotion en dame). Le popup passe
+ensuite le choix par `promotion_callback`, qui écrit la pièce sur le plateau sans mettre à
+jour `move.promotion_piece`. Reproduit : promotion en cavalier, plateau `wN`, historique
+`a8=Q`, et la partie **rechargée** contient une **dame**.
+→ Choisir dans `valid_moves` le `Move` dont `promotion_piece` correspond au choix, puis
+supprimer `promotion_callback` du moteur.
+
+**B30. Évaluation tronquée et biaisée.**
+`scoreBoard` travaille en unités de pion (`Q=9`) et renvoie `int(total)` : tous les bonus
+positionnels (0,1 à 0,7) sont **arrondis à zéro** selon les cas. Par ailleurs, la
+« pénalité de répétition » (`-10 × occurrences`) n'est pas signée selon le camp et vaut
+toujours au moins 1, puisque la position courante est déjà comptée. Reproduit : la
+position initiale est évaluée à **-8**. Conséquence : les Blancs préfèrent une nulle (0) à
+une position égale, et les Noirs la fuient.
+→ Évaluer en **centipions entiers** (`Q=900`, tables × 100). Retirer la répétition de
+l'évaluation : la détection de nulle dans la recherche suffit.
+
+**B31. La racine peut ne renvoyer aucun coup.**
+Quand tous les coups mènent au mat, `score > max_score` n'est jamais vrai (`-1000 > -1000`),
+donc `best_move = None`. Reproduit sur `k7/8/1K6/8/8/8/8/7R b`. L'UI joue alors un coup **au
+hasard** (`ChessMain.py:729-730`). Même effet lors d'un accès à la table de transposition
+à la racine (B6).
+→ Initialiser `best_move` avec le premier coup, et ne jamais court-circuiter la racine par
+la table de transposition.
+
+**B32. Clé de position non déterministe entre processus.**
+`get_board_hash_str()` utilise `hash()`, aléatoire d'un processus à l'autre. Reproduit :
+avec `PYTHONHASHSEED=1` et `=2`, la position initiale donne deux clés différentes. Avec
+`spawn` (Windows, macOS) ou `forkserver` (défaut Linux à partir de Python 3.14), les clés de
+`position_history` calculées dans l'UI ne correspondent plus à celles de l'IA : la
+détection de répétition est faussée dans la recherche. Cela touche aussi toute sauvegarde
+qui contiendrait ces clés.
+→ Hachage de **Zobrist** à graine fixe, mis à jour à chaque coup (sert aussi à la table de
+transposition et aux performances, étape 3).
+
+**B33. L'UI peut se figer si le processus de l'IA échoue.**
+Si le processus enfant lève une exception, il meurt sans rien écrire dans la file, et
+`return_queue.get()` (`ChessMain.py:728`) **bloque indéfiniment** la boucle Pygame. Aucune
+limite de temps non plus.
+→ `get(timeout=...)`, vérification de `exitcode`, solution de repli journalisée. À terme :
+une limite de temps passée à l'IA (niveaux de difficulté et cadence).
+
+#### 🟡 Mineurs, dette et cas limites
+
+- **B34.** Logique de jeu dans le rendu : `game_over` est mis à jour dans `draw()`
+  (`ChessMain.py:748-754`). Toutes les nulles s'affichent « Impasse » sans motif (pat,
+  50 coups, répétition, matériel), car le moteur les range toutes sous `stalemate`.
+  Plusieurs choix de règles ne sont pas documentés : la triple répétition et les 50 coups
+  sont des nulles **automatiques** (FIDE : à réclamer ; automatiques à 5 répétitions et
+  75 coups), et la nulle prime sur un mat donné au 100ᵉ demi-coup (FIDE : le mat prime).
+  → Introduire un `GameResult` / une énumération `DrawReason` côté moteur.
+- **B35.** Notation (prolonge B19, prérequis du PGN) : `0-0` au lieu de `O-O`. `__str__`
+  d'une prise-promotion donne `exd8` sans `=Q`, et `getChessNotation` ajoute ` e.p.`. Il n'y
+  a ni `+`, ni `#`, ni désambiguïsation.
+- **B36.** FEN : `load_fen` ignore les compteurs de demi-coups et de coups, et ne valide
+  rien (nombre de rois, droits de roque sans roi ni tour en place, pion sur la première
+  rangée). `to_fen` déduit le numéro de coup de `len(move_log)`, ce qui est faux si la
+  partie part d'une FEN où les Noirs ont le trait.
+- **B37.** Chargement (`L`) : l'orientation est restaurée, mais **pas** le mode ni la couleur
+  de l'humain. Le fichier `saved_game.json` du dossier courant est écrasé par `S` sans
+  confirmation.
+- **B38.** Performances UI : `p.font.SysFont(...)` est recréé **à chaque image**
+  (`Button.draw`, `draw_timer`, `draw_board`, `draw_loading_indicator`). La fenêtre est
+  `RESIZABLE` alors que la mise en page est fixe. `position_history_log` fait un
+  `deepcopy` par coup (coût quadratique, déjà prévu à l'étape 3).
+- **B39.** `negamax` trie en place la liste reçue (`valid_moves.sort`), qui est le cache
+  `_valid_moves` du moteur. C'est un effet de bord silencieux, et un piège pour la suite.
+- **B40.** Popup de promotion sans annulation (clic hors du popup ignoré, plateau bloqué).
+  Code mort : `ChessAI.get_board_hash`, le `return "error"` de la notation. Constantes en
+  double (`CHECKMATE`, `DIMENSION` dans 3 fichiers). Le singleton `ResourceManager` ignore
+  un `sq_size` passé après sa création.
+
+### 1.5 Synthèse de la phase 1
+
+- La **base de règles est solide** en orientation normale : perft exact, 35 tests, 15
+  correctifs confirmés.
+- Elle n'est **pas fiable en orientation retournée** (B26) : c'est le chantier le plus
+  urgent, car il fausse les règles pour tout joueur des Noirs contre l'IA.
+- L'**IA a trois défauts de correction**, et pas seulement de performance : elle prend le
+  pat pour une victoire (B27), son évaluation est tronquée et biaisée (B30), et elle peut
+  ne renvoyer aucun coup (B31). Ce sont des priorités avant toute optimisation.
+- Le **contrôleur** a un blocage reproductible (B28) et un gel possible (B33).
+- **Outillage** : sans `pyproject.toml` ni CI, les résultats de ruff et mypy changent avec
+  la version installée. À poser en premier (filet de sécurité de la feuille de route).
+
+Prochaine étape, après validation : **Phase 2 — Bilan** (avancement et points forts),
+puis **Phase 3 — Audit** détaillé.
+
+---
+
+# Annexe A — Rapport du 2026-09-06 (historique des étapes 0 à 2)
+
+## Rapport initial
+
 Analyse du 2026-09-06. Projet : jeu d'échecs Python / Pygame, IA NegaMax.
 Basé sur la structure de la série "Chess Engine in Python" (Eddie Sharick), largement retravaillé.
 
