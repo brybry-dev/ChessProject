@@ -14,7 +14,7 @@ priorité à la rigueur, à la maintenabilité, aux tests et à la robustesse.
 |---|---|---|
 | 1. Vérification | Tests, outils statiques, contrôle des correctifs B1–B25 | ✅ ce document, §1 |
 | 2. Bilan | Avancement global, points forts | ✅ §2 |
-| 3. Audit | Dette, bugs cachés, typage, cas limites (suite de B26–B40) | ⏳ |
+| 3. Audit | Dette, bugs cachés, typage, cas limites (B26–B45) | ✅ §3 |
 | 4. Feuille de route | Plan court / moyen terme, tâches incrémentales | ⏳ |
 
 Le rapport du 2026-09-06 (étapes 0 à 2, bugs B1–B25) est conservé tel quel en
@@ -336,8 +336,207 @@ situe sur trois fronts :
 **(3)** les quatre fonctionnalités attendues, qui reposent toutes sur un socle commun à
 construire : un modèle de résultat, la notation SAN, et une IA bornée en temps.
 
-Prochaine étape, après validation : **Phase 3 — Audit détaillé** (dette par module,
-typage, sécurité, cas limites, cibles de refactorisation).
+Prochaine étape : Phase 3 — Audit détaillé (§3).
+
+## 3. Phase 3 — Audit détaillé (2026-10-22)
+
+Cette phase complète les bugs B26–B40 (§1.4) par une lecture module par module.
+Elle ajoute cinq constats nouveaux (B41–B45), tous **reproduits ou vérifiés dans le code**.
+
+### 3.1 Nouveaux constats
+
+**B41 🟠. Position de départ non validée (FEN ou sauvegarde).**
+`load_fen`, et donc `load_game` via `start_fen`, accepte n'importe quel contenu.
+Reproduit :
+- `4k3/p7/8/8/8/8/P7/4K3 w K` : le moteur propose `0-0` **sans tour en h1**. Le roi
+  arrive en g1 et aucune tour n'apparaît.
+- Une position **sans roi** est acceptée sans erreur : le moteur garde la case par défaut
+  `(7, 4)` et calcule des échecs sur une case vide.
+
+Le fichier de sauvegarde, modifiable à la main, est donc une porte d'entrée vers des états
+incohérents.
+→ Validation dans `load_fen` : un roi par camp, droits de roque cohérents avec le roi et
+la tour en place, pas de pion sur les rangées 1 ou 8, camp qui n'a pas le trait non en
+échec, case en passant plausible. Lever une `FenError` explicite.
+
+**B42 🟠. Ressources et fichiers relatifs au dossier courant.**
+`images/`, `sounds/`, `saved_game.json` et `chess_debug.log` sont résolus depuis le dossier
+où le jeu est lancé (`ChessMain.py:37,525`, `serialization.py:23`). Lancé depuis un autre
+dossier, le jeu plante (`FileNotFoundError` sur la première image). Cela **bloque le
+packaging**.
+→ Ressources via `Path(__file__).parent` ou `importlib.resources`. Données utilisateur
+(sauvegardes, journal) dans un dossier par utilisateur (`platformdirs`).
+
+**B43 🟡. Journalisation.**
+Le niveau est `DEBUG`, dans un fichier sans rotation, et chaque coup est journalisé.
+Les appels passent par le logger racine en f-string (12 occurrences `LOG015`, plus le
+formatage fait même quand le message n'est pas émis).
+→ `logger = logging.getLogger(__name__)` par module, arguments `%s`, niveau `INFO` par
+défaut, `RotatingFileHandler`.
+
+**B44 🟠. Le temps passé dans les menus en jeu est imputé au joueur au trait.**
+Les menus `C` (couleurs) et `H` (raccourcis) ont leur propre boucle bloquante. Au retour,
+`update_timer` ajoute tout le temps écoulé depuis le dernier tick au joueur au trait
+(`ChessMain.py:85-94`). C'est B16 qui revient par une autre voie. Même effet, plus petit,
+pendant `animate_move`. Par ailleurs, `Z`, `R` et `L` ne restaurent pas les pendules.
+Ce n'est pas grave avec un chronomètre informatif, mais c'est **bloquant pour la cadence** :
+perdre au temps à cause d'un menu n'est pas acceptable.
+→ Horloge pilotée par le contrôleur (`pause` / `resume`) et alimentée par un temps
+injectable, ce qui la rend testable sans attendre.
+
+**B45 🟡. Boucles bloquantes et sortie du programme.**
+`animate_move` et les quatre menus tournent dans leur propre boucle. Pendant l'animation,
+aucun événement n'est traité : la fermeture de fenêtre est ignorée. Les menus appellent
+`sys.exit()` sans `p.quit()`. Le processus de l'IA n'est pas `daemon` : à la fermeture
+pendant sa réflexion, l'interpréteur **attend la fin de la recherche** avant de quitter.
+→ Une seule boucle avec des « scènes » (menu, partie, popup) et une animation avancée
+d'un pas par image. `daemon=True`, plus `terminate()` à la fermeture.
+
+### 3.2 Audit par module
+
+#### `ChessEngine.py` (811 lignes) — règles
+
+| Sujet | Constat | Cible |
+|---|---|---|
+| Représentation | Cases en `str` (`"wp"`, `"--"`). Absence codée par `()` (en passant, broche), d'où les `# type: ignore` | `Piece` (énumération ou entier), `Square = tuple[int, int]`, `Optional[Square]` |
+| Responsabilités | `GameState` mélange plateau, génération, historique, détection des nulles et caches (≈ 20 attributs mutables) | Séparer `Board` / position, `MoveGenerator`, `GameRecord` (historique et nulles), `GameResult` |
+| État caché | `self.pins` est **vidé** pendant la génération (`pop`). `_valid_moves` est partagé et trié en place par l'IA (B39). Les drapeaux `checkmate` / `stalemate` sont des effets de bord de `getValidMoves()` | Génération sans effet de bord. Statut calculé par une fonction pure `status(position) -> GameResult` |
+| Historique | Cinq piles parallèles (`move_log`, `enpassant_possible_log`, `castle_rights_log`, `fifty_move_counter_log`, `position_history_log`) et un `deepcopy` du dictionnaire à chaque coup | Une seule pile d'`UndoInfo` (droits, en passant, 50 coups, clé Zobrist) et une liste de clés pour la répétition |
+| Duplication | `getRook/Bishop/QueenMoves` répètent la même boucle ; `squareUnderAttack` et `checkForPinsAndChecks` refont les rayons | Une fonction `_slide(directions)` et des tables de directions partagées |
+| `flip_board` | Concept d'affichage dans le moteur (B26) | À supprimer du moteur |
+| Nommage | `camelCase` (`getValidMoves`, `endRow`) mêlé au `snake_case` (`white_to_move`, `_add_pawn_move`) | `snake_case` (PEP 8), renommage outillé, en un seul commit |
+| `Move` | Égalité par `moveID` (correct), mais `piece_moved` / `piece_captured` copiés du plateau à la création | `@dataclass(frozen=True, slots=True)` |
+| Notation | `getChessNotation` / `__str__` non SAN (B19, B35) | Module `notation.py` : `to_san(position, move)` et `parse_san` (prérequis du PGN) |
+| Constantes | Tables positionnelles en `numpy`, accès scalaire lent, seule utilisation de numpy dans le projet | Tuples en centipions. **Retirer `numpy`** des dépendances (packaging plus léger) |
+
+#### `ChessAI.py` (152 lignes) — recherche et évaluation
+
+| Sujet | Constat | Cible |
+|---|---|---|
+| Correction | B27 (pat ou nulle vu comme un mat), B30 (évaluation tronquée et biaisée), B31 (racine sans coup), B6 (table de transposition sans bornes) | À corriger **avant** tout gain de force, chaque correction accompagnée d'un test tactique |
+| Scores | `CHECKMATE = 1000` sert à la fois de score de mat et de borne alpha-bêta | `INF = 10**6`, `MATE = 10**5`, `mate - ply`, centipions |
+| Recherche | Approfondissement itératif sans réutilisation (accès à la table de transposition qui renvoie `None`), pas de limite de temps, pas de quiescence | `Searcher` avec `SearchLimits(depth, movetime, nodes)`, table de transposition avec bornes et coup mémorisé, quiescence, MVV-LVA et coups tueurs |
+| Coût | B11 (génération légale complète à chaque feuille), B12 (jouer/annuler chaque coup pour le trier) | Mobilité retirée ou approchée, tri sans `makeMove` |
+| Évaluation | Sécurité du roi calculée pour le seul camp au trait, bonus de centre ajouté aux tables (doublon), pas de phase de partie | Évaluation symétrique (`eval(position)` du point de vue blanc), tables début / fin de partie interpolées. **Test de symétrie** : `eval(p) == -eval(miroir(p))` |
+| Interface | `findBestMove(gs, moves, queue)` couplé à `multiprocessing` | Fonction pure `search(position, limits) -> SearchResult(move, score, depth, nodes, pv)`. Le processus séparé devient un détail du contrôleur |
+| Code mort | `get_board_hash`, `findRandomMove`, import `Callable` | À supprimer |
+
+#### `ChessMain.py` (809 lignes) — interface et contrôleur
+
+| Sujet | Constat | Cible |
+|---|---|---|
+| Typage | 0 annotation : c'est la plus grosse partie des 239 erreurs `mypy --strict` | Annoter en même temps que le découpage |
+| Contrôleur | Drapeaux implicites (B28), fin de partie déterminée dans `draw()` (B34), validation en double (`makeMove(valid_move)` revalide un coup déjà légal) | Machine à états explicite (`HumanToMove`, `AiThinking`, `Animating`, `PromotionChoice`, `GameOver`), transitions testées |
+| Rendu | Polices recréées à chaque image (B38), couleurs et dimensions en dur, mise en page fixe malgré `RESIZABLE` | `Theme` (couleurs, polices précalculées), mise en page calculée depuis la taille de fenêtre |
+| Menus | Quatre fonctions quasi identiques (environ 40 lignes chacune), boucles bloquantes (B45) | Un widget `Menu(title, items)` réutilisable, et des scènes |
+| IA | `Process` + `Queue` sans délai d'attente ni contrôle d'erreur (B33) | `AiWorker` (`concurrent.futures.ProcessPoolExecutor` ou processus `daemon`) avec délai d'attente, annulation et repli |
+| Singleton | `ResourceManager.__new__` ignore les paramètres après le premier appel | Instance simple injectée (c'est déjà le cas, le singleton est inutile) |
+| Fichier | 809 lignes, 6 responsabilités | Module `ui/` : `controller.py`, `renderer.py`, `widgets.py`, `clock.py`, `assets.py` |
+
+#### `serialization.py` / `fen_utils.py` — persistance
+
+- Points solides : version vérifiée, coups rejoués, `json` (pas d'exécution de code).
+- B29 (promotion faussée en amont), B36 (compteurs FEN), B37 (mode non sauvegardé),
+  B41 (position non validée).
+- `fen_utils.py` est documenté comme « utilitaire de test » mais il est **utilisé en
+  production** par `serialization.py`. Il doit devenir un module à part entière (`fen.py`),
+  et `perft` doit rejoindre les tests.
+- `to_fen` affiche `KQkq` d'après les seuls drapeaux (« à titre indicatif »). Après B26,
+  la FEN devient exacte et peut servir de format de position de référence.
+- Format v2 : `{"version": 2, "start_fen", "moves": [UCI…], "mode", "human_color",
+  "clock": {...}, "result"}`. Les coups au format UCI (`e7e8n`) sont plus lisibles que
+  des index et servent aussi au PGN.
+
+#### Tests et outillage
+
+| Sujet | Constat | Cible |
+|---|---|---|
+| Lanceurs | `unittest` partout, `pytest` en dépendance, pas de configuration | `pyproject.toml` (`[tool.pytest]`, marqueur `slow` à la place de la variable d'environnement `RUN_SLOW_PERFT`) |
+| Duplication | `test_chess.py` redéfinit `Color` et importe `numpy` sans l'utiliser | Nettoyer, mutualiser les fabriques de positions (`conftest.py`) |
+| Couverture | Aucune mesure | `pytest-cov`, seuil progressif (moteur ≥ 90 %) |
+| Tests qui consacrent un bug | `test_roundtrip_preserves_flip_board` (B26), `test_roundtrip_preserves_promotion_choice` (B29) | À réécrire avec les corrections |
+| Tests fragiles | `test_ai_performance` dépend du temps réel | Limite par nombre de nœuds ou profondeur fixe, plus tests tactiques |
+| Manquants | IA (mat en 1/2/3, éviter le pat, capturer une pièce en prise), plateau retourné, contrôleur (`R`/`L`/`Z` dans chaque état), horloge, validation FEN | Voir la feuille de route |
+| Tests différentiels | `python-chess` en option dans `requirements-dev.txt` mais non utilisé | Comparaison aléatoire : N parties aléatoires, mêmes coups légaux et même statut à chaque demi-coup. Filet idéal avant les refactors du moteur |
+| CI | Aucune | GitHub Actions : ruff, mypy, pytest (rapide) sur Linux, Windows et macOS (cela détecte B32 et B42), perft lent la nuit |
+
+### 3.3 Sécurité et robustesse
+
+Pour un jeu local, la surface d'attaque est faible. La seule entrée externe est le fichier
+de sauvegarde (bientôt PGN et FEN importés).
+
+- ✅ Plus d'exécution de code (pickle supprimé), coups rejoués et validés par le moteur.
+- ⚠️ Positions de départ non validées (B41). Entrées mal formées rejetées par des
+  exceptions génériques (`ValueError` / `TypeError`), attrapées par un `except Exception`
+  large dans l'UI (`ChessMain.py:706`) qui ne prévient pas l'utilisateur.
+  → Exceptions dédiées (`SaveFormatError`, `FenError`, `PgnError`) et message affiché.
+- ⚠️ Import PGN à venir : limiter la taille du fichier et le nombre de coups, et ne
+  jamais faire confiance aux en-têtes (`[FEN]`, `[SetUp]`).
+- ⚠️ Écriture de la sauvegarde non atomique : un arrêt pendant l'écriture corrompt
+  le fichier. → Écrire dans un fichier temporaire puis `os.replace`.
+
+### 3.4 Cas limites non gérés (récapitulatif)
+
+| Cas | Référence |
+|---|---|
+| Jouer les Noirs contre l'IA (plateau retourné) | B26 |
+| L'IA gagnante qui pate ; l'IA perdante sans coup renvoyé | B27, B31 |
+| `R` / `L` quand l'IA a le trait ; crash du processus de l'IA | B28, B33 |
+| Sous-promotion via l'UI ; annulation du popup | B29, B40 |
+| Mat au 100ᵉ demi-coup (le mat doit primer) ; 5 répétitions et 75 coups (FIDE) | B34 |
+| Position FEN sans roi, roque sans tour, compteurs FEN | B36, B41 |
+| Menus ou animation pendant que la pendule tourne ; annulation et pendules | B44 |
+| Fermeture pendant la réflexion de l'IA ou pendant une animation | B45 |
+| Lancement depuis un autre dossier ; Windows et macOS (`spawn`) | B42, B32 |
+| Redimensionnement de la fenêtre | B38 |
+| Chargement d'une partie d'un autre mode ou d'une autre couleur | B37 |
+| **À venir** : perte au temps contre matériel insuffisant (FIDE : nulle) ; incrément après le coup ; PGN avec variantes et commentaires (à ignorer proprement) | Cadence, PGN |
+
+### 3.5 Architecture cible
+
+Elle se construit progressivement, sans grande réécriture. Chaque étape est validée par
+le perft et les tests.
+
+```
+chessproject/
+  core/            # aucune dépendance à pygame
+    types.py       # Piece, Color, Square
+    position.py    # plateau + make/unmake + UndoInfo + Zobrist
+    movegen.py     # génération légale (algorithme actuel, conservé)
+    result.py      # GameResult, DrawReason, status(position)
+    notation.py    # SAN <-> Move, UCI
+    fen.py  pgn.py # import/export validés
+  ai/
+    evaluate.py    # centipions, tables début/fin de partie
+    search.py      # negamax + table de transposition + quiescence + limites
+    levels.py      # niveaux de difficulté -> SearchLimits + bruit
+  app/
+    controller.py  # machine à états, sans dessin
+    clock.py       # cadence (temps + incrément), horloge injectable
+    worker.py      # IA hors processus (délai d'attente, annulation)
+    persistence.py # format v2, écriture atomique
+  ui/              # pygame uniquement ici
+    scenes.py  renderer.py  widgets.py  theme.py  assets.py
+tests/
+```
+
+Règle de dépendance, vérifiable en CI : `core` ← `ai` ← `app` ← `ui`. Aucun module de
+`core` n'importe `pygame`.
+
+### 3.6 Synthèse de la phase 3
+
+- **Bloquants pour la vitrine** : B26, B27, B28 (correction), puis B30, B31, B29, B33, B44.
+- **Prérequis des fonctionnalités attendues** :
+  - PGN : SAN (B19, B35), `GameResult` (B34), validation FEN (B41) ;
+  - cadence : horloge pilotée (B44), `GameResult` ;
+  - niveaux : recherche bornée en temps (B6, B30, B31) ;
+  - packaging : ressources (B42), retrait de numpy, CI multi-OS.
+- **Dette principale** : `GameState` trop large et à effets de bord, contrôleur à
+  drapeaux, `ChessMain.py` sans types. On la traite progressivement, protégé par le perft
+  et par des tests différentiels contre `python-chess`.
+
+Prochaine étape, après validation : **Phase 4 — Feuille de route** (court et moyen terme,
+tâches incrémentales et critères d'acceptation).
 
 ---
 
