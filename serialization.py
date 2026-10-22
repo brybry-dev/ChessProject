@@ -2,7 +2,7 @@
 Sérialisation des parties
 -------------------------
 Sauvegarde / chargement d'une partie au format JSON : position de départ
-(standard ou avec roi/dame permutés) + liste des coups joués.
++ liste des coups joués + orientation d'affichage.
 
 Remplace l'ancienne sauvegarde ``pickle`` (cf. rapport d'analyse B17) :
 ``pickle`` recharge un objet arbitraire sans contrôle de schéma et constitue
@@ -20,7 +20,11 @@ from typing import Any
 import ChessEngine
 from fen_utils import load_fen
 
-SAVE_VERSION = 1
+# v2 : ``flip_board`` n'est plus qu'une préférence d'affichage, la position est
+# toujours standard. v1 : en mode retourné, la position était le miroir
+# (colonnes inversées, roi et dame permutés) de la vraie partie (cf. B26).
+SAVE_VERSION = 2
+SUPPORTED_VERSIONS = (1, 2)
 DEFAULT_SAVE_FILE = "saved_game.json"
 
 
@@ -79,12 +83,12 @@ def game_to_dict(
 ) -> dict[str, Any]:
     """Sérialise la partie : position de départ + liste des coups.
 
-    ``start_fen`` par défaut = position initiale standard (roi/dame permutés si
-    ``flip_board``). Le donner explicitement permet de sauvegarder une partie
-    commencée depuis une position arbitraire (chargée par FEN).
+    ``start_fen`` par défaut = position initiale standard. Le donner explicitement
+    permet de sauvegarder une partie commencée depuis une position arbitraire
+    (chargée par FEN). ``flip_board`` n'est qu'une préférence d'affichage.
     """
     if start_fen is None:
-        start_fen = to_fen(ChessEngine.GameState(flip_board=flip_board))
+        start_fen = to_fen(ChessEngine.GameState())
     moves: list[list[Any | None]] = [
         [m.start_row, m.start_col, m.end_row, m.end_col, m.promotion_piece]
         for m in game_state.move_log
@@ -137,6 +141,26 @@ def _find_move(
     )
 
 
+def _mirror_fen_files(fen: str) -> str:
+    """Reflète une FEN selon l'axe vertical (colonne a <-> h).
+
+    Sert à migrer les sauvegardes v1 en mode retourné, dont la position était
+    le miroir de la vraie partie. Les droits de roque côté roi et côté dame
+    s'échangent, la case en passant est reflétée ; les compteurs sont conservés.
+    """
+    fields = fen.split()
+    # Une rangée FEN se reflète en inversant ses caractères (les chiffres sont
+    # des longueurs de cases vides, toujours sur un seul caractère).
+    fields[0] = "/".join(rank[::-1] for rank in fields[0].split("/"))
+    if len(fields) > 2 and fields[2] != "-":
+        swap = {"K": "Q", "Q": "K", "k": "q", "q": "k"}
+        mirrored = "".join(swap[c] for c in fields[2])
+        fields[2] = "".join(c for c in "KQkq" if c in mirrored)
+    if len(fields) > 3 and fields[3] != "-":
+        fields[3] = chr(ord("a") + ord("h") - ord(fields[3][0])) + fields[3][1:]
+    return " ".join(fields)
+
+
 def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState, bool]:
     """Recharge une partie et renvoie ``(game_state, flip_board)``.
 
@@ -147,17 +171,24 @@ def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState,
         data = json.load(f)
 
     version = data.get("version")
-    if version != SAVE_VERSION:
+    if version not in SUPPORTED_VERSIONS:
         raise ValueError(f"Version de sauvegarde non supportée : {version!r}")
 
     flip_board = bool(data.get("flip_board", False))
+    # Migration v1 en mode retourné : la partie est reflétée vers la vraie position.
+    # Les coups sont revalidés par le moteur ; un coup devenu illégal (ex. roque
+    # joué par la dame à cause de B26) fait échouer le chargement explicitement.
+    mirror = version == 1 and flip_board
     start_fen = data.get("start_fen")
     if start_fen:
-        game_state = load_fen(start_fen)
+        game_state = load_fen(_mirror_fen_files(start_fen) if mirror else start_fen)
     else:
-        game_state = ChessEngine.GameState(flip_board=flip_board)
+        game_state = ChessEngine.GameState()
     for entry in data.get("moves", []):
         start_row, start_col, end_row, end_col, promotion = entry
+        if mirror:
+            last = ChessEngine.DIMENSION - 1
+            start_col, end_col = last - start_col, last - end_col
         move = _find_move(game_state, start_row, start_col, end_row, end_col, promotion)
         game_state.makeMove(move, validate=False)
     game_state.getValidMoves()  # recalcule checkmate / stalemate

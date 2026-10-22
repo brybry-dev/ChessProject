@@ -1,5 +1,6 @@
 """Tests de la sérialisation JSON des parties (module ``serialization``)."""
 
+import json
 import os
 import tempfile
 import unittest
@@ -63,11 +64,52 @@ class SaveLoadTests(unittest.TestCase):
         self.assertEqual(serialization.to_fen(loaded), serialization.to_fen(gs))
 
     def test_roundtrip_preserves_flip_board(self):
-        gs = ChessEngine.GameState(flip_board=True)
+        # L'orientation est une préférence d'affichage : la position reste standard (B26).
+        gs = ChessEngine.GameState()
         serialization.save_game(gs, flip_board=True, filename=self.path)
         loaded, flip = serialization.load_game(self.path)
         self.assertTrue(flip)
-        self.assertEqual(loaded.board, gs.board)
+        self.assertEqual(loaded.board, ChessEngine.GameState().board)
+
+    def _write(self, data):
+        with open(self.path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+    def test_v1_flipped_save_is_migrated_to_the_standard_position(self):
+        # Sauvegarde v1 en mode retourné : roi et dame permutés, coordonnées en
+        # miroir. 1. e4 e5 réels y étaient notés d2-d4 / d7-d5.
+        self._write(
+            {
+                "version": 1,
+                "flip_board": True,
+                "start_fen": "rnbkqbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBKQBNR w KQkq - 0 1",
+                "moves": [[6, 3, 4, 3, None], [1, 3, 3, 3, None]],
+            }
+        )
+        loaded, flip = serialization.load_game(self.path)
+        self.assertTrue(flip)
+        self.assertEqual(loaded.board[7][4], "wK")
+        self.assertEqual(loaded.board[4][4], "wp")
+        self.assertEqual(loaded.board[3][4], "bp")
+        self.assertEqual(loaded.white_king_location, (7, 4))
+
+    def test_v1_unflipped_save_still_loads(self):
+        self._write(
+            {
+                "version": 1,
+                "flip_board": False,
+                "start_fen": serialization.to_fen(ChessEngine.GameState()),
+                "moves": [[6, 4, 4, 4, None]],
+            }
+        )
+        loaded, flip = serialization.load_game(self.path)
+        self.assertFalse(flip)
+        self.assertEqual(loaded.board[4][4], "wp")
+
+    def test_saves_are_written_in_version_2(self):
+        serialization.save_game(ChessEngine.GameState(), filename=self.path)
+        with open(self.path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["version"], 2)
 
     def test_roundtrip_preserves_promotion_choice(self):
         # Position où les blancs peuvent promouvoir en b8.

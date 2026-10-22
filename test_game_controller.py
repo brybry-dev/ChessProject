@@ -77,8 +77,7 @@ class AITurnAfterHumanMove(unittest.TestCase):
         ChessMain.Queue = self._orig_queue  # type: ignore[misc]  # restauration du monkeypatch
 
     def _click_square(self, row, col):
-        disp = self.gc.renderer.display_row(row)
-        pos = (col * 64 + ChessMain.LEFT_PANEL_WIDTH + 5, disp * 64 + 5)
+        pos = self.gc.renderer.square_rect(row, col).center
         self.gc.handle_event(p.event.Event(p.MOUSEBUTTONDOWN, {"pos": pos, "button": 1}))
 
     def test_ai_replies_with_legal_move_after_first_white_move(self):

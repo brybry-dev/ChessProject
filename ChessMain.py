@@ -259,21 +259,38 @@ class Renderer:
         self.flip_board = flip_board
 
     # -- conversion logique <-> affichage --------------------------------
+    # Plateau retourné = rotation de 180° : rangées ET colonnes sont inversées.
+    # La position du moteur, elle, ne change jamais (cf. rapport d'analyse B26).
     def display_row(self, row):
         return row if not self.flip_board else DIMENSION - 1 - row
 
+    def display_col(self, col):
+        return col if not self.flip_board else DIMENSION - 1 - col
+
     def square_from_pixel(self, pos):
         """(x, y) écran -> (row, col) logique, ou None si hors plateau."""
-        col = (pos[0] - LEFT_PANEL_WIDTH) // self.sq_size
-        raw_row = pos[1] // self.sq_size
-        row = DIMENSION - 1 - raw_row if self.flip_board else raw_row
-        if 0 <= col < DIMENSION and 0 <= row < DIMENSION:
-            return row, col
+        disp_col = (pos[0] - LEFT_PANEL_WIDTH) // self.sq_size
+        disp_row = pos[1] // self.sq_size
+        if 0 <= disp_col < DIMENSION and 0 <= disp_row < DIMENSION:
+            # La rotation est son propre inverse.
+            return self.display_row(disp_row), self.display_col(disp_col)
         return None
 
-    def _rect(self, disp_row, col):
+    def square_rect(self, row, col):
+        """Rectangle écran de la case logique (row, col)."""
+        return self._rect(self.display_row(row), self.display_col(col))
+
+    def file_label(self, disp_col):
+        """Lettre de colonne affichée sous la colonne d'affichage ``disp_col``."""
+        return "abcdefgh"[self.display_col(disp_col)]
+
+    def rank_label(self, disp_row):
+        """Numéro de rangée affiché à gauche de la rangée d'affichage ``disp_row``."""
+        return str(DIMENSION - self.display_row(disp_row))
+
+    def _rect(self, disp_row, disp_col):
         return p.Rect(
-            col * self.sq_size + LEFT_PANEL_WIDTH,
+            disp_col * self.sq_size + LEFT_PANEL_WIDTH,
             disp_row * self.sq_size,
             self.sq_size,
             self.sq_size,
@@ -284,42 +301,31 @@ class Renderer:
     def ease_out_cubic(t: float) -> float:
         return 1 - pow(1 - t, 3)
 
+    def _square_color(self, disp_row, disp_col):
+        # La rotation conserve la parité : a1 reste une case foncée.
+        return self.ui.board_color1 if (disp_row + disp_col) % 2 == 0 else self.ui.board_color2
+
     def draw_board(self):
         font = p.font.SysFont("Arial", 16, bold=True)
         text_color = p.Color("black")
-        for row in range(DIMENSION):
-            disp_row = self.display_row(row)
-            for col in range(DIMENSION):
-                color = self.ui.board_color1 if (disp_row + col) % 2 == 0 else self.ui.board_color2
-                p.draw.rect(self.screen, color, self._rect(disp_row, col))
-
-                if self.flip_board:
-                    file_letter = chr(ord("h") - col)
-                    rank_num = row + 1
-                else:
-                    file_letter = chr(ord("a") + col)
-                    rank_num = 8 - row
-
-                if col == 0:
-                    rank_text = font.render(str(rank_num), True, text_color)
-                    self.screen.blit(rank_text, (LEFT_PANEL_WIDTH + 2, disp_row * self.sq_size + 2))
-                if row == DIMENSION - 1:
-                    file_text = font.render(file_letter, True, text_color)
-                    text_rect = file_text.get_rect(
-                        bottomright=(
-                            col * self.sq_size + LEFT_PANEL_WIDTH + self.sq_size - 2,
-                            disp_row * self.sq_size + self.sq_size - 2,
-                        )
-                    )
+        for disp_row in range(DIMENSION):
+            for disp_col in range(DIMENSION):
+                rect = self._rect(disp_row, disp_col)
+                p.draw.rect(self.screen, self._square_color(disp_row, disp_col), rect)
+                if disp_col == 0:
+                    rank_text = font.render(self.rank_label(disp_row), True, text_color)
+                    self.screen.blit(rank_text, (rect.x + 2, rect.y + 2))
+                if disp_row == DIMENSION - 1:
+                    file_text = font.render(self.file_label(disp_col), True, text_color)
+                    text_rect = file_text.get_rect(bottomright=(rect.right - 2, rect.bottom - 2))
                     self.screen.blit(file_text, text_rect)
 
     def draw_pieces(self, board):
         for row in range(DIMENSION):
-            disp_row = self.display_row(row)
             for col in range(DIMENSION):
                 piece = board[row][col]
                 if piece != "--":
-                    self.screen.blit(self.resources.get_image(piece), self._rect(disp_row, col))
+                    self.screen.blit(self.resources.get_image(piece), self.square_rect(row, col))
 
     def highlight_squares(self, game_state, valid_moves, square_selected):
         if game_state.in_check:
@@ -331,23 +337,23 @@ class Renderer:
             s = p.Surface((self.sq_size, self.sq_size))
             s.set_alpha(150)
             s.fill(p.Color("red"))
-            self.screen.blit(s, self._rect(self.display_row(king_row), king_col))
+            self.screen.blit(s, self.square_rect(king_row, king_col))
         if game_state.move_log:
             last_move = game_state.move_log[-1]
             s = p.Surface((self.sq_size, self.sq_size))
             s.set_alpha(100)
             s.fill(p.Color("green"))
-            self.screen.blit(s, self._rect(self.display_row(last_move.end_row), last_move.end_col))
+            self.screen.blit(s, self.square_rect(last_move.end_row, last_move.end_col))
         if square_selected:
             row, col = square_selected
             s = p.Surface((self.sq_size, self.sq_size))
             s.set_alpha(100)
             s.fill(p.Color("blue"))
-            self.screen.blit(s, self._rect(self.display_row(row), col))
+            self.screen.blit(s, self.square_rect(row, col))
             s.fill(p.Color("yellow"))
             for move in valid_moves:
                 if move.start_row == row and move.start_col == col:
-                    self.screen.blit(s, self._rect(self.display_row(move.end_row), move.end_col))
+                    self.screen.blit(s, self.square_rect(move.end_row, move.end_col))
 
     def draw_end_game_text(self, text):
         font = p.font.SysFont("Helvetica", 32, True, False)
@@ -367,36 +373,28 @@ class Renderer:
         frame_count = int((abs(d_row) + abs(d_col)) * frames_per_square)
         if frame_count == 0:
             return
-        disp_end_row = self.display_row(move.end_row)
+        end_rect = self.square_rect(move.end_row, move.end_col)
+        end_color = self._square_color(
+            self.display_row(move.end_row), self.display_col(move.end_col)
+        )
         for frame in range(frame_count + 1):
             t = frame / frame_count
             eased_t = self.ease_out_cubic(t)
-            row = move.start_row + d_row * eased_t
-            col = move.start_col + d_col * eased_t
-            disp_row = self.display_row(row)
+            # Coordonnées logiques fractionnaires, puis passage en affichage.
+            disp_row = self.display_row(move.start_row + d_row * eased_t)
+            disp_col = self.display_col(move.start_col + d_col * eased_t)
             self.draw_board()
             self.draw_pieces(board)
-            color = (
-                self.ui.board_color1
-                if (disp_end_row + move.end_col) % 2 == 0
-                else self.ui.board_color2
-            )
-            p.draw.rect(self.screen, color, self._rect(disp_end_row, move.end_col))
+            p.draw.rect(self.screen, end_color, end_rect)
             if move.piece_captured != "--":
-                capture_disp_row = disp_end_row
+                capture_rect = end_rect
                 if move.is_enpassant_move:
-                    enpassant_row = (
-                        move.end_row + 1 if move.piece_captured[0] == "b" else move.end_row - 1
-                    )
-                    capture_disp_row = self.display_row(enpassant_row)
-                self.screen.blit(
-                    self.resources.get_image(move.piece_captured),
-                    self._rect(capture_disp_row, move.end_col),
-                )
+                    capture_rect = self.square_rect(move.start_row, move.end_col)
+                self.screen.blit(self.resources.get_image(move.piece_captured), capture_rect)
             self.screen.blit(
                 self.resources.get_image(move.piece_moved),
                 p.Rect(
-                    col * self.sq_size + LEFT_PANEL_WIDTH,
+                    disp_col * self.sq_size + LEFT_PANEL_WIDTH,
                     disp_row * self.sq_size,
                     self.sq_size,
                     self.sq_size,
@@ -646,7 +644,7 @@ class GameController:
         self.renderer = Renderer(screen, SQ_SIZE, ui_manager, resource_manager, flip_board)
         self.move_log_font = p.font.SysFont("Arial", 14)
 
-        self.game_state = ChessEngine.GameState(flip_board=flip_board)
+        self.game_state = ChessEngine.GameState()
         self.valid_moves = self.game_state.getValidMoves()
         self.ui.reset_timer()
 
@@ -797,7 +795,7 @@ class GameController:
             self._stop_ai()
             self.move_undone = True
         elif e.key == p.K_r:  # Réinitialiser
-            self._new_game(ChessEngine.GameState(flip_board=self.flip_board))
+            self._new_game(ChessEngine.GameState())
             logging.info("Partie réinitialisée")
         elif e.key == p.K_s:  # Sauvegarder
             serialization.save_game(self.game_state, flip_board=self.flip_board)

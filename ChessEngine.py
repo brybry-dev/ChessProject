@@ -114,7 +114,7 @@ class GameState:
     Classe représentant l'état du jeu.
     """
 
-    def __init__(self, flip_board: bool = False) -> None:
+    def __init__(self) -> None:
         self.board: list[list[str]] = [
             ["bR", "bN", "bB", "bQ", "bK", "bB", "bN", "bR"],
             ["bp"] * DIMENSION,
@@ -125,13 +125,6 @@ class GameState:
             ["wp"] * DIMENSION,
             ["wR", "wN", "wB", "wQ", "wK", "wB", "wN", "wR"],
         ]
-
-        # Si flip_board est True, échange la position du roi et de la reine pour chaque camp
-        if flip_board:
-            # Pour les blancs (ligne 7)
-            self.board[7][3], self.board[7][4] = self.board[7][4], self.board[7][3]
-            # Pour les noirs (ligne 0)
-            self.board[0][3], self.board[0][4] = self.board[0][4], self.board[0][3]
 
         self.move_functions = {
             "p": self.getPawnMoves,
