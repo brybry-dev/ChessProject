@@ -21,9 +21,13 @@ python -m pytest -q
 | `test_perft.py` | **Validation de référence du générateur de coups.** Compte les nœuds de l'arbre des coups légaux (perft) sur 6 positions standard (position initiale, Kiwipete, positions 3 à 6 du Chess Programming Wiki) et compare aux valeurs publiées. |
 | `test_rules_regression.py` | Verrouille les bugs de règles corrigés : pat, mat, matériel insuffisant resserré, triple répétition, roque à travers une case tenue par un pion, broches recalculées, sous-promotions, prise en passant exposant le roi. |
 | `test_serialization.py` | Sauvegarde / chargement JSON des parties (`serialization.py`) : génération de FEN, aller-retour position + historique, conservation de l'orientation et du choix de sous-promotion, rejet d'une version inconnue, recalcul des drapeaux de fin de partie au chargement. |
+| `test_orientation.py` | Plateau retourné (B26) : rotation de la vue à 180° (aller-retour pixel/case sur les 64 cases, libellés), position standard en jouant les Noirs, échec détecté, roque par le roi. |
+| `test_ai.py` | IA : mat préféré au pat, mat le plus court, coup toujours rendu, mat en 2, évaluation en centipions nulle au départ et antisymétrique par miroir, capture gratuite. |
+| `test_game_controller.py` | Contrôleur sans écran (doublures de `Process` / `Queue`) : coup de l'IA après l'humain, reprise après R / L, sous-promotion via le popup, robustesse du processus d'IA, pendule hors menus et animations. |
+| `test_paths.py` | Lancement depuis un autre dossier, journal et sauvegarde dans le dossier de données utilisateur (sous-processus). |
 | `fen_utils.py` | Chargement d'une position FEN + fonctions `perft` / `perft_divide` (utilitaires de test, pas du code de jeu). |
 
-## Perft profond (lent, ~100 s)
+## Perft profond (lent, ~150 s)
 
 ```bash
 python -m pytest -m slow -q

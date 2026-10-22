@@ -557,7 +557,7 @@ Prochaine étape : Phase 4 — Feuille de route (§4).
 | Jalon | Objectif | Horizon | Effort |
 |---|---|---|---|
 | **J0** Outillage ✅ | Rendre la qualité mesurable et automatique | Court terme | ~1,5 j |
-| **J1** Correction | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
+| **J1** Correction ✅ | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
 | **J2** Socle moteur | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
 | **J3** IA | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
 | **J4** Fonctionnalités | PGN, cadence, niveaux dans l'UI, sauvegarde v2 | Moyen terme | ~5–6 j |
@@ -588,6 +588,18 @@ que de J2. Les niveaux de difficulté dépendent de J3.
 | J0.5 | `README.md` minimal : présentation, installation, lancement, tests, lien vers ce rapport | Lisible sur GitHub. Captures d'écran remises à J6 | S |
 
 #### J1 — Correction (aucun bug bloquant connu)
+
+> ✅ **Réalisé le 2026-10-22**, une tâche = un commit, chaque bug verrouillé par un test qui
+> échouait avant le correctif. B26, B27, B28, B29, B30, B31, B32, B33, B40, B42, B43, B44 et
+> B45 sont corrigés ; B11, B12 et B39 aussi, au passage (J1.5). Suite : 82 tests rapides (contre
+> 35), perft rapide inchangé.
+> Écarts avec le plan :
+> - J1.4 contient le retrait de la pénalité de répétition, sans lequel le test du pat
+>   ne pouvait pas passer.
+> - J1.2 supprime le drapeau `move_undone` plutôt que de le corriger : il n'avait pas
+>   d'autre effet.
+> - J1.9 ajoute la dépendance `platformdirs`.
+> - J1.7 borne la réflexion de l'IA à 30 s ; la limite par niveau viendra en J3.2.
 
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|

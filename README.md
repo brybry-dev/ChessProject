@@ -18,8 +18,8 @@ technique : l'accent est mis sur la justesse des règles, les tests et la qualit
 - **Interface** : 3 thèmes de plateau, sons, animation des coups, surbrillance des coups
   légaux, historique des coups avec défilement, chronomètre.
 
-Des bugs connus restent ouverts (par exemple l'orientation du plateau quand on joue les
-Noirs, B26) ; ils sont suivis dans [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
+L'état du projet, les bugs suivis et la feuille de route sont dans
+[RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
 ## Prérequis
 
@@ -90,8 +90,8 @@ l'arbre des coups légaux est comparé aux valeurs publiées. Le détail des tes
 
 ## Feuille de route
 
-- **J0 — Outillage** : `pyproject.toml`, ruff, mypy, CI multi-OS, README.
-- **J1 — Correction** : plus aucun bug bloquant connu (règles, IA, contrôleur).
+- **J0 — Outillage** ✅ : `pyproject.toml`, ruff, mypy, CI multi-OS, README.
+- **J1 — Correction** ✅ : plus aucun bug bloquant connu (règles, IA, contrôleur).
 - **J2 — Socle moteur** : types, modèle de résultat de partie, notation SAN, FEN validée.
 - **J3 — IA** : adversaire solide, borné en temps, avec niveaux de difficulté.
 - **J4 — Fonctionnalités** : import/export PGN, cadence (temps + incrément), sauvegarde v2.
