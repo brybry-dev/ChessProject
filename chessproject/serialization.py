@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from chessproject.core import engine
-from chessproject.core.fen import load_fen, start_fullmove
+from chessproject.core.fen import fullmove_number as fullmove_number  # réexport
+from chessproject.core.fen import load_fen
+from chessproject.core.fen import to_fen as to_fen  # réexport (historique : défini ici)
 from chessproject.core.notation import NotationError, parse_uci, to_uci
 
 logger = logging.getLogger(__name__)
@@ -34,73 +36,6 @@ logger = logging.getLogger(__name__)
 SAVE_VERSION = 3
 SUPPORTED_VERSIONS = (1, 2, 3)
 DEFAULT_SAVE_FILE = "saved_game.json"
-
-
-def _piece_to_fen_char(piece: str) -> str:
-    letter = "P" if piece[1] == "p" else piece[1]
-    return letter.upper() if piece[0] == "w" else letter.lower()
-
-
-def fullmove_number(game_state: engine.GameState) -> int:
-    """Numéro de coup FEN de la position courante (cf. B36).
-
-    ``start_fullmove + (demi-coups joués + (1 si la position de départ avait les
-    Noirs au trait)) // 2``. Le numéro de départ vient de la FEN chargée
-    (:func:`chessproject.core.fen.start_fullmove`, 1 par défaut). Le camp au trait au départ
-    se déduit du trait courant et de la parité du nombre de demi-coups joués.
-    """
-    plies = len(game_state.move_log)
-    start_black = (not game_state.white_to_move) == (plies % 2 == 0)
-    return start_fullmove(game_state) + (plies + int(start_black)) // 2
-
-
-def to_fen(game_state: engine.GameState) -> str:
-    """Retourne la FEN complète (6 champs) de la position courante.
-
-    - Roque : droits tels que stockés par le moteur (cases standard roi/tour).
-    - En passant : la case est écrite **telle que stockée** par le moteur, qui la
-      pose après toute avance de deux cases d'un pion, qu'une prise en passant soit
-      possible ou non (convention FEN d'origine, et non celle « seulement si la prise
-      est légale » de certains moteurs). ``load_fen`` relit cette case à l'identique.
-    - Demi-coups : ``fifty_move_counter`` ; numéro de coup : :func:`fullmove_number`.
-    """
-    rows: list[str] = []
-    for board_row in game_state.board:
-        fen_row = ""
-        empties = 0
-        for piece in board_row:
-            if piece == "--":
-                empties += 1
-                continue
-            if empties:
-                fen_row += str(empties)
-                empties = 0
-            fen_row += _piece_to_fen_char(piece)
-        if empties:
-            fen_row += str(empties)
-        rows.append(fen_row)
-    board_part = "/".join(rows)
-
-    turn = "w" if game_state.white_to_move else "b"
-
-    cr = game_state.current_castling_rights
-    castling = (
-        ("K" if cr.wks else "")
-        + ("Q" if cr.wqs else "")
-        + ("k" if cr.bks else "")
-        + ("q" if cr.bqs else "")
-    )
-    castling = castling or "-"
-
-    ep = game_state.enpassant_possible
-    if ep:
-        enpassant = chr(ord("a") + ep[1]) + str(engine.DIMENSION - ep[0])
-    else:
-        enpassant = "-"
-
-    halfmove = game_state.fifty_move_counter
-    fullmove = fullmove_number(game_state)
-    return f"{board_part} {turn} {castling} {enpassant} {halfmove} {fullmove}"
 
 
 class SaveFormatError(ValueError):

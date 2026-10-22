@@ -45,9 +45,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from chessproject.core.engine import GameResult, GameState, Termination
-from chessproject.core.fen import FenError, load_fen
+from chessproject.core.fen import FenError, fullmove_number, load_fen, to_fen
 from chessproject.core.notation import NotationError, parse_san, san_history, to_san
-from chessproject.serialization import fullmove_number, to_fen
 
 
 class PgnError(ValueError):
@@ -79,6 +78,8 @@ TERMINATION_TAGS: dict[Termination, str] = {
     Termination.FIFTY_MOVES: "normal",
     Termination.THREEFOLD_REPETITION: "normal",
     Termination.INSUFFICIENT_MATERIAL: "normal",
+    Termination.SEVENTY_FIVE_MOVES: "normal",
+    Termination.FIVEFOLD_REPETITION: "normal",
     Termination.RESIGNATION: "normal",
     Termination.DRAW_AGREEMENT: "normal",
     Termination.TIME_FORFEIT: "time forfeit",
@@ -115,13 +116,15 @@ class PgnGame:
     result: str = "*"
 
     def start_state(self) -> GameState:
-        """Position de départ (validée par ``load_fen`` si ``start_fen`` est fournie)."""
-        if self.start_fen is None:
-            return GameState()
+        """Position de départ (validée par ``load_fen`` si ``start_fen`` est fournie), en
+        règles FIDE strictes : une partie réelle peut continuer après une triple
+        répétition ou 50 coups non réclamés (cf. GameState.automatic_draws)."""
         try:
-            return load_fen(self.start_fen)
+            state = GameState() if self.start_fen is None else load_fen(self.start_fen)
         except FenError as exc:
             raise PgnError(f"FEN de départ invalide : {exc}") from exc
+        state.automatic_draws = False
+        return state
 
     def replay(self) -> GameState:
         """Rejoue les coups depuis la position de départ et renvoie la position finale.
@@ -412,6 +415,8 @@ class _GameBuilder:
             self.start_fen = None if normalized == STANDARD_START_FEN else normalized
         else:
             self.state = GameState()
+        # Parties réelles : nulles par répétition / 50 coups à réclamer (FIDE stricte).
+        self.state.automatic_draws = False
         return self.state
 
     def add_move(self, word: str, line: int) -> None:

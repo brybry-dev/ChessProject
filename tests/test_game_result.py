@@ -128,5 +128,24 @@ class ExternalTerminationTests(unittest.TestCase):
         self.assertFalse(mating("4k3/8/8/8/8/8/8/3RK3 w - - 0 1", Color.BLACK))
 
 
+class StrictFideDrawTests(unittest.TestCase):
+    def test_automatic_draws_off_means_threefold_does_not_end_the_game(self):
+        gs = engine.GameState()
+        gs.automatic_draws = False
+        _play_uci(gs, ["g1f3", "g8f6", "f3g1", "f6g8"] * 2)
+        self.assertFalse(gs.result().is_over)
+        _play_uci(gs, ["g1f3", "g8f6", "f3g1", "f6g8"] * 2)
+        self.assertEqual(gs.result().termination, Termination.FIVEFOLD_REPETITION)
+
+    def test_seventy_five_moves(self):
+        gs = load_fen("8/8/4k3/8/8/4K3/8/R7 w - - 0 1")
+        gs.automatic_draws = False
+        gs.fifty_move_counter = 120
+        self.assertFalse(gs.result().is_over)
+        gs.fifty_move_counter = 150
+        gs._valid_moves = None
+        self.assertEqual(gs.result().termination, Termination.SEVENTY_FIVE_MOVES)
+
+
 if __name__ == "__main__":
     unittest.main()

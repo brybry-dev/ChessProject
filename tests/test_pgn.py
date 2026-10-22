@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from chessproject.core import pgn
 from chessproject.core.engine import Color, GameResult, GameState, Termination
 from chessproject.core.fen import load_fen
 from chessproject.core.notation import parse_san, san_history
@@ -549,3 +550,18 @@ class TestRobustness(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StrictFideDrawsOnImportTests(unittest.TestCase):
+    """Une partie réelle peut continuer après une triple répétition non réclamée."""
+
+    def test_game_continuing_after_a_threefold_repetition_is_imported(self):
+        shuffle = "1. Nf3 Nf6 2. Ng1 Ng8 3. Nf3 Nf6 4. Ng1 Ng8 5. e4 e5 1/2-1/2"
+        game = pgn.parse_pgn(shuffle)[0]
+        self.assertEqual(len(game.moves), 10)
+        self.assertEqual(game.replay().board[4][4], "wp")
+
+    def test_fivefold_repetition_still_ends_the_game(self):
+        moves = " ".join(f"{2 * i + 1}. Nf3 Nf6 {2 * i + 2}. Ng1 Ng8" for i in range(4))
+        with self.assertRaises(pgn.PgnError):
+            pgn.parse_pgn(moves + " 9. e4 1/2-1/2")

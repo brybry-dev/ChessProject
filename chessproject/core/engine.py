@@ -59,6 +59,9 @@ class Termination(Enum):
     FIFTY_MOVES = "fifty_moves"
     THREEFOLD_REPETITION = "threefold_repetition"
     INSUFFICIENT_MATERIAL = "insufficient_material"
+    # Seuils automatiques de la FIDE (9.6), en mode automatic_draws=False (import PGN).
+    SEVENTY_FIVE_MOVES = "seventy_five_moves"
+    FIVEFOLD_REPETITION = "fivefold_repetition"
     # Fins décidées hors des règles de position (cadence, joueurs) : J4.
     TIME_FORFEIT = "time_forfeit"
     TIMEOUT_VS_INSUFFICIENT_MATERIAL = "timeout_vs_insufficient_material"
@@ -71,6 +74,8 @@ _DRAW_DESCRIPTIONS: dict[Termination, str] = {
     Termination.FIFTY_MOVES: "Nulle par la règle des 50 coups",
     Termination.THREEFOLD_REPETITION: "Nulle par triple répétition",
     Termination.INSUFFICIENT_MATERIAL: "Nulle par matériel insuffisant",
+    Termination.SEVENTY_FIVE_MOVES: "Nulle par la règle des 75 coups",
+    Termination.FIVEFOLD_REPETITION: "Nulle par quintuple répétition",
     Termination.TIMEOUT_VS_INSUFFICIENT_MATERIAL: (
         "Nulle au temps (matériel insuffisant pour mater)"
     ),
@@ -178,6 +183,10 @@ class GameState:
         self.fifty_move_counter: int = 0
         # Numéro de coup FEN de la position de départ (1 sauf partie chargée par FEN).
         self.start_fullmove: int = 1
+        # Vrai (jeu) : 3 répétitions et 50 coups terminent la partie sans réclamation.
+        # Faux (import de parties réelles, FIDE stricte) : ces nulles sont à réclamer ;
+        # seules 5 répétitions ou 75 coups y mettent fin d'office (FIDE 9.6).
+        self.automatic_draws: bool = True
         # Historique d'annulation : un UndoInfo par coup joué (J2.4).
         self.undo_stack: list[UndoInfo] = []
         # Répétitions : clés des positions rencontrées depuis le départ (pile) et nombre
@@ -489,12 +498,18 @@ class GameState:
     def _termination(self, moves: list["Move"]) -> Termination | None:
         if not moves:
             return Termination.CHECKMATE if self.in_check else Termination.STALEMATE
-        if self.fifty_move_counter >= 100:
-            return Termination.FIFTY_MOVES
+        if self.automatic_draws:
+            if self.fifty_move_counter >= 100:
+                return Termination.FIFTY_MOVES
+        elif self.fifty_move_counter >= 150:
+            return Termination.SEVENTY_FIVE_MOVES
         if self.insufficient_material():
             return Termination.INSUFFICIENT_MATERIAL
-        if self.repetition_count() >= 3:
-            return Termination.THREEFOLD_REPETITION
+        if self.automatic_draws:
+            if self.repetition_count() >= 3:
+                return Termination.THREEFOLD_REPETITION
+        elif self.repetition_count() >= 5:
+            return Termination.FIVEFOLD_REPETITION
         return None
 
     def has_mating_material(self, color: Color) -> bool:
