@@ -177,20 +177,10 @@ def load_fen(fen: str) -> ChessEngine.GameState:
     gs.white_to_move = white_to_move
 
     gs.current_castling_rights = rights
-    gs.castle_rights_log = [
-        ChessEngine.CastleRights(rights.wks, rights.bks, rights.wqs, rights.bqs)
-    ]
     gs.enpassant_possible = enpassant_square
-    gs.enpassant_possible_log = [gs.enpassant_possible]
-
-    gs.move_log = []
     gs.fifty_move_counter = halfmove
-    gs.fifty_move_counter_log = [halfmove]
     gs.start_fullmove = fullmove
-    gs.position_history = {}
-    gs.position_history_log = [{}]
-    gs._valid_moves = None
-    gs._update_position_history()
+    gs.reset_history()
     return gs
 
 

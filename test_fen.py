@@ -97,7 +97,9 @@ class TestFenRoundTrip(unittest.TestCase):
     def test_halfmove_counter_is_loaded(self):
         gs = load_fen("r3k2r/8/8/8/8/8/8/R3K2R w Kq - 42 87")
         self.assertEqual(gs.fifty_move_counter, 42)
-        self.assertEqual(gs.fifty_move_counter_log, [42])
+        gs.makeMove(gs.getValidMoves()[0], validate=False)
+        gs.undoMove()
+        self.assertEqual(gs.fifty_move_counter, 42, "le compteur chargé doit survivre à un undo")
         self.assertEqual(start_fullmove(gs), 87)
 
     def test_standard_game_state_fullmove(self):

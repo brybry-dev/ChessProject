@@ -4,7 +4,6 @@ Module ChessEngine
 Gestion du plateau, des coups, de l’évaluation et du cache des mouvements.
 """
 
-import copy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -207,33 +206,29 @@ class GameState:
         self.checks: list[tuple[int, int, int, int]] = []
         # Case d'en passant, ou None si aucune prise en passant n'est possible.
         self.enpassant_possible: tuple[int, int] | None = None
-        self.enpassant_possible_log: list[tuple[int, int] | None] = [self.enpassant_possible]
         self.current_castling_rights: CastleRights = CastleRights(True, True, True, True)
-        self.castle_rights_log: list[CastleRights] = [
-            CastleRights(
-                self.current_castling_rights.wks,
-                self.current_castling_rights.bks,
-                self.current_castling_rights.wqs,
-                self.current_castling_rights.bqs,
-            )
-        ]
         self._valid_moves: list[Move] | None = None
 
         # Pour la règle des 50 coups
         self.fifty_move_counter: int = 0
         # Numéro de coup FEN de la position de départ (1 sauf partie chargée par FEN).
         self.start_fullmove: int = 1
-        self.fifty_move_counter_log: list[int] = [0]
-        # Pour la répétition de positions (utilise une chaîne de hash)
+        # Historique d'annulation : un UndoInfo par coup joué (J2.4).
+        self.undo_stack: list[UndoInfo] = []
+        # Répétitions : clés des positions rencontrées depuis le départ (pile) et nombre
+        # d'occurrences de chacune, tenus à jour coup par coup (plus de deepcopy).
+        self.position_keys: list[str] = []
         self.position_history: dict[str, int] = {}
-        self.position_history_log: list[dict[str, int]] = [copy.deepcopy(self.position_history)]
-        # On met à jour l'historique avec la position initiale
-        self._update_position_history()
+        self.reset_history()
 
-    def _update_position_history(self) -> None:
-        """Met à jour le dictionnaire de répétition de positions."""
-        pos_hash: str = self.get_board_hash_str()
-        self.position_history[pos_hash] = self.position_history.get(pos_hash, 0) + 1
+    def reset_history(self) -> None:
+        """Fait de la position courante le départ de la partie (après un chargement FEN)."""
+        self.move_log = []
+        self.undo_stack = []
+        key = self.get_board_hash_str()
+        self.position_keys = [key]
+        self.position_history = {key: 1}
+        self._valid_moves = None
 
     def get_board_hash_str(self) -> str:
         """Retourne une chaîne représentant l'état complet de la position.
@@ -295,9 +290,14 @@ class GameState:
         """
         if validate and move not in self.getValidMoves():
             raise ValueError("Mouvement non valide.")
-            # Sauvegarde des compteurs pour pouvoir annuler
-        self.fifty_move_counter_log.append(self.fifty_move_counter)
-        self.position_history_log.append(copy.deepcopy(self.position_history))
+        # Tout ce que le coup écrase et qu'on ne peut pas recalculer, pour undoMove.
+        self.undo_stack.append(
+            UndoInfo(
+                castling_rights=self.current_castling_rights.copy(),
+                enpassant_possible=self.enpassant_possible,
+                fifty_move_counter=self.fifty_move_counter,
+            )
+        )
         self.board[move.start_row][move.start_col] = "--"
         self.board[move.end_row][move.end_col] = move.piece_moved
         self.move_log.append(move)
@@ -335,25 +335,23 @@ class GameState:
                     move.end_col - 2
                 ]
                 self.board[move.end_row][move.end_col - 2] = "--"
-        self.enpassant_possible_log.append(self.enpassant_possible)
         self.updateCastleRights(move)
-        self.castle_rights_log.append(
-            CastleRights(
-                self.current_castling_rights.wks,
-                self.current_castling_rights.bks,
-                self.current_castling_rights.wqs,
-                self.current_castling_rights.bqs,
-            )
-        )
         self._valid_moves = None
-        # Met à jour l'historique des positions
-        self._update_position_history()
+        key = self.get_board_hash_str()
+        self.position_keys.append(key)
+        self.position_history[key] = self.position_history.get(key, 0) + 1
 
     def undoMove(self) -> None:
         """Annule le dernier mouvement effectué et restaure les compteurs et l'historique."""
         if not self.move_log:
             return
         move = self.move_log.pop()
+        info = self.undo_stack.pop()
+        key = self.position_keys.pop()
+        if self.position_history[key] == 1:
+            del self.position_history[key]
+        else:
+            self.position_history[key] -= 1
         self.board[move.start_row][move.start_col] = move.piece_moved
         self.board[move.end_row][move.end_col] = move.piece_captured
         self.white_to_move = not self.white_to_move
@@ -364,15 +362,11 @@ class GameState:
         if move.is_enpassant_move:
             self.board[move.end_row][move.end_col] = "--"
             self.board[move.start_row][move.end_col] = move.piece_captured
-        self.enpassant_possible_log.pop()
-        self.enpassant_possible = self.enpassant_possible_log[-1]
-        self.castle_rights_log.pop()
-        # Copie défensive : sinon current_castling_rights aliaserait une entrée du log,
-        # que le prochain updateCastleRights corromprait en la modifiant en place.
-        last_rights = self.castle_rights_log[-1]
-        self.current_castling_rights = CastleRights(
-            last_rights.wks, last_rights.bks, last_rights.wqs, last_rights.bqs
-        )
+        self.enpassant_possible = info.enpassant_possible
+        # L'UndoInfo garde sa propre copie : la réutiliser telle quelle est sûr, car
+        # elle n'est plus référencée ailleurs une fois dépilée (cf. B24).
+        self.current_castling_rights = info.castling_rights
+        self.fifty_move_counter = info.fifty_move_counter
         if move.is_castle_move:
             if move.end_col - move.start_col == 2:
                 self.board[move.end_row][move.end_col + 1] = self.board[move.end_row][
@@ -388,9 +382,6 @@ class GameState:
         self.stalemate = False
         self.termination = None
         self._valid_moves = None
-        # Restaure les compteurs
-        self.fifty_move_counter = self.fifty_move_counter_log.pop()
-        self.position_history = self.position_history_log.pop()
 
     def updateCastleRights(self, move: "Move") -> None:
         """Met à jour les droits de roque en fonction du mouvement."""
@@ -896,12 +887,24 @@ class GameState:
         return inCheck, pins, checks
 
 
+@dataclass(slots=True)
+class UndoInfo:
+    """État écrasé par un coup et nécessaire pour l'annuler."""
+
+    castling_rights: "CastleRights"
+    enpassant_possible: tuple[int, int] | None
+    fifty_move_counter: int
+
+
 class CastleRights:
     def __init__(self, wks: bool, bks: bool, wqs: bool, bqs: bool) -> None:
         self.wks = wks
         self.bks = bks
         self.wqs = wqs
         self.bqs = bqs
+
+    def copy(self) -> "CastleRights":
+        return CastleRights(self.wks, self.bks, self.wqs, self.bqs)
 
 
 class Move:
