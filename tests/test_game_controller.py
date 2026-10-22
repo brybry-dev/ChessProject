@@ -421,5 +421,124 @@ class EndOfGameDisplay(unittest.TestCase):
         self.assertFalse(gc.game_over)
 
 
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class ResignAndDrawOffers(unittest.TestCase):
+    """J4.6 : abandon (A) et proposition de nulle (N)."""
+
+    def _controller(self, mode, white_human, black_human):
+        return app.GameController(
+            p.display.get_surface(),
+            p.time.Clock(),
+            app.UIManager(512, 512, 250, 512),
+            app.ResourceManager(64),
+            mode,
+            white_human,
+            black_human,
+            mode == "PvC" and not white_human,
+        )
+
+    def _press(self, gc, key):
+        gc.handle_event(p.event.Event(p.KEYDOWN, {"key": key}))
+
+    def test_human_resigns_against_the_ai(self):
+        gc = self._controller("PvC", False, True)  # humain = Noirs
+        self._press(gc, p.K_a)
+        self.assertTrue(gc.game_over)
+        self.assertEqual(
+            gc.result, engine.GameResult(engine.Termination.RESIGNATION, engine.Color.WHITE)
+        )
+
+    def test_side_to_move_resigns_in_pvp(self):
+        gc = self._controller("PvP", True, True)
+        self._press(gc, p.K_a)
+        self.assertEqual(gc.result.winner, engine.Color.BLACK)
+
+    def test_undo_cancels_a_resignation(self):
+        gc = self._controller("PvP", True, True)
+        gc.game_state.make_move(gc.game_state.get_valid_moves()[0])
+        self._press(gc, p.K_a)
+        self.assertTrue(gc.game_over)
+        self._press(gc, p.K_z)
+        self.assertFalse(gc.game_over)
+
+    def test_ai_accepts_a_draw_only_when_it_is_not_better(self):
+        gc = self._controller("PvC", True, False)
+        with mock.patch.object(app, "ai_accepts_draw", return_value=False):
+            self._press(gc, p.K_n)
+        self.assertFalse(gc.game_over)
+        with mock.patch.object(app, "ai_accepts_draw", return_value=True):
+            self._press(gc, p.K_n)
+        self.assertEqual(gc.result, engine.GameResult(engine.Termination.DRAW_AGREEMENT))
+
+    def test_ai_draw_decision_follows_the_evaluation(self):
+        # Les Noirs (IA) ont une dame de plus : refus ; une dame de moins : acceptation.
+        black_better = load_fen("q3k3/8/8/8/8/8/8/4K3 w - - 0 1")
+        white_better = load_fen("4k3/8/8/8/8/8/8/Q3K3 w - - 0 1")
+        self.assertFalse(app.ai_accepts_draw(black_better, ai_is_white=False))
+        self.assertTrue(app.ai_accepts_draw(white_better, ai_is_white=False))
+
+    def test_draw_agreement_in_pvp_needs_the_opponent(self):
+        gc = self._controller("PvP", True, True)
+        self._press(gc, p.K_n)  # les Blancs proposent
+        self.assertFalse(gc.game_over)
+        self._press(gc, p.K_n)  # même camp : sans effet
+        self.assertFalse(gc.game_over)
+        gc.game_state.make_move(next(m for m in gc.game_state.get_valid_moves() if str(m) == "e4"))
+        self._press(gc, p.K_n)  # les Noirs acceptent
+        self.assertEqual(gc.result.termination, engine.Termination.DRAW_AGREEMENT)
+
+    def test_a_move_declines_a_pending_offer(self):
+        gc = self._controller("PvP", True, True)
+        self._press(gc, p.K_n)  # les Blancs proposent
+        gc.game_state.make_move(next(m for m in gc.game_state.get_valid_moves() if str(m) == "e4"))
+        gc.game_state.make_move(next(m for m in gc.game_state.get_valid_moves() if str(m) == "e5"))
+        self._press(gc, p.K_n)  # nouvelle proposition des Blancs, pas une acceptation
+        self.assertFalse(gc.game_over)
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class SaveRestoresTheGameContext(unittest.TestCase):
+    """J4.5 / B37 : L restaure le mode, la couleur de l'humain, le niveau et la fin."""
+
+    def test_load_restores_mode_colour_level_and_result(self):
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        try:
+            gc = app.GameController(
+                p.display.get_surface(),
+                p.time.Clock(),
+                app.UIManager(512, 512, 250, 512),
+                app.ResourceManager(64),
+                "PvC",
+                False,
+                True,
+                True,
+            )
+            gc.ai_level = "Facile"
+            gc.external_result = engine.GameResult(
+                engine.Termination.RESIGNATION, engine.Color.WHITE
+            )
+            with mock.patch.object(app.paths, "save_file", return_value=path):
+                gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_s}))
+            other = app.GameController(
+                p.display.get_surface(),
+                p.time.Clock(),
+                app.UIManager(512, 512, 250, 512),
+                app.ResourceManager(64),
+                "PvP",
+                True,
+                True,
+                False,
+            )
+            with mock.patch.object(app.paths, "existing_save_file", return_value=path):
+                other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_l}))
+            self.assertEqual((other.mode, other.player_one, other.player_two), ("PvC", False, True))
+            self.assertEqual(other.ai_level, "Facile")
+            self.assertTrue(other.flip_board)
+            self.assertEqual(other.result.termination, engine.Termination.RESIGNATION)
+        finally:
+            os.remove(path)
+
+
 if __name__ == "__main__":
     unittest.main()

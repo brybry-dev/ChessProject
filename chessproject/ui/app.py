@@ -512,6 +512,48 @@ def game_mode_menu(screen):
         p.display.flip()
 
 
+def choice_menu(screen, title, options):
+    """Menu générique : un titre et une colonne de boutons ; renvoie la valeur choisie.
+    ``options`` : liste de couples (libellé, valeur)."""
+    button_width, button_height, spacing = 240, 44, 14
+    w, h = screen.get_size()
+    total_height = len(options) * (button_height + spacing) - spacing
+    start_y = max(70, (h - total_height) // 2)
+    buttons = [
+        Button(
+            label,
+            ((w - button_width) // 2, start_y + i * (button_height + spacing)),
+            (button_width, button_height),
+            lambda value=value: value,
+        )
+        for i, (label, value) in enumerate(options)
+    ]
+    title_font = p.font.SysFont("Arial", 30, bold=True)
+    title_surface = title_font.render(title, True, p.Color("black"))
+    menu_surface = p.Surface(screen.get_size())
+    while True:
+        menu_surface.fill(p.Color("white"))
+        menu_surface.blit(title_surface, title_surface.get_rect(center=(w // 2, start_y - 40)))
+        for btn in buttons:
+            btn.check_hover(p.mouse.get_pos())
+            btn.draw(menu_surface)
+        for e in p.event.get():
+            if e.type == p.QUIT:
+                sys.exit()
+            if e.type == p.MOUSEBUTTONDOWN:
+                for btn in buttons:
+                    if btn.rect.collidepoint(e.pos):
+                        return btn.callback()
+        screen.blit(menu_surface, (0, 0))
+        p.display.flip()
+
+
+def level_menu(screen):
+    return choice_menu(
+        screen, "Niveau de l'IA", [(level.name, level.name) for level in levels.LEVELS]
+    )
+
+
 def open_color_selection(screen, mode):
     buttons = []
     button_width = 200
@@ -603,6 +645,8 @@ def show_shortcuts_menu(screen):
         ("S", "Sauvegarder la partie"),
         ("L", "Charger la partie"),
         ("C", "Personnaliser les couleurs"),
+        ("A", "Abandonner la partie"),
+        ("N", "Proposer / accepter la nulle"),
         ("H", "Afficher/masquer les raccourcis"),
     ]
 
@@ -677,6 +721,19 @@ def _play_move_sound(move) -> None:
 # --------------------------------------------------
 # Contrôleur de partie
 # --------------------------------------------------
+DRAW_ACCEPT_THRESHOLD_CP = 25  # l'IA accepte la nulle si elle ne s'estime pas mieux
+
+
+def ai_accepts_draw(game_state, ai_is_white):
+    """L'IA accepte une proposition de nulle si une courte recherche ne lui donne pas
+    l'avantage (au plus DRAW_ACCEPT_THRESHOLD_CP centipions)."""
+    result = search.think(game_state, search.SearchLimits(depth=2, movetime_ms=300))
+    # Score du point de vue du camp au trait, ramené au point de vue de l'IA.
+    ai_to_move = game_state.white_to_move == ai_is_white
+    ai_score = result.score if ai_to_move else -result.score
+    return ai_score <= DRAW_ACCEPT_THRESHOLD_CP
+
+
 class GameController:
     """Boucle de jeu : événements, IA, rendu. Extrait de l'ancienne fonction
     ``main()`` monolithique (cf. rapport d'analyse : découpage de main())."""
@@ -713,11 +770,22 @@ class GameController:
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
         self.promotion_moves: list[engine.Move] = []
 
+        # Fin de partie décidée hors de l'échiquier (abandon, accord, temps : J4).
+        self.external_result: engine.GameResult | None = None
+        # Proposition de nulle en attente (PvP) : (camp qui propose, nombre de demi-coups
+        # joués au moment de la proposition). Un coup de l'adversaire la décline.
+        self.draw_offer: tuple[engine.Color, int] | None = None
+
     # -- helpers -------------------------------------------------------
     @property
+    def result(self):
+        """Fin hors échiquier (abandon, accord…) si elle existe, sinon celle du moteur."""
+        return self.external_result or self.game_state.result()
+
+    @property
     def game_over(self):
-        """Dérivé du moteur (mat, pat ou nulle) : aucun drapeau à resynchroniser."""
-        return self.game_state.result().is_over
+        """Dérivé du résultat : aucun drapeau à resynchroniser."""
+        return self.result.is_over
 
     @property
     def flip_board(self):
@@ -739,6 +807,8 @@ class GameController:
 
     def _new_game(self, game_state):
         self.game_state = game_state
+        self.external_result = None
+        self.draw_offer = None
         self.valid_moves = self.game_state.get_valid_moves()
         self._reset_selection()
         self.move_made = False
@@ -853,6 +923,8 @@ class GameController:
             # la main au joueur. En PvP/CvC, un seul undo.
             if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
                 self.game_state.undo_move()
+            self.external_result = None  # annuler rouvre une partie abandonnée ou nulle
+            self.draw_offer = None
             self.move_made = True
             self.animate = False
             self._stop_ai()
@@ -861,21 +933,78 @@ class GameController:
             logger.info("Partie réinitialisée")
         elif e.key == p.K_s:  # Sauvegarder
             serialization.save_game(
-                self.game_state, flip_board=self.flip_board, filename=str(paths.save_file())
+                self.game_state,
+                flip_board=self.flip_board,
+                filename=str(paths.save_file()),
+                mode=self.mode,
+                human_white=self.player_one,
+                human_black=self.player_two,
+                level=self.ai_level,
+                result=self.external_result,
             )
         elif e.key == p.K_l:  # Charger
             try:
-                loaded, flip = serialization.load_game(str(paths.existing_save_file()))
-                self.renderer.flip_board = flip
-                self._new_game(loaded)
-            except Exception as ex:
+                saved = serialization.load_save(str(paths.existing_save_file()))
+            except Exception as ex:  # noqa: BLE001 - fichier absent, illisible ou illégal
                 logger.error("Erreur lors du chargement : %s", ex)
+                return
+            self.renderer.flip_board = saved.flip_board
+            if saved.mode is not None:
+                self.mode = saved.mode
+                self.player_one = bool(saved.human_white)
+                self.player_two = bool(saved.human_black)
+            if saved.level in levels.LEVELS_BY_NAME:
+                self.ai_level = saved.level
+            self._new_game(saved.game_state)
+            self.external_result = saved.result
+        elif e.key == p.K_a:  # Abandonner
+            self._resign()
+        elif e.key == p.K_n:  # Proposer / accepter la nulle
+            self._offer_draw()
         elif e.key == p.K_c:  # Couleurs
             with self.ui.timer_paused():
                 customization_menu(self.screen, self.ui)
         elif e.key == p.K_h:  # Raccourcis
             with self.ui.timer_paused():
                 show_shortcuts_menu(self.screen)
+
+    def _human_color(self):
+        """Camp de l'humain qui agit : celui au trait en PvP, l'unique humain en PvC."""
+        if self.mode == "PvC":
+            return engine.Color.WHITE if self.player_one else engine.Color.BLACK
+        if self.mode == "PvP":
+            return engine.Color.WHITE if self.game_state.white_to_move else engine.Color.BLACK
+        return None  # IA contre IA : personne n'abandonne
+
+    def _resign(self):
+        color = self._human_color()
+        if color is None or self.game_over:
+            return
+        winner = engine.Color.BLACK if color is engine.Color.WHITE else engine.Color.WHITE
+        self.external_result = engine.GameResult(engine.Termination.RESIGNATION, winner)
+        self._stop_ai()
+        logger.info("Abandon : %s", self.external_result.description)
+
+    def _offer_draw(self):
+        color = self._human_color()
+        if color is None or self.game_over:
+            return
+        plies = len(self.game_state.move_log)
+        if self.mode == "PvC":
+            ai_is_white = not self.player_one
+            accepted = ai_accepts_draw(self.game_state, ai_is_white)
+            logger.info("Nulle proposée à l'IA : %s", "acceptée" if accepted else "refusée")
+            if accepted:
+                self.external_result = engine.GameResult(engine.Termination.DRAW_AGREEMENT)
+                self._stop_ai()
+            return
+        # PvP : l'adversaire accepte en appuyant à son tour sur N, avant de jouer.
+        offer = self.draw_offer
+        if offer is not None and offer[0] is not color and offer[1] == plies - 1:
+            self.external_result = engine.GameResult(engine.Termination.DRAW_AGREEMENT)
+            self.draw_offer = None
+        else:
+            self.draw_offer = (color, plies)
 
     # -- IA ----------------------------------------------------------
     def update_ai(self):
@@ -939,9 +1068,23 @@ class GameController:
             self.ui.draw_loading_indicator(self.screen)
         if self.promotion_popup:
             self.promotion_popup.draw(self.screen)
-        result = self.game_state.result()
+        self._draw_status()
+        result = self.result
         if result.is_over:
             self.renderer.draw_end_game_text(result.description)
+
+    def _draw_status(self):
+        """Panneau de gauche, sous la pendule : niveau de l'IA, nulle proposée."""
+        font = self.move_log_font
+        lines = []
+        if self.mode in ("PvC", "CvC"):
+            lines.append(f"IA : {self.ai_level}")
+        if self.draw_offer is not None and not self.game_over:
+            camp = "Blancs" if self.draw_offer[0] is engine.Color.WHITE else "Noirs"
+            lines.append(f"Nulle proposée par les {camp}")
+            lines.append("(N pour accepter)")
+        for i, text in enumerate(lines):
+            self.screen.blit(font.render(text, True, p.Color("white")), (20, 125 + 20 * i))
 
     # -- boucle principale --------------------------------------
     def update(self):
@@ -996,9 +1139,12 @@ def main():
     # En PvC, si le joueur humain a les noirs, on retourne le plateau.
     flip_board = mode == "PvC" and not player_one
 
+    level = level_menu(screen) if mode in ("PvC", "CvC") else levels.DEFAULT_LEVEL.name
+
     controller = GameController(
         screen, clock, ui_manager, resource_manager, mode, player_one, player_two, flip_board
     )
+    controller.ai_level = level
     controller.run()
 
 
