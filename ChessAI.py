@@ -19,7 +19,7 @@ def findBestMove(
     Cherche le meilleur coup en itérant en profondeur.
     """
     best_move: ChessEngine.Move | None = None
-    transposition_table: dict[int, dict[str, Any]] = {}
+    transposition_table: dict[str, dict[str, Any]] = {}
     for current_depth in range(1, DEPTH + 1):
         best_score, best_move = negamax(
             game_state,
@@ -40,7 +40,7 @@ def negamax(
     alpha: int,
     beta: int,
     turn_multiplier: int,
-    transposition_table: dict[int, dict[str, Any]],
+    transposition_table: dict[str, dict[str, Any]],
 ) -> tuple[int, ChessEngine.Move | None]:
     """
     Fonction récursive NegaMax avec élagage alpha‑beta.
@@ -115,7 +115,7 @@ def scoreBoard(game_state: ChessEngine.GameState) -> int:
             piece = game_state.board[r][c]
             if piece != "--":
                 piece_value = ChessEngine.piece_score.get(piece[1], 0)
-                position_score = 0
+                position_score: float = 0
                 if piece[1] != "K":
                     position_score = ChessEngine.piece_position_scores.get(
                         piece, [[0] * ChessEngine.DIMENSION] * ChessEngine.DIMENSION
@@ -129,7 +129,7 @@ def scoreBoard(game_state: ChessEngine.GameState) -> int:
                     total_score -= piece_value + position_score
 
     # Sécurité du roi : pénalité si des pièces ennemies sont adjacentes
-    king_safety_penalty = 0
+    king_safety_penalty: float = 0
     adjacent_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
     if game_state.white_to_move:
         king_row, king_col = game_state.white_king_location

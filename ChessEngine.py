@@ -150,8 +150,9 @@ class GameState:
         self.in_check: bool = False
         self.pins: list[tuple[int, int, int, int]] = []
         self.checks: list[tuple[int, int, int, int]] = []
-        self.enpassant_possible: tuple[int, int] = ()  # type: ignore
-        self.enpassant_possible_log: list[tuple[int, int]] = [self.enpassant_possible]  # type: ignore
+        # Case d'en passant, ou None si aucune prise en passant n'est possible.
+        self.enpassant_possible: tuple[int, int] | None = None
+        self.enpassant_possible_log: list[tuple[int, int] | None] = [self.enpassant_possible]
         self.current_castling_rights: CastleRights = CastleRights(True, True, True, True)
         self.castle_rights_log: list[CastleRights] = [
             CastleRights(
@@ -187,7 +188,9 @@ class GameState:
         board_tuple = tuple(tuple(row) for row in self.board)
         cr = self.current_castling_rights
         castle = (cr.wks, cr.wqs, cr.bks, cr.bqs)
-        return str(hash((board_tuple, self.white_to_move, castle, self.enpassant_possible)))
+        # `or ()` : la clé reste identique à l'ancienne représentation (absence == ()).
+        ep = self.enpassant_possible or ()
+        return str(hash((board_tuple, self.white_to_move, castle, ep)))
 
     def insufficient_material(self) -> bool:
         """
@@ -262,7 +265,7 @@ class GameState:
         if move.piece_moved[1] == "p" and abs(move.start_row - move.end_row) == 2:
             self.enpassant_possible = ((move.start_row + move.end_row) // 2, move.start_col)
         else:
-            self.enpassant_possible = ()
+            self.enpassant_possible = None
         # Roque
         if move.is_castle_move:
             if move.end_col - move.start_col == 2:  # Roque court
@@ -726,7 +729,7 @@ class GameState:
         ):
             self.getQueensideCastleMoves(row, col, moves)
 
-    def getKingsideCastleMoves(self, row, col, moves):
+    def getKingsideCastleMoves(self, row: int, col: int, moves: list["Move"]) -> None:
         if col + 2 >= DIMENSION:
             return
         if self.board[row][col + 1] == "--" and self.board[row][col + 2] == "--":
@@ -735,7 +738,7 @@ class GameState:
             ):
                 moves.append(Move((row, col), (row, col + 2), self.board, is_castle_move=True))
 
-    def getQueensideCastleMoves(self, row, col, moves):
+    def getQueensideCastleMoves(self, row: int, col: int, moves: list["Move"]) -> None:
         if col - 3 < 0:
             return
         if (
@@ -770,14 +773,14 @@ class GameState:
             kingRow, kingCol = self.black_king_location
         directions = [(-1, 0), (0, -1), (1, 0), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
         for j, d in enumerate(directions):
-            possiblePin: tuple[int, int, int, int] = ()
+            possiblePin: tuple[int, int, int, int] | None = None
             for i in range(1, DIMENSION):
                 endRow = kingRow + d[0] * i
                 endCol = kingCol + d[1] * i
                 if is_valid_index(endRow) and is_valid_index(endCol):
                     endPiece = self.board[endRow][endCol]
                     if endPiece[0] == allyColor and endPiece[1] != "K":
-                        if possiblePin == ():
+                        if possiblePin is None:
                             possiblePin = (endRow, endCol, d[0], d[1])
                         else:
                             break
@@ -797,7 +800,7 @@ class GameState:
                             or (typ == "Q")
                             or (i == 1 and typ == "K")
                         ):
-                            if possiblePin == ():
+                            if possiblePin is None:
                                 inCheck = True
                                 checks.append((endRow, endCol, d[0], d[1]))
                                 break
@@ -857,7 +860,7 @@ class Move:
             )
         else:
             self.promotion_piece = None
-        promo_code: int = {"Q": 1, "R": 2, "B": 3, "N": 4}.get(self.promotion_piece, 0)
+        promo_code: int = {"Q": 1, "R": 2, "B": 3, "N": 4}.get(self.promotion_piece or "", 0)
         self.moveID: int = (
             promo_code * 10000
             + self.start_row * 1000

@@ -45,11 +45,11 @@ def load_fen(fen: str) -> ChessEngine.GameState:
     ]
 
     if enpassant != "-":
-        col = ord(enpassant[0]) - ord("a")
-        row = ChessEngine.DIMENSION - int(enpassant[1])
-        gs.enpassant_possible = (row, col)  # type: ignore[assignment]
+        ep_col = ord(enpassant[0]) - ord("a")
+        ep_row = ChessEngine.DIMENSION - int(enpassant[1])
+        gs.enpassant_possible = (ep_row, ep_col)
     else:
-        gs.enpassant_possible = ()  # type: ignore[assignment]
+        gs.enpassant_possible = None
     gs.enpassant_possible_log = [gs.enpassant_possible]
 
     for r in range(ChessEngine.DIMENSION):

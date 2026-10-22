@@ -42,6 +42,10 @@ def _configure_logging() -> None:
 # --------------------------------------------------
 class ResourceManager:
     _instance = None
+    # Attributs posés dynamiquement dans __new__ (singleton) : déclarés ici pour mypy.
+    sq_size: int
+    image_path: str
+    cache: dict[str, p.Surface]
 
     def __new__(cls, sq_size, image_path="images"):
         if cls._instance is None:
@@ -79,8 +83,8 @@ class UIManager:
         self.board_color1 = p.Color("white")
         self.board_color2 = p.Color("gray")
         # Temps de jeu
-        self.white_time = 0
-        self.black_time = 0
+        self.white_time: float = 0
+        self.black_time: float = 0
         self.last_time = p.time.get_ticks()
         self.is_running = True
 
@@ -646,8 +650,8 @@ class GameController:
         self.valid_moves = self.game_state.getValidMoves()
         self.ui.reset_timer()
 
-        self.square_selected = ()
-        self.player_clicks = []
+        self.square_selected: tuple[int, int] | tuple[()] = ()
+        self.player_clicks: list[tuple[int, int]] = []
         self.move_made = False
         self.animate = False
         self.move_undone = False
@@ -657,8 +661,8 @@ class GameController:
         self.move_finder_process = None
         self.return_queue = None
 
-        self.promotion_popup = None
-        self.promotion_pending_move = None
+        self.promotion_popup: PromotionPopup | None = None
+        self.promotion_pending_move: ChessEngine.Move | None = None
 
     # -- helpers -------------------------------------------------------
     @property
@@ -709,11 +713,19 @@ class GameController:
     def _handle_promotion_event(self, e):
         if e.type != p.MOUSEBUTTONDOWN:
             return
+        assert self.promotion_popup is not None
         for btn in self.promotion_popup.buttons:
             if btn.rect.collidepoint(e.pos):
-                chosen = btn.text
+                chosen: str = btn.text
+                assert self.promotion_pending_move is not None
+
+                # Fonction nommée plutôt qu'une lambda à argument par défaut, dont
+                # mypy ne sait pas inférer le type ; même sémantique (valeur figée).
+                def _promotion_choice(chosen: str = chosen) -> str:
+                    return chosen
+
                 self.game_state.makeMove(
-                    self.promotion_pending_move, promotion_callback=lambda chosen=chosen: chosen
+                    self.promotion_pending_move, promotion_callback=_promotion_choice
                 )
                 _play_move_sound(self.promotion_pending_move)
                 self.move_made = True
@@ -816,6 +828,7 @@ class GameController:
             )
             self.move_finder_process.start()
         if self.move_finder_process and not self.move_finder_process.is_alive():
+            assert self.return_queue is not None
             ai_move = self.return_queue.get()
             if ai_move is None:
                 ai_move = ChessAI.findRandomMove(valid_moves)

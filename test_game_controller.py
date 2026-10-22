@@ -45,7 +45,7 @@ class _InlineProcess:
 
 class _SyncQueue:
     def __init__(self):
-        self._q = queue.Queue()
+        self._q: queue.Queue[object] = queue.Queue()
 
     def put(self, x):
         self._q.put(x)
@@ -67,12 +67,14 @@ class AITurnAfterHumanMove(unittest.TestCase):
         )
         self._orig_process = ChessMain.Process
         self._orig_queue = ChessMain.Queue
-        ChessMain.Process = _InlineProcess
-        ChessMain.Queue = _SyncQueue
+        # Monkeypatch volontaire de doublures (duck typing) : mypy refuse de
+        # réaffecter une classe importée, d'où ces ignores ciblés.
+        ChessMain.Process = _InlineProcess  # type: ignore[misc, assignment]
+        ChessMain.Queue = _SyncQueue  # type: ignore[misc, assignment]
 
     def tearDown(self):
-        ChessMain.Process = self._orig_process
-        ChessMain.Queue = self._orig_queue
+        ChessMain.Process = self._orig_process  # type: ignore[misc]  # restauration du monkeypatch
+        ChessMain.Queue = self._orig_queue  # type: ignore[misc]  # restauration du monkeypatch
 
     def _click_square(self, row, col):
         disp = self.gc.renderer.display_row(row)

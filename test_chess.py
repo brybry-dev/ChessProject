@@ -81,7 +81,7 @@ class TestAI(unittest.TestCase):
     def test_ai_performance(self):
         # Teste que l'IA renvoie un coup en moins de 5 secondes
         valid_moves = self.game.getValidMoves()
-        q = Queue()
+        q: Queue[ChessEngine.Move | None] = Queue()
         start_time = time.time()
         p_process = Process(target=ChessAI.findBestMove, args=(self.game, valid_moves, q))
         p_process.start()
