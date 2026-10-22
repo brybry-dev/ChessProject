@@ -392,7 +392,12 @@ class Renderer:
                     self.screen.blit(s, self.square_rect(move.end_row, move.end_col))
 
     def draw_end_game_text(self, text):
-        font = p.font.SysFont("Helvetica", 32, True, False)
+        # Taille réduite au besoin pour que le texte tienne dans le plateau (marge 16 px).
+        size = 32
+        font = p.font.SysFont("Helvetica", size, True, False)
+        while font.size(text)[0] > BOARD_WIDTH - 32 and size > 12:
+            size -= 2
+            font = p.font.SysFont("Helvetica", size, True, False)
         text_object = font.render(text, True, p.Color("gray"))
         text_location = p.Rect(0, 0, BOARD_WIDTH, BOARD_HEIGHT).move(
             LEFT_PANEL_WIDTH + BOARD_WIDTH / 2 - text_object.get_width() / 2,
@@ -688,7 +693,6 @@ class GameController:
         self.player_clicks: list[tuple[int, int]] = []
         self.move_made = False
         self.animate = False
-        self.game_over = False
 
         self.ai_thinking = False
         self.ai_started_at = 0.0
@@ -700,6 +704,11 @@ class GameController:
         self.promotion_moves: list[ChessEngine.Move] = []
 
     # -- helpers -------------------------------------------------------
+    @property
+    def game_over(self):
+        """Dérivé du moteur (mat, pat ou nulle) : aucun drapeau à resynchroniser."""
+        return self.game_state.result().is_over
+
     @property
     def flip_board(self):
         return self.renderer.flip_board
@@ -724,7 +733,6 @@ class GameController:
         self._reset_selection()
         self.move_made = False
         self.animate = False
-        self.game_over = False
         self.ui.reset_timer()
         self._stop_ai()
 
@@ -837,7 +845,6 @@ class GameController:
                 self.game_state.undoMove()
             self.move_made = True
             self.animate = False
-            self.game_over = False
             self._stop_ai()
         elif e.key == p.K_r:  # Réinitialiser
             self._new_game(ChessEngine.GameState())
@@ -922,17 +929,9 @@ class GameController:
             self.ui.draw_loading_indicator(self.screen)
         if self.promotion_popup:
             self.promotion_popup.draw(self.screen)
-        if self.game_state.checkmate:
-            self.game_over = True
-            end_text = (
-                "Noir gagne par échec et mat"
-                if self.game_state.white_to_move
-                else "Blanc gagne par échec et mat"
-            )
-            self.renderer.draw_end_game_text(end_text)
-        elif self.game_state.stalemate:
-            self.game_over = True
-            self.renderer.draw_end_game_text("Impasse")
+        result = self.game_state.result()
+        if result.is_over:
+            self.renderer.draw_end_game_text(result.description)
 
     # -- boucle principale --------------------------------------
     def update(self):

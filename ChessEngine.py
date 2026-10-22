@@ -5,6 +5,7 @@ Gestion du plateau, des coups, de l’évaluation et du cache des mouvements.
 """
 
 import copy
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -19,6 +20,66 @@ STALEMATE: int = 0
 class Color(Enum):
     WHITE = "w"
     BLACK = "b"
+
+
+class Termination(Enum):
+    """Motif de fin de partie.
+
+    Choix de règles (documentés, cf. rapport B34) : la triple répétition et la règle des
+    50 coups mettent fin à la partie automatiquement, sans réclamation (FIDE : nulles à
+    réclamer ; automatiques à 5 répétitions et 75 coups). Le mat prime toujours sur ces
+    nulles (FIDE 9.3).
+    """
+
+    CHECKMATE = "checkmate"
+    STALEMATE = "stalemate"
+    FIFTY_MOVES = "fifty_moves"
+    THREEFOLD_REPETITION = "threefold_repetition"
+    INSUFFICIENT_MATERIAL = "insufficient_material"
+
+
+_DRAW_DESCRIPTIONS: dict[Termination, str] = {
+    Termination.STALEMATE: "Nulle par pat",
+    Termination.FIFTY_MOVES: "Nulle par la règle des 50 coups",
+    Termination.THREEFOLD_REPETITION: "Nulle par triple répétition",
+    Termination.INSUFFICIENT_MATERIAL: "Nulle par matériel insuffisant",
+}
+
+
+@dataclass(frozen=True)
+class GameResult:
+    """Résultat d'une partie : ``termination`` est None tant que la partie continue."""
+
+    termination: Termination | None = None
+    winner: Color | None = None
+
+    @staticmethod
+    def ongoing() -> "GameResult":
+        return GameResult()
+
+    @property
+    def is_over(self) -> bool:
+        return self.termination is not None
+
+    @property
+    def pgn(self) -> str:
+        """Résultat au format PGN : ``1-0``, ``0-1``, ``1/2-1/2`` ou ``*``."""
+        if not self.is_over:
+            return "*"
+        if self.winner is Color.WHITE:
+            return "1-0"
+        if self.winner is Color.BLACK:
+            return "0-1"
+        return "1/2-1/2"
+
+    @property
+    def description(self) -> str:
+        if self.termination is None:
+            return "Partie en cours"
+        if self.termination is Termination.CHECKMATE:
+            camp = "Blancs" if self.winner is Color.WHITE else "Noirs"
+            return f"Les {camp} gagnent par échec et mat"
+        return _DRAW_DESCRIPTIONS[self.termination]
 
 
 # Évaluations de base
@@ -139,6 +200,8 @@ class GameState:
         self.black_king_location: tuple[int, int] = (0, 4)
         self.checkmate: bool = False
         self.stalemate: bool = False
+        # Motif de fin de la position courante, positionné par getValidMoves().
+        self.termination: Termination | None = None
         self.in_check: bool = False
         self.pins: list[tuple[int, int, int, int]] = []
         self.checks: list[tuple[int, int, int, int]] = []
@@ -321,6 +384,7 @@ class GameState:
                 self.board[move.end_row][move.end_col + 1] = "--"
         self.checkmate = False
         self.stalemate = False
+        self.termination = None
         self._valid_moves = None
         # Restaure les compteurs
         self.fifty_move_counter = self.fifty_move_counter_log.pop()
@@ -408,22 +472,35 @@ class GameState:
                 self.getCastleMoves(self.white_king_location[0], self.white_king_location[1], moves)
             else:
                 self.getCastleMoves(self.black_king_location[0], self.black_king_location[1], moves)
-        # Nulles automatiques : 50 coups, matériel insuffisant, triple répétition
-        current_hash: str = self.get_board_hash_str()
-        repetition = self.position_history.get(current_hash, 0)
-        if self.fifty_move_counter >= 100 or self.insufficient_material() or repetition >= 3:
+        # Fin de partie. Le mat est examiné en premier : il prime sur les nulles
+        # automatiques (FIDE 9.3), y compris s'il est donné au 100e demi-coup.
+        # ``stalemate`` reste vrai pour toute nulle (compatibilité IA / sauvegarde).
+        self.termination = self._termination(moves)
+        if self.termination not in (None, Termination.CHECKMATE):
             moves = []
-            self.stalemate = True
-            self.checkmate = False
-        elif not moves:
-            # Aucun coup légal : échec et mat si le roi est en échec, pat sinon
-            self.checkmate = self.in_check
-            self.stalemate = not self.in_check
-        else:
-            self.checkmate = False
-            self.stalemate = False
+        self.checkmate = self.termination is Termination.CHECKMATE
+        self.stalemate = self.termination not in (None, Termination.CHECKMATE)
         self._valid_moves = moves
         return moves
+
+    def _termination(self, moves: list["Move"]) -> Termination | None:
+        if not moves:
+            return Termination.CHECKMATE if self.in_check else Termination.STALEMATE
+        if self.fifty_move_counter >= 100:
+            return Termination.FIFTY_MOVES
+        if self.insufficient_material():
+            return Termination.INSUFFICIENT_MATERIAL
+        if self.position_history.get(self.get_board_hash_str(), 0) >= 3:
+            return Termination.THREEFOLD_REPETITION
+        return None
+
+    def result(self) -> GameResult:
+        """Résultat de la position courante (calcule les coups légaux au besoin)."""
+        self.getValidMoves()
+        if self.termination is Termination.CHECKMATE:
+            winner = Color.BLACK if self.white_to_move else Color.WHITE
+            return GameResult(Termination.CHECKMATE, winner)
+        return GameResult(self.termination)
 
     def inCheck(self) -> bool:
         """Retourne True si le roi du joueur courant est en échec."""

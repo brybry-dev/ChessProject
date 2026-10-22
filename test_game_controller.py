@@ -377,5 +377,51 @@ class ClockIgnoresMenusAndAnimation(unittest.TestCase):
         self.assertAlmostEqual(self.ui.black_time, 0.0)
 
 
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class EndOfGameDisplay(unittest.TestCase):
+    """J2.2 / B34 : le motif de fin est affiché et la partie est verrouillée."""
+
+    def _controller(self, fen):
+        gc = ChessMain.GameController(
+            p.display.get_surface(),
+            p.time.Clock(),
+            ChessMain.UIManager(512, 512, 250, 512),
+            ChessMain.ResourceManager(64),
+            "PvP",
+            True,
+            True,
+            False,
+        )
+        gc._new_game(load_fen(fen))
+        return gc
+
+    def _end_text(self, gc):
+        with mock.patch.object(gc.renderer, "draw_end_game_text") as draw_text:
+            gc.draw()
+        return draw_text.call_args.args[0] if draw_text.called else None
+
+    def test_draw_reason_is_displayed(self):
+        gc = self._controller("8/8/4k3/8/8/3NK3/8/8 w - - 0 1")
+        self.assertTrue(gc.game_over)
+        self.assertEqual(self._end_text(gc), "Nulle par matériel insuffisant")
+
+    def test_checkmate_winner_is_displayed(self):
+        gc = self._controller("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1")
+        self.assertEqual(self._end_text(gc), "Les Blancs gagnent par échec et mat")
+
+    def test_ongoing_game_shows_no_end_text(self):
+        gc = self._controller("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+        self.assertFalse(gc.game_over)
+        self.assertIsNone(self._end_text(gc))
+
+    def test_undo_after_mate_reopens_the_game(self):
+        gc = self._controller("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+        gs = gc.game_state
+        gs.makeMove(next(m for m in gs.getValidMoves() if (m.end_row, m.end_col) == (0, 0)))
+        self.assertTrue(gc.game_over)
+        gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_z}))
+        self.assertFalse(gc.game_over)
+
+
 if __name__ == "__main__":
     unittest.main()
