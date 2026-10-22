@@ -787,6 +787,32 @@ deux fois.
 
 #### J6 — Packaging et vitrine
 
+> ✅ **Préparé le 2026-10-22** ; la publication de `v1.0.0` attend la fusion de la PR.
+> - J6.1 : `chessproject --version` et `chessproject --smoke-test`. Vérifié depuis une
+>   installation propre (non éditable) dans un environnement virtuel, équivalent de
+>   `pipx install .` ; `pipx` lui-même n'était pas disponible pour le test.
+> - J6.2 : `tools/build_exe.py` (PyInstaller 6.21, mode « onedir », paquet `.app` sous
+>   macOS, icône générée par `tools/make_icon.py`). Le test de démarrage joue une partie
+>   contre l'IA **dans son processus séparé**, ce qui vérifie `freeze_support()` et les
+>   ressources embarquées. Workflow `release.yml` : construction et test sur Windows,
+>   macOS et Linux (ubuntu-22.04, glibc 2.35) à chaque tag, puis release GitHub. La CI
+>   construit et teste aussi l'exécutable Linux à chaque push. Vérifié en local sous
+>   Linux (26 Mo compressé) ; Windows et macOS ne seront vérifiés qu'au premier passage
+>   du workflow. Deux sons inutilisés (2,5 Mo) ont été retirés.
+> - J6.3 : README réorganisé (GIF de démonstration de 600 Ko généré par
+>   `tools/make_demo_gif.py`, téléchargements, schéma des couches, choix techniques).
+>   Pas de badge de couverture : la couverture n'est pas mesurée en CI.
+> - J6.4 : `CHANGELOG.md`, version 1.0.0 cohérente entre `pyproject.toml`, le paquet et le
+>   changelog (testé), notes de release extraites du changelog (`tools/release_notes.py`).
+> - J6.5 : déjà fait en J3.0 (`chessproject-uci`). L'Elo des niveaux contre Stockfish
+>   bridé n'a pas été mesuré.
+> - Correctif trouvé en préparant le GIF : la carte de fin de partie débordait quand le
+>   motif tenait sur deux lignes ; sa hauteur suit maintenant le texte.
+> - CI : les jobs macOS de la PR restent en attente sans runner attribué (`runner_id` 0)
+>   et sont annulés à 15 min. Ce n'est pas un échec de test ; à vérifier côté compte
+>   (quota de minutes ou disponibilité des runners macOS). Le workflow de release en
+>   dépend aussi.
+
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|
 | J6.1 | Point d'entrée `python -m chessproject` et script console `chessproject` ; installation par `pipx` | `pipx install .` puis `chessproject` fonctionne | S |
@@ -808,9 +834,10 @@ deux fois.
 
 ### 4.7 Prochaine action proposée
 
-Commencer par **J0.1 → J0.5** (environ 1,5 jour), puis **J1.1 (B26)**, le bug le plus grave
-pour l'utilisateur. Chaque tâche sera livrée en commit séparé sur la branche de travail,
-avec son test.
+J0 à J6 sont réalisés. Reste à publier `v1.0.0` : fusionner la PR, puis pousser le tag
+`v1.0.0` sur `master` pour déclencher `release.yml`. Pistes ensuite : régler l'écart
+entre les niveaux (§J3.7), mesurer l'Elo des niveaux contre un moteur de référence,
+afficher la variante principale de l'IA dans un mode analyse.
 
 ---
 

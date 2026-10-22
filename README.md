@@ -1,9 +1,32 @@
 # ChessProject
 
 ![CI](https://github.com/brybry-dev/ChessProject/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776ab)
+![Licence](https://img.shields.io/badge/licence-MIT-e3a953)
 
-Jeu d'échecs en Python / Pygame avec une IA NegaMax. Projet personnel servant de vitrine
-technique : l'accent est mis sur la justesse des règles, les tests et la qualité du code.
+Jeu d'échecs complet en Python / Pygame, avec une IA à cinq niveaux. Projet personnel
+servant de vitrine technique : règles vérifiées contre une référence, moteur mesuré en
+Elo, interface soignée, plus de 500 tests.
+
+![Partie de l'Opéra (Morphy, 1858) rejouée dans l'interface](docs/images/demo.gif)
+
+## Télécharger
+
+Les exécutables de la [dernière version](https://github.com/brybry-dev/ChessProject/releases/latest)
+se lancent sans installer Python :
+
+| Système | Archive | Lancement |
+|---|---|---|
+| Windows 10/11 (x64) | `ChessProject-<version>-windows-x64.zip` | Décompresser, lancer `ChessProject.exe`. L'exécutable n'est pas signé : SmartScreen demande de confirmer (« Informations complémentaires », puis « Exécuter quand même »). |
+| macOS (Apple Silicon) | `ChessProject-<version>-macos-arm64.zip` | Décompresser, puis clic droit sur `ChessProject.app` > « Ouvrir » la première fois (application non notariée). |
+| Linux (x64, glibc 2.35 ou plus) | `ChessProject-<version>-linux-x64.zip` | Décompresser, lancer `ChessProject/ChessProject`. |
+
+Ou depuis les sources, avec Python 3.12 ou plus récent :
+
+```bash
+pipx install git+https://github.com/brybry-dev/ChessProject.git
+chessproject
+```
 
 ## Fonctionnalités
 
@@ -31,35 +54,11 @@ technique : l'accent est mis sur la justesse des règles, les tests et la qualit
   matériel pris, barre d'évaluation (désactivable), pendule du camp au trait mise en
   avant, carte de fin de partie. Les préférences sont mémorisées.
 
-L'état du projet, les bugs suivis et la feuille de route sont dans
-[RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
+| Écran « Nouvelle partie » | Thème clair |
+|---|---|
+| ![Écran « Nouvelle partie »](docs/images/nouvelle-partie.png) | ![Partie en cours, thème clair](docs/images/partie-clair.png) |
 
-## Prérequis
-
-- Python **3.12** ou plus récent.
-- Dépendances (installées automatiquement) : `pygame` 2.6.1, `platformdirs`.
-
-## Installation
-
-```bash
-# Avec les outils de développement (tests, lint, typage)
-python -m pip install -e ".[dev]"
-
-# Ou pour jouer uniquement
-python -m pip install -e .
-```
-
-## Lancement
-
-```bash
-chessproject            # commande installée par pip
-python -m chessproject  # équivalent
-```
-
-Le jeu peut être lancé depuis n'importe quel dossier. La sauvegarde (`saved_game.json`),
-les préférences (`settings.json`) et le journal (`chess.log`, tournant) sont écrits dans le dossier de données de
-l'utilisateur (par exemple `~/.local/share/ChessProject` sous Linux), modifiable avec la
-variable d'environnement `CHESSPROJECT_DATA_DIR`.
+## Jouer
 
 ### Souris
 
@@ -88,24 +87,81 @@ variable d'environnement `CHESSPROJECT_DATA_DIR`.
 
 Pendant une promotion : `D`, `T`, `F`, `C` (ou `Q`, `R`, `B`, `N`) choisissent la pièce.
 
-## Qualité
+## Choix techniques
 
-```bash
-python -m pytest -q            # suite rapide (les tests « slow » sont exclus par défaut)
-python -m pytest -q -m slow    # perft profond (plusieurs minutes)
-ruff check .                   # lint
-ruff format --check .          # formatage
-python -m mypy .               # typage (strict sur le moteur, souple sur l'UI)
+```mermaid
+flowchart LR
+    ui["ui<br/>scènes, rendu, interactions"] --> ai["ai<br/>recherche, évaluation, niveaux"]
+    ui --> core
+    ai --> core["core<br/>règles, FEN, SAN/UCI, PGN, pendule"]
+    uci["uci<br/>protocole moteur"] --> ai
+    tools["tools<br/>mini-ligue, suite tactique, livraison"] --> uci
 ```
 
-Le générateur de coups est validé par un **perft** sur 6 positions de référence (position
-initiale, Kiwipete et positions 3 à 6 du Chess Programming Wiki) : le nombre de nœuds de
-l'arbre des coups légaux est comparé aux valeurs publiées. Le détail des tests est dans
-[TESTS.md](TESTS.md).
+Les dépendances vont toujours vers `core`, qui ne connaît ni pygame ni l'IA : les règles
+se testent sans écran, et le même moteur sert le jeu, le protocole UCI et les outils.
+
+- **Règles prouvées, pas seulement testées.** Le générateur de coups est validé par
+  **perft** (nombre exact de positions à profondeur *n*) sur 6 positions de référence, et
+  par des **tests différentiels** : 1 000 parties aléatoires comparées coup par coup à
+  python-chess. C'est ainsi qu'a été trouvé un pion cloué qui pouvait avancer vers son
+  roi (B46).
+- **IA mesurée en Elo.** Chaque amélioration passe par une mini-ligue (`tools/match.py`)
+  avec intervalle de confiance : +545 Elo pour la recherche (table de transposition
+  Zobrist, approfondissement itératif, quiescence), +112 Elo à temps égal pour
+  l'évaluation par phase de jeu. Les cinq niveaux sont strictement ordonnés.
+- **Temps maîtrisé.** L'IA tourne dans un processus séparé (l'interface reste fluide).
+  Son budget de réflexion suit sa pendule, moins un surcoût **mesuré** en jeu (lancement
+  du processus, échéance) : aucune perte au temps en 1+0.
+- **Interface sans boucle bloquante.** Une seule boucle et des scènes ; l'animation est
+  calculée à chaque image ; une fenêtre modale suspend la pendule et l'IA. La mise en
+  page est une fonction pure de la taille de fenêtre, testée sans affichage.
+- **Données robustes.** Sauvegarde versionnée à écriture atomique, préférences lues champ
+  par champ, PGN importés en règles FIDE strictes pour accepter les vraies parties.
+- **Livraison automatisée.** À chaque tag, la CI construit les exécutables des trois
+  systèmes et les lance en mode test de démarrage (une partie contre l'IA) avant de les
+  publier.
+
+L'audit, les bugs suivis (B26–B46) et les mesures sont dans
+[RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md) ; l'historique des versions dans
+[CHANGELOG.md](CHANGELOG.md).
+
+## Développement
+
+```bash
+python -m pip install -e ".[dev]"   # jeu + tests, lint, typage
+chessproject                        # ou : python -m chessproject
+chessproject-uci                    # moteur UCI, pour une interface d'échecs
+```
+
+La sauvegarde (`saved_game.json`), les préférences (`settings.json`) et le journal
+(`chess.log`, tournant) sont écrits dans le dossier de données de l'utilisateur (par
+exemple `~/.local/share/ChessProject` sous Linux), modifiable avec la variable
+d'environnement `CHESSPROJECT_DATA_DIR`.
+
+```bash
+python -m pytest -q            # suite rapide (~30 s ; les tests « slow » sont exclus)
+python -m pytest -q -m slow    # perft profond, 1 000 parties différentielles (~4 min)
+ruff check . && ruff format --check .
+python -m mypy .               # strict sur le moteur, l'IA et les données
+```
+
+Le détail des tests est dans [TESTS.md](TESTS.md).
+
+### Construire un exécutable
+
+```bash
+python -m pip install -e ".[build]"
+python tools/build_exe.py --smoke-test   # -> dist/ChessProject-<version>-<système>.zip
+```
+
+### Publier une version
+
+Mettre à jour la version (`pyproject.toml`, `chessproject/__init__.py`) et
+`CHANGELOG.md`, puis pousser un tag `v<version>` : le workflow
+[`release.yml`](.github/workflows/release.yml) construit, teste et publie.
 
 ## Structure du dépôt
-
-Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de pygame).
 
 | Chemin | Rôle |
 |---|---|
@@ -126,31 +182,10 @@ Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de p
 | `chessproject/ui/new_game.py` | Écran « Nouvelle partie » |
 | `chessproject/ui/widgets.py` | Texte, formes, icônes vectorielles, boutons |
 | `chessproject/assets/` | Pièces, polices et effets sonores |
+| `tools/` | Mini-ligue Elo, suite tactique, construction des exécutables, GIF et icône |
 | `tests/` | Tests : perft, différentiels contre python-chess, règles, IA, notation, FEN, UI |
 | `pyproject.toml` | Métadonnées, dépendances, configuration de ruff, mypy et pytest |
 | `RAPPORT_ANALYSE.md` | Audit du projet, suivi des bugs et feuille de route |
-
-## Feuille de route
-
-- **J0 — Outillage** ✅ : `pyproject.toml`, ruff, mypy, CI multi-OS, README.
-- **J1 — Correction** ✅ : plus aucun bug bloquant connu (règles, IA, contrôleur).
-- **J2 — Socle moteur** ✅ : types, modèle de résultat de partie, notation SAN, FEN validée.
-- **J3 — IA** ✅ : adversaire solide, borné en temps, avec niveaux de difficulté.
-- **J4 — Fonctionnalités** ✅ : import/export PGN, cadence (temps + incrément), sauvegarde v2.
-- **J5 — Interface** ✅ : scènes, thèmes, mise en page adaptative, glisser-déposer,
-  historique navigable.
-- **J6 — Packaging et vitrine** : exécutables, README illustré, version publiée.
-
-Le détail des tâches et des critères d'acceptation est dans
-[RAPPORT_ANALYSE.md, §4](RAPPORT_ANALYSE.md#4-phase-4--feuille-de-route-2026-10-22).
-
-## Captures d'écran
-
-![Partie en cours, thème sombre](docs/images/partie-sombre.png)
-
-![Écran « Nouvelle partie »](docs/images/nouvelle-partie.png)
-
-![Partie en cours, thème clair](docs/images/partie-clair.png)
 
 ## Licence et crédits
 
