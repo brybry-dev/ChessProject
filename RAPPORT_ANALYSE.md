@@ -13,7 +13,7 @@ priorité à la rigueur, à la maintenabilité, aux tests et à la robustesse.
 | Phase | Contenu | État |
 |---|---|---|
 | 1. Vérification | Tests, outils statiques, contrôle des correctifs B1–B25 | ✅ ce document, §1 |
-| 2. Bilan | Avancement global, points forts | ⏳ |
+| 2. Bilan | Avancement global, points forts | ✅ §2 |
 | 3. Audit | Dette, bugs cachés, typage, cas limites (suite de B26–B40) | ⏳ |
 | 4. Feuille de route | Plan court / moyen terme, tâches incrémentales | ⏳ |
 
@@ -235,8 +235,109 @@ une limite de temps passée à l'IA (niveaux de difficulté et cadence).
 - **Outillage** : sans `pyproject.toml` ni CI, les résultats de ruff et mypy changent avec
   la version installée. À poser en premier (filet de sécurité de la feuille de route).
 
-Prochaine étape, après validation : **Phase 2 — Bilan** (avancement et points forts),
-puis **Phase 3 — Audit** détaillé.
+Prochaine étape : Phase 2 — Bilan (§2).
+
+## 2. Phase 2 — Bilan et état des lieux (2026-10-22)
+
+### 2.1 Avancement global
+
+Historique : 28 commits, du 2024-12-28 au 2026-10-22. Environ 2 000 lignes de code
+applicatif et 470 lignes de tests (36 tests, plus des sous-tests).
+
+Le projet est un **jeu jouable de bout en bout** : menus, trois modes de jeu, IA, sons,
+sauvegarde. Les fondations (règles, tests, sérialisation) ont reçu une vraie remise à
+niveau en septembre 2026. En revanche, **l'IA et le contrôleur n'ont pas encore été
+traités**, et aucune des quatre fonctionnalités attendues n'est commencée.
+
+Maturité par domaine (0 = absent, 5 = niveau vitrine) :
+
+| Domaine | Note | État résumé |
+|---|:---:|---|
+| Règles du jeu | 4 | Conformes au perft. Pénalisées par B26 (mode retourné) et par l'absence de motif de nulle (B34) |
+| Tests | 3 | Bon socle (perft, régressions, sérialisation). Rien sur l'IA, l'UI en mode retourné, ni la promotion via l'UI |
+| IA | 1,5 | NegaMax alpha-bêta en processus séparé. Défauts de correction (B27, B30, B31) avant même la question de la force |
+| Contrôleur / UI | 2,5 | `GameController` + `Renderer` extraits. États implicites par drapeaux (B28), logique dans le rendu, aspect « prototype » |
+| Persistance | 3,5 | JSON versionné, coups rejoués par le moteur. Données de promotion faussées en amont (B29), pas de PGN |
+| Outillage / qualité | 1,5 | Dépendances figées, mais ni `pyproject.toml`, ni configuration ruff/mypy, ni CI, ni README |
+| Documentation | 2,5 | Rapport d'analyse et `TESTS.md` détaillés. **Pas de README** (installation, captures, architecture) : manque majeur pour un portfolio |
+| Packaging | 0 | Script lancé depuis la racine. Ressources en chemins relatifs au dossier courant |
+
+### 2.2 Couverture fonctionnelle
+
+| Fonctionnalité | État |
+|---|---|
+| Coups légaux, roque, en passant, promotions (4 pièces) | ✅ (⚠️ en mode retourné : B26) |
+| Mat, pat, 50 coups, triple répétition, matériel insuffisant | ✅ détection (⚠️ affichage unique « Impasse », règles automatiques non documentées : B34) |
+| Modes Joueur contre Joueur, Joueur contre IA (choix de couleur), IA contre IA | ✅ (⚠️ blocage `R`/`L` : B28) |
+| Annulation (`Z`), réinitialisation (`R`) | ✅ |
+| Sauvegarde / chargement JSON (`S` / `L`) | ✅ (⚠️ B29, B37) |
+| Historique des coups avec défilement | ✅ (notation non SAN : B19, B35) |
+| Thèmes de plateau (3), sons, animation des coups, surbrillances | ✅ |
+| Chronomètre | ⚠️ compte le temps écoulé, sans cadence |
+| Import/export **FEN** | ⚠️ utilitaire de test uniquement (`fen_utils.py`), sans entrée dans l'UI |
+| Import/export **PGN** | ❌ (prérequis : la notation SAN) |
+| **Cadence** (temps + incrément, perte au temps) | ❌ |
+| **Niveaux de difficulté** | ❌ (profondeur fixe `DEPTH = 3`) |
+| **Packaging** (exécutable, ressources embarquées) | ❌ |
+| Abandon, proposition de nulle, plateau redimensionnable | ❌ |
+
+### 2.3 Forces de l'architecture et choix pertinents
+
+Ce qui est bien fait, et qu'il faut **préserver** pendant la suite :
+
+1. **Un perft comme juge de paix.** Six positions de référence (dont Kiwipete), en version
+   rapide et en version profonde (environ 4 M de nœuds). C'est la pratique standard des
+   moteurs d'échecs, et elle a déjà prouvé son utilité : trois bugs (B18, B24, B25)
+   invisibles à la lecture ont été trouvés ainsi. Tout refactor du moteur (Zobrist, entiers)
+   pourra se faire sans crainte.
+2. **Des tests de non-régression nommés d'après les règles** (`test_cannot_castle_through_square_attacked_by_pawn`, etc.) :
+   ils se lisent comme une spécification.
+3. **Une génération légale fondée sur les broches et les échecs**, et non sur « jouer, puis
+   tester l'échec, puis annuler » : algorithme correct et plus rapide, avec un cas limite
+   délicat (l'en passant qui découvre une attaque sur la rangée) traité explicitement.
+4. **Une sérialisation qui rejoue les coups** au lieu de restaurer un objet : le format est
+   lisible, versionné, sûr (plus de pickle) et toujours conforme aux règles courantes. Le
+   rejet des versions inconnues prépare les migrations, ce qui sera utile pour B26.
+5. **L'IA dans un processus séparé** : l'UI reste réactive pendant la réflexion, et
+   `terminate()` permet d'interrompre l'IA (annulation, réinitialisation).
+6. **Un découpage moteur / IA / UI respecté** : `ChessEngine` n'importe ni Pygame ni l'IA. Le
+   moteur est donc testable seul. C'est la base d'une future architecture en couches.
+7. **Des refactors récents dans le bon sens** : `Renderer` (l'orientation devient un
+   attribut), `GameController` (boucle découpée en `handle_event` / `update_ai` / `draw`),
+   plus d'effets de bord à l'import. `test_game_controller.py` montre même un procédé
+   d'injection (faux `Process` / `Queue`), réutilisable pour tester l'UI sans écran.
+8. **Une hygiène du dépôt** correcte : dépendances figées, outils de développement séparés,
+   `.gitignore` qui exclut sauvegardes et journaux, commits en français et descriptifs.
+
+### 2.4 Faiblesses structurelles (détaillées en phase 3)
+
+Ce sont des constats d'ensemble, au-delà des bugs ponctuels :
+
+- **Représentation par chaînes** (`"wp"`, `"--"`, des tuples vides pour « absent ») : peu
+  typée, lente, et source des erreurs mypy.
+- **`GameState` porte trop de responsabilités** : règles, historique, détection des nulles
+  et caches mutables (`pins` vidé pendant la génération, `_valid_moves` trié par l'IA).
+- **Pas de modèle de résultat de partie** (`checkmate` / `stalemate` en booléens) : bloque
+  l'affichage du motif, le PGN (`[Result]`) et la cadence (perte au temps).
+- **Contrôleur piloté par des drapeaux** (`move_made`, `move_undone`, `animate`,
+  `ai_thinking`) au lieu d'un état explicite : origine directe de B28.
+- **Deux tests verrouillent un comportement fautif** :
+  `test_roundtrip_preserves_flip_board` consacre la permutation roi/dame (B26), et
+  `test_roundtrip_preserves_promotion_choice` contourne le chemin UI fautif (B29). Ils
+  devront être réécrits avec la correction.
+
+### 2.5 Synthèse de la phase 2
+
+Le projet a des **fondations de règles de niveau professionnel** (perft, tests,
+sérialisation sûre). C'est l'atout principal de la vitrine. L'écart avec l'objectif se
+situe sur trois fronts :
+**(1)** correction de l'IA et du contrôleur ;
+**(2)** outillage de vitrine (CI, `pyproject.toml`, README) ;
+**(3)** les quatre fonctionnalités attendues, qui reposent toutes sur un socle commun à
+construire : un modèle de résultat, la notation SAN, et une IA bornée en temps.
+
+Prochaine étape, après validation : **Phase 3 — Audit détaillé** (dette par module,
+typage, sécurité, cas limites, cibles de refactorisation).
 
 ---
 
