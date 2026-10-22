@@ -316,5 +316,66 @@ class AIProcessRobustness(unittest.TestCase):
         self.assertTrue(_HangingProcess.instances[-1].terminated)
 
 
+class _FakeClock:
+    """Horloge en millisecondes, avancée à la main."""
+
+    def __init__(self):
+        self.ms = 0
+
+    def __call__(self):
+        return self.ms
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class ClockIgnoresMenusAndAnimation(unittest.TestCase):
+    """B44 : le temps passé dans un menu ou une animation n'est pas décompté."""
+
+    def setUp(self):
+        self.now = _FakeClock()
+        self.ui = ChessMain.UIManager(512, 512, 250, 512, now=self.now)
+        self.gc = ChessMain.GameController(
+            p.display.get_surface(),
+            p.time.Clock(),
+            self.ui,
+            ChessMain.ResourceManager(64),
+            "PvP",
+            True,
+            True,
+            False,
+        )
+
+    def test_normal_time_is_counted(self):
+        self.now.ms += 3000
+        self.ui.update_timer(white_to_move=True)
+        self.assertAlmostEqual(self.ui.white_time, 3.0)
+
+    def _ten_seconds_in_a_menu(self, *args):
+        self.now.ms += 10_000
+
+    def test_time_in_colour_menu_is_not_counted(self):
+        with mock.patch.object(ChessMain, "customization_menu", self._ten_seconds_in_a_menu):
+            self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_c}))
+        self.now.ms += 1000
+        self.ui.update_timer(white_to_move=True)
+        self.assertAlmostEqual(self.ui.white_time, 1.0)
+
+    def test_time_in_shortcuts_menu_is_not_counted(self):
+        with mock.patch.object(ChessMain, "show_shortcuts_menu", self._ten_seconds_in_a_menu):
+            self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_h}))
+        self.ui.update_timer(white_to_move=True)
+        self.assertAlmostEqual(self.ui.white_time, 0.0)
+
+    def test_time_during_move_animation_is_not_counted(self):
+        gs = self.gc.game_state
+        gs.makeMove([m for m in gs.getValidMoves() if str(m) == "e4"][0])
+        self.gc.move_made = self.gc.animate = True
+        with mock.patch.object(
+            self.gc.renderer, "animate_move", lambda *a: self._ten_seconds_in_a_menu()
+        ):
+            self.gc.update()
+        self.ui.update_timer(white_to_move=False)
+        self.assertAlmostEqual(self.ui.black_time, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,6 +7,7 @@ import os
 import queue
 import sys
 import time
+from contextlib import contextmanager
 from multiprocessing import Process, Queue
 
 import pygame as p
@@ -77,7 +78,11 @@ class ResourceManager:
 # UI Manager
 # --------------------------------------------------
 class UIManager:
-    def __init__(self, board_width, board_height, move_log_panel_width, move_log_panel_height):
+    def __init__(
+        self, board_width, board_height, move_log_panel_width, move_log_panel_height, now=None
+    ):
+        # Source de temps en millisecondes, injectable pour les tests.
+        self.now = now or p.time.get_ticks
         self.board_width = board_width
         self.board_height = board_height
         self.move_log_panel_width = move_log_panel_width
@@ -91,7 +96,7 @@ class UIManager:
         # Temps de jeu
         self.white_time: float = 0
         self.black_time: float = 0
-        self.last_time = p.time.get_ticks()
+        self.last_time = self.now()
         self.is_running = True
 
     def reset_timer(self):
@@ -99,11 +104,19 @@ class UIManager:
         À appeler quand la partie (re)commence, après les menus."""
         self.white_time = 0
         self.black_time = 0
-        self.last_time = p.time.get_ticks()
+        self.last_time = self.now()
         self.is_running = True
 
+    @contextmanager
+    def timer_paused(self):
+        """Exclut du décompte le temps passé dans le bloc (menu, animation : B44)."""
+        try:
+            yield
+        finally:
+            self.last_time = self.now()
+
     def update_timer(self, white_to_move):
-        current_time = p.time.get_ticks()
+        current_time = self.now()
         elapsed = (current_time - self.last_time) / 1000  # Convertir en secondes
         self.last_time = current_time
 
@@ -824,9 +837,11 @@ class GameController:
             except Exception as ex:
                 logging.error(f"Erreur lors du chargement : {ex}")
         elif e.key == p.K_c:  # Couleurs
-            customization_menu(self.screen, self.ui)
+            with self.ui.timer_paused():
+                customization_menu(self.screen, self.ui)
         elif e.key == p.K_h:  # Raccourcis
-            show_shortcuts_menu(self.screen)
+            with self.ui.timer_paused():
+                show_shortcuts_menu(self.screen)
 
     # -- IA ----------------------------------------------------------
     def update_ai(self):
@@ -910,9 +925,10 @@ class GameController:
         # renvoie un coup rejeté par makeMove (« Mouvement non valide »).
         if self.move_made:
             if self.animate and self.game_state.move_log:
-                self.renderer.animate_move(
-                    self.game_state.move_log[-1], self.game_state.board, self.clock
-                )
+                with self.ui.timer_paused():
+                    self.renderer.animate_move(
+                        self.game_state.move_log[-1], self.game_state.board, self.clock
+                    )
             self.valid_moves = self.game_state.getValidMoves()
             self.move_made = False
             self.animate = False
