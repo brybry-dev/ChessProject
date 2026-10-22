@@ -34,25 +34,22 @@ import contextlib
 import sys
 from typing import TextIO
 
-from chessproject.ai import search
+from chessproject.ai import levels, search
+from chessproject.ai.search import SearchLimits, SearchResult
 from chessproject.core.engine import GameState, Move
 from chessproject.core.fen import FenError, load_fen
 from chessproject.core.notation import NotationError, parse_uci, to_uci
 
 ENGINE_NAME = "ChessProject"
 ENGINE_AUTHOR = "BryanBlinDorard"
+# Valeur de l'option Level qui désactive les niveaux (limites de go appliquées telles quelles).
+FULL_STRENGTH = "Max"
 
 # Gestion du temps (cf. allocate_time_ms)
 DEFAULT_MOVES_TO_GO: int = 30  # Nombre de coups restants supposé sans ``movestogo``
 INCREMENT_SHARE: float = 0.8  # Part de l'incrément dépensée dès ce coup
 MOVE_OVERHEAD_MS: int = 50  # Marge de sécurité (latence du tube, démarrage de la recherche)
 MIN_TIME_MS: int = 1
-
-# Profondeur dérivée d'un temps de réflexion, tant que la recherche n'est pas limitée en
-# temps (J3.2). Seuils mesurés grossièrement sur la position initiale et Kiwipete
-# (profondeur 3 ≈ 0,1–0,5 s, profondeur 4 ≈ 0,5–2 s en Python pur) : (temps max, profondeur).
-_DEPTH_BY_TIME_MS: tuple[tuple[int, int], ...] = ((40, 1), (250, 2), (2500, 3))
-_MAX_TIME_DEPTH: int = 4
 
 _INT_GO_PARAMS = ("depth", "movetime", "wtime", "btime", "winc", "binc", "movestogo", "nodes")
 
@@ -71,49 +68,30 @@ def allocate_time_ms(remaining_ms: int, increment_ms: int = 0, movestogo: int | 
     return max(MIN_TIME_MS, min(int(budget), ceiling))
 
 
-def depth_for_movetime(movetime_ms: int) -> int:
-    """Profondeur fixe approchant un temps de réflexion (provisoire, remplacé en J3.2)."""
-    for limit, depth in _DEPTH_BY_TIME_MS:
-        if movetime_ms < limit:
-            return depth
-    return _MAX_TIME_DEPTH
+def _think(
+    game_state: GameState,
+    depth: int | None,
+    movetime_ms: int | None,
+    nodes: int | None = None,
+    level: str | None = None,
+) -> tuple[Move | None, SearchResult | None]:
+    """Unique point d'entrée vers l'IA : coup choisi (None sans coup légal) et, hors
+    niveau de difficulté, le résultat détaillé de la recherche.
 
-
-class _ResultBox:
-    """File factice attendue par ``search.find_best_move`` (seule ``put`` est utilisée)."""
-
-    def __init__(self) -> None:
-        self.move: Move | None = None
-
-    def put(self, item: Move | None) -> None:
-        self.move = item
-
-
-def _think(game_state: GameState, depth: int | None, movetime_ms: int | None) -> Move | None:
-    """Unique point d'entrée vers l'IA : renvoie le coup choisi, ou None sans coup légal.
-
-    Adaptateur provisoire sur l'API actuelle (``find_best_move`` + file + ``search.DEPTH``) :
-    ``depth`` prime ; sinon un temps est converti en profondeur par
-    :func:`depth_for_movetime` ; sans limite, profondeur par défaut de l'IA. J3.2
-    remplacera ce corps par ``search(position, SearchLimits(depth, movetime_ms))`` avec une
-    vraie limite de temps, sans rien changer d'autre dans ce module.
+    Avec ``level`` (option UCI ``Level``), l'IA joue à ce niveau (temps et bruit du
+    niveau). Sinon, recherche limitée par ``depth`` / ``movetime_ms`` / ``nodes`` ; sans
+    aucune limite, profondeur par défaut de l'IA.
     """
-    valid_moves = list(game_state.get_valid_moves())
-    if not valid_moves:
-        return None
-    if depth is None and movetime_ms is not None:
-        depth = depth_for_movetime(movetime_ms)
-    box = _ResultBox()
-    if depth is None:
-        search.find_best_move(game_state, valid_moves, box)
-        return box.move
-    saved_depth = search.DEPTH
-    search.DEPTH = max(1, depth)
-    try:
-        search.find_best_move(game_state, valid_moves, box)
-    finally:
-        search.DEPTH = saved_depth
-    return box.move
+    if not game_state.get_valid_moves():
+        return None, None
+    if level is not None:
+        return levels.choose_move(game_state, levels.LEVELS_BY_NAME[level]), None
+    if depth is None and movetime_ms is None and nodes is None:
+        depth = search.DEPTH
+    result = search.think(
+        game_state, SearchLimits(depth=depth, movetime_ms=movetime_ms, nodes=nodes)
+    )
+    return result.move, result
 
 
 class UciEngine:
@@ -123,6 +101,9 @@ class UciEngine:
         self.out = out
         self.game_state = GameState()
         self.pending_bestmove: str | None = None
+        self.pending_info: str | None = None  # ligne info retenue avec le bestmove (infinite)
+        # Niveau de difficulté (option UCI Level) ; None = pleine force, limites de go.
+        self.level: str | None = None
 
     # -- sortie -----------------------------------------------------------
     def send(self, line: str) -> None:
@@ -134,8 +115,11 @@ class UciEngine:
 
     def _flush_pending(self) -> None:
         if self.pending_bestmove is not None:
+            if self.pending_info is not None:
+                self.send(self.pending_info)
             self.send(f"bestmove {self.pending_bestmove}")
             self.pending_bestmove = None
+            self.pending_info = None
 
     # -- commandes --------------------------------------------------------
     def handle(self, line: str) -> bool:
@@ -151,6 +135,11 @@ class UciEngine:
             if command == "uci":
                 self.send(f"id name {ENGINE_NAME}")
                 self.send(f"id author {ENGINE_AUTHOR}")
+                names = " ".join(f"var {level.name}" for level in levels.LEVELS)
+                self.send(
+                    f"option name Level type combo default {FULL_STRENGTH} "
+                    f"var {FULL_STRENGTH} {names}"
+                )
                 self.send("uciok")
             elif command == "isready":
                 self.send("readyok")
@@ -165,7 +154,9 @@ class UciEngine:
                 self._go(args)
             elif command == "stop":
                 self._flush_pending()
-            elif command in ("debug", "setoption", "register", "ponderhit"):
+            elif command == "setoption":
+                self._setoption(args)
+            elif command in ("debug", "register", "ponderhit"):
                 pass  # Acceptées et sans effet
             else:
                 self.info(f"commande inconnue ignorée : {line.strip()}")
@@ -201,6 +192,24 @@ class UciEngine:
                 return
             game_state.make_move(move, validate=False)
         self.game_state = game_state
+
+    def _setoption(self, args: list[str]) -> None:
+        # setoption name <nom> [value <valeur>] ; seule l'option Level est reconnue.
+        text = " ".join(args)
+        if not text.startswith("name "):
+            self.info(f"setoption mal formé : {text}")
+            return
+        name, _, value = text[len("name ") :].partition(" value ")
+        if name.strip().lower() != "level":
+            self.info(f"option inconnue ignorée : {name.strip()}")
+            return
+        value = value.strip()
+        if value == FULL_STRENGTH:
+            self.level = None
+        elif value in levels.LEVELS_BY_NAME:
+            self.level = value
+        else:
+            self.info(f"niveau inconnu : {value!r}")
 
     def _go(self, args: list[str]) -> None:
         params: dict[str, int] = {}
@@ -243,11 +252,26 @@ class UciEngine:
         if infinite:
             depth, movetime = None, None
 
-        move = _think(self.game_state, depth, movetime)
+        move, result = _think(self.game_state, depth, movetime, params.get("nodes"), self.level)
+        info: str | None = None
+        if result is not None and result.move is not None:
+            pv = " ".join(to_uci(m) for m in result.pv)
+            if abs(result.score) >= search.MATE_THRESHOLD:
+                plies = search.MATE - abs(result.score)
+                mate = (plies + 1) // 2 if result.score > 0 else -((plies + 1) // 2)
+                score = f"mate {mate}"
+            else:
+                score = f"cp {result.score}"
+            info = (
+                f"info depth {result.depth} score {score} nodes {result.nodes} "
+                f"time {result.elapsed_ms} pv {pv}"
+            )
         bestmove = to_uci(move) if move is not None else "0000"
         if infinite:
-            self.pending_bestmove = bestmove
+            self.pending_bestmove, self.pending_info = bestmove, info
         else:
+            if info is not None:
+                self.send(info)
             self.send(f"bestmove {bestmove}")
 
 

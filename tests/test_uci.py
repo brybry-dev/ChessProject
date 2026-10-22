@@ -46,7 +46,9 @@ def test_full_dialogue() -> None:
     lines = _dialogue(
         ["uci", "isready", "ucinewgame", "position startpos moves e2e4 e7e5", "go depth 2", "quit"]
     )
-    assert lines[:3] == ["id name ChessProject", "id author BryanBlinDorard", "uciok"]
+    assert lines[:2] == ["id name ChessProject", "id author BryanBlinDorard"]
+    assert lines[2].startswith("option name Level type combo default Max")
+    assert lines[3] == "uciok"
     assert "readyok" in lines
     (best,) = _bestmoves(lines)
     gs = GameState()
@@ -111,7 +113,8 @@ def test_go_with_clock_and_movestogo() -> None:
 def test_infinite_waits_for_stop() -> None:
     lines = _run_in_process(["position startpos", "go infinite", "isready", "stop"])
     assert lines[0] == "readyok"
-    assert lines[1].startswith("bestmove ")
+    assert lines[1].startswith("info depth ")  # retenue avec le bestmove jusqu'à stop
+    assert lines[2].startswith("bestmove ")
 
 
 def test_infinite_flushed_on_eof() -> None:
@@ -126,12 +129,41 @@ def test_illegal_move_keeps_previous_position() -> None:
     assert len(engine.game_state.move_log) == 1
 
 
-def test_think_restores_depth() -> None:
-    saved = uci.search.DEPTH
-    move = uci._think(load_fen("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"), 1, None)
-    assert move is not None and move.get_chess_notation() is not None
-    assert saved == uci.search.DEPTH
-    assert uci._think(load_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"), 2, None) is None
+def test_think_returns_the_search_result() -> None:
+    move, result = uci._think(load_fen("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"), 1, None)
+    assert move is not None and result is not None
+    assert result.move == move and result.depth == 1
+    assert uci._think(load_fen("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1"), 2, None) == (None, None)
+
+
+def test_movetime_is_a_real_time_limit() -> None:
+    _, result = uci._think(GameState(), None, 200)
+    assert result is not None and result.elapsed_ms < 1000
+
+
+def test_level_option_selects_a_difficulty_level() -> None:
+    out = io.StringIO()
+    engine = uci.UciEngine(out)
+    engine.handle("uci")
+    assert "option name Level type combo" in out.getvalue()
+    engine.handle("setoption name Level value Débutant")
+    assert engine.level == "Débutant"
+    engine.handle("go movetime 50")
+    assert out.getvalue().strip().splitlines()[-1].startswith("bestmove ")
+    engine.handle("setoption name Level value Max")
+    assert engine.level is None
+    engine.handle("setoption name Level value Inexistant")
+    assert engine.level is None and "niveau inconnu" in out.getvalue()
+
+
+def test_info_line_reports_mate() -> None:
+    out = io.StringIO()
+    engine = uci.UciEngine(out)
+    engine.handle("position fen 6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")
+    engine.handle("go depth 2")
+    lines = out.getvalue().splitlines()
+    assert any(line.startswith("info depth") and "score mate 1" in line for line in lines)
+    assert lines[-1] == "bestmove a1a8"
 
 
 # --------------------------------------------------------------------------
@@ -158,8 +190,3 @@ def test_allocate_time_ms(
 def test_allocate_time_is_monotonic() -> None:
     values = [uci.allocate_time_ms(t, 100) for t in range(0, 300_000, 1000)]
     assert values == sorted(values)
-
-
-def test_depth_for_movetime() -> None:
-    depths = [uci.depth_for_movetime(ms) for ms in (1, 39, 40, 249, 250, 2499, 2500, 10**6)]
-    assert depths == [1, 1, 2, 2, 3, 3, 4, 4]
