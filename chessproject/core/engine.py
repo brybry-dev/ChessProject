@@ -59,6 +59,11 @@ class Termination(Enum):
     FIFTY_MOVES = "fifty_moves"
     THREEFOLD_REPETITION = "threefold_repetition"
     INSUFFICIENT_MATERIAL = "insufficient_material"
+    # Fins décidées hors des règles de position (cadence, joueurs) : J4.
+    TIME_FORFEIT = "time_forfeit"
+    TIMEOUT_VS_INSUFFICIENT_MATERIAL = "timeout_vs_insufficient_material"
+    RESIGNATION = "resignation"
+    DRAW_AGREEMENT = "draw_agreement"
 
 
 _DRAW_DESCRIPTIONS: dict[Termination, str] = {
@@ -66,6 +71,15 @@ _DRAW_DESCRIPTIONS: dict[Termination, str] = {
     Termination.FIFTY_MOVES: "Nulle par la règle des 50 coups",
     Termination.THREEFOLD_REPETITION: "Nulle par triple répétition",
     Termination.INSUFFICIENT_MATERIAL: "Nulle par matériel insuffisant",
+    Termination.TIMEOUT_VS_INSUFFICIENT_MATERIAL: (
+        "Nulle au temps (matériel insuffisant pour mater)"
+    ),
+    Termination.DRAW_AGREEMENT: "Nulle par accord mutuel",
+}
+_WIN_DESCRIPTIONS: dict[Termination, str] = {
+    Termination.CHECKMATE: "gagnent par échec et mat",
+    Termination.TIME_FORFEIT: "gagnent au temps",
+    Termination.RESIGNATION: "gagnent par abandon",
 }
 
 
@@ -99,9 +113,9 @@ class GameResult:
     def description(self) -> str:
         if self.termination is None:
             return "Partie en cours"
-        if self.termination is Termination.CHECKMATE:
+        if self.termination in _WIN_DESCRIPTIONS:
             camp = "Blancs" if self.winner is Color.WHITE else "Noirs"
-            return f"Les {camp} gagnent par échec et mat"
+            return f"Les {camp} {_WIN_DESCRIPTIONS[self.termination]}"
         return _DRAW_DESCRIPTIONS[self.termination]
 
 
@@ -482,6 +496,18 @@ class GameState:
         if self.repetition_count() >= 3:
             return Termination.THREEFOLD_REPETITION
         return None
+
+    def has_mating_material(self, color: Color) -> bool:
+        """Le camp ``color`` a-t-il de quoi mater ? Faux s'il ne lui reste que le roi, ou le
+        roi et une seule pièce mineure sans pion.
+
+        Sert à la perte au temps : si l'adversaire du camp qui dépasse son temps n'a pas de
+        quoi mater, la partie est nulle. Simplification documentée de la règle FIDE (6.9),
+        qui demande qu'aucune suite de coups légaux ne permette le mat.
+        """
+        code = color.value
+        others = [p[1] for row in self.board for p in row if p[0] == code and p[1] != "K"]
+        return not (not others or (len(others) == 1 and others[0] in ("N", "B")))
 
     def result(self) -> GameResult:
         """Résultat de la position courante (calcule les coups légaux au besoin)."""

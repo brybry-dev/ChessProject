@@ -87,5 +87,46 @@ class GameResultTests(unittest.TestCase):
         self.assertFalse(gs.result().is_over)
 
 
+class ExternalTerminationTests(unittest.TestCase):
+    """Fins hors règles de position (J4) : temps, abandon, accord."""
+
+    def test_descriptions_and_pgn(self):
+        cases = [
+            (
+                GameResult(Termination.TIME_FORFEIT, Color.WHITE),
+                "Les Blancs gagnent au temps",
+                "1-0",
+            ),
+            (
+                GameResult(Termination.RESIGNATION, Color.BLACK),
+                "Les Noirs gagnent par abandon",
+                "0-1",
+            ),
+            (GameResult(Termination.DRAW_AGREEMENT), "Nulle par accord mutuel", "1/2-1/2"),
+            (
+                GameResult(Termination.TIMEOUT_VS_INSUFFICIENT_MATERIAL),
+                "Nulle au temps (matériel insuffisant pour mater)",
+                "1/2-1/2",
+            ),
+        ]
+        for result, description, pgn in cases:
+            with self.subTest(result=result):
+                self.assertTrue(result.is_over)
+                self.assertEqual(result.description, description)
+                self.assertEqual(result.pgn, pgn)
+
+    def test_mating_material(self):
+        def mating(fen, color=Color.WHITE):
+            return load_fen(fen).has_mating_material(color)
+
+        self.assertFalse(mating("4k3/8/8/8/8/8/8/4K3 w - - 0 1"))
+        self.assertFalse(mating("4k3/8/8/8/8/8/8/3NK3 w - - 0 1"))
+        self.assertFalse(mating("4k3/8/8/8/8/8/8/3BK3 w - - 0 1"))
+        self.assertTrue(mating("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"))
+        self.assertTrue(mating("4k3/8/8/8/8/8/8/2NNK3 w - - 0 1"))
+        self.assertTrue(mating("4k3/8/8/8/8/8/8/3RK3 w - - 0 1"))
+        self.assertFalse(mating("4k3/8/8/8/8/8/8/3RK3 w - - 0 1", Color.BLACK))
+
+
 if __name__ == "__main__":
     unittest.main()
