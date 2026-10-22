@@ -20,7 +20,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     # Moteur de référence pour les tests différentiels de génération de coups (J2.1)
-    # "python-chess>=1.11",
+    "chess>=1.11",
 ]
 
 [tool.setuptools]
