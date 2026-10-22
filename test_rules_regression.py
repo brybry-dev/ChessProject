@@ -36,7 +36,9 @@ class TestEndOfGame(unittest.TestCase):
         self.assertFalse(gs.stalemate)
 
     def test_king_and_queen_vs_king_is_not_a_draw(self):
-        gs = load_fen("8/8/8/4k3/8/8/4Q3/4K3 w - - 0 1")
+        # Noirs au trait : avec les Blancs au trait, Qe2 ferait échec au roi noir
+        # qui n'a pas le trait (position illégale, rejetée par load_fen depuis J2.6).
+        gs = load_fen("8/8/8/4k3/8/8/4Q3/4K3 b - - 0 1")
         self.assertFalse(gs.insufficient_material())
 
     def test_same_colour_bishops_is_a_draw(self):
@@ -152,7 +154,8 @@ class TestPositionKeyIsDeterministic(unittest.TestCase):
         base = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R w KQkq d6 0 1").get_board_hash_str()
         no_castle = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R w - d6 0 1").get_board_hash_str()
         no_ep = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R w KQkq - 0 1").get_board_hash_str()
-        black = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R b KQkq d6 0 1").get_board_hash_str()
+        # Sans case en passant : « d6 » avec les Noirs au trait est illégal (J2.6).
+        black = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R b KQkq - 0 1").get_board_hash_str()
         self.assertEqual(len({base, no_castle, no_ep, black}), 4)
 
 

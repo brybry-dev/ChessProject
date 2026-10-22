@@ -18,7 +18,7 @@ import logging
 from typing import Any
 
 import ChessEngine
-from fen_utils import load_fen
+from fen_utils import load_fen, start_fullmove
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,28 @@ def _piece_to_fen_char(piece: str) -> str:
     return letter.upper() if piece[0] == "w" else letter.lower()
 
 
+def fullmove_number(game_state: ChessEngine.GameState) -> int:
+    """Numéro de coup FEN de la position courante (cf. B36).
+
+    ``start_fullmove + (demi-coups joués + (1 si la position de départ avait les
+    Noirs au trait)) // 2``. Le numéro de départ vient de la FEN chargée
+    (:func:`fen_utils.start_fullmove`, 1 par défaut). Le camp au trait au départ
+    se déduit du trait courant et de la parité du nombre de demi-coups joués.
+    """
+    plies = len(game_state.move_log)
+    start_black = (not game_state.white_to_move) == (plies % 2 == 0)
+    return start_fullmove(game_state) + (plies + int(start_black)) // 2
+
+
 def to_fen(game_state: ChessEngine.GameState) -> str:
     """Retourne la FEN complète (6 champs) de la position courante.
 
-    Le champ de roque suppose les cases standard roi/tour ; il n'est donné
-    qu'à titre indicatif et n'est pas utilisé pour recharger la partie.
+    - Roque : droits tels que stockés par le moteur (cases standard roi/tour).
+    - En passant : la case est écrite **telle que stockée** par le moteur, qui la
+      pose après toute avance de deux cases d'un pion, qu'une prise en passant soit
+      possible ou non (convention FEN d'origine, et non celle « seulement si la prise
+      est légale » de certains moteurs). ``load_fen`` relit cette case à l'identique.
+    - Demi-coups : ``fifty_move_counter`` ; numéro de coup : :func:`fullmove_number`.
     """
     rows: list[str] = []
     for board_row in game_state.board:
@@ -76,7 +93,7 @@ def to_fen(game_state: ChessEngine.GameState) -> str:
         enpassant = "-"
 
     halfmove = game_state.fifty_move_counter
-    fullmove = len(game_state.move_log) // 2 + 1
+    fullmove = fullmove_number(game_state)
     return f"{board_part} {turn} {castling} {enpassant} {halfmove} {fullmove}"
 
 
@@ -167,7 +184,8 @@ def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState,
     """Recharge une partie et renvoie ``(game_state, flip_board)``.
 
     Rejoue les coups depuis la position de départ : l'état obtenu est donc
-    toujours conforme aux règles courantes du moteur.
+    toujours conforme aux règles courantes du moteur. Une ``start_fen`` mal
+    formée ou illégale lève :class:`fen_utils.FenError` (cf. B41).
     """
     with open(filename, encoding="utf-8") as f:
         data = json.load(f)
