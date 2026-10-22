@@ -7,16 +7,25 @@ technique : l'accent est mis sur la justesse des règles, les tests et la qualit
 
 ## Fonctionnalités
 
-- **Règles complètes** : roque, prise en passant, promotion et sous-promotions (dame, tour,
-  fou, cavalier), mat et pat, règle des 50 coups, triple répétition, matériel insuffisant.
+- **Règles complètes** : roque, prise en passant, promotion et sous-promotions, mat et pat,
+  50 coups, triple répétition, matériel insuffisant. Générateur de coups validé par perft
+  et par 1 000 parties comparées coup par coup à python-chess.
 - **Trois modes de jeu** : Joueur contre Joueur, Joueur contre IA (choix de la couleur),
   IA contre IA.
-- **IA NegaMax avec élagage alpha-bêta** (profondeur 3, approfondissement itératif), exécutée
-  dans un processus séparé pour que l'interface reste réactive pendant la réflexion.
-- **Sauvegarde et chargement** au format JSON versionné ; les coups sont rejoués par le
-  moteur au chargement.
-- **Interface** : 3 thèmes de plateau, sons, animation des coups, surbrillance des coups
-  légaux, historique des coups avec défilement, chronomètre.
+- **IA** : NegaMax alpha-bêta, approfondissement itératif limité en temps, table de
+  transposition (Zobrist), quiescence, évaluation par phase de jeu. Cinq niveaux, de
+  Débutant à Expert, dans un processus séparé pour que l'interface reste réactive.
+- **Cadences** : Bullet 1+0, Blitz 3+2 et 5+0, Rapide 10+5 et 15+10, ou sans limite.
+  Incrément Fischer, perte au temps (nulle si l'adversaire n'a pas de quoi mater). L'IA
+  gère son temps.
+- **Fin de partie** : abandon, proposition de nulle (l'IA accepte selon son évaluation),
+  motif de fin affiché.
+- **PGN** : export et import (commentaires, variantes et NAG ignorés à la lecture).
+  **Sauvegarde** JSON versionnée, avec mode, niveau et pendules.
+- **Protocole UCI** (`chessproject-uci`) : le moteur se branche dans une interface
+  d'échecs ou joue contre d'autres moteurs.
+- **Interface** : plateau retourné quand on joue les Noirs, historique en notation SAN,
+  3 thèmes de plateau, sons, animation des coups.
 
 L'état du projet, les bugs suivis et la feuille de route sont dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
@@ -54,8 +63,10 @@ variable d'environnement `CHESSPROJECT_DATA_DIR`.
 |---|---|
 | `Z` | Annuler le dernier coup (contre l'IA, annule aussi la réponse de l'IA) |
 | `R` | Réinitialiser la partie |
-| `S` | Sauvegarder la partie |
-| `L` | Charger la partie sauvegardée |
+| `S` / `L` | Sauvegarder / charger la partie |
+| `E` / `I` | Exporter / importer la partie en PGN |
+| `A` | Abandonner |
+| `N` | Proposer la nulle (en Joueur contre Joueur, l'adversaire accepte avec `N`) |
 | `C` | Changer les couleurs du plateau |
 | `H` | Afficher / masquer les raccourcis |
 
@@ -99,7 +110,7 @@ Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de p
 - **J1 — Correction** ✅ : plus aucun bug bloquant connu (règles, IA, contrôleur).
 - **J2 — Socle moteur** ✅ : types, modèle de résultat de partie, notation SAN, FEN validée.
 - **J3 — IA** ✅ : adversaire solide, borné en temps, avec niveaux de difficulté.
-- **J4 — Fonctionnalités** : import/export PGN, cadence (temps + incrément), sauvegarde v2.
+- **J4 — Fonctionnalités** ✅ : import/export PGN, cadence (temps + incrément), sauvegarde v2.
 - **J5 — Interface** : refonte visuelle, mise en page adaptative, interactions soignées.
 - **J6 — Packaging et vitrine** : exécutables, README illustré, version publiée.
 

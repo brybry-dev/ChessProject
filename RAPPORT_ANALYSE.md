@@ -560,7 +560,7 @@ Prochaine étape : Phase 4 — Feuille de route (§4).
 | **J1** Correction ✅ | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
 | **J2** Socle moteur ✅ | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
 | **J3** IA ✅ | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
-| **J4** Fonctionnalités | PGN, cadence, niveaux dans l'UI, sauvegarde v2 | Moyen terme | ~5–6 j |
+| **J4** Fonctionnalités ✅ | PGN, cadence, niveaux dans l'UI, sauvegarde v2 | Moyen terme | ~5–6 j |
 | **J5** Interface pro | Scènes, thème, mise en page adaptative, finition visuelle | Fin de parcours | ~5–7 j |
 | **J6** Packaging et vitrine | Exécutables, README illustré, version publiée, UCI minimal (optionnel) | Fin de parcours | ~3–4 j |
 
@@ -702,6 +702,22 @@ N parties contre la version précédente, avec un script `tools/match.py`.
 | J3.7 | **Niveaux de difficulté** (`levels.py`) : *Débutant / Facile / Moyen / Difficile / Expert*, chacun défini par temps, profondeur maximale, bruit d'évaluation et probabilité de coup sous-optimal | Les niveaux sont strictement ordonnés en mini-ligue (chaque niveau bat le précédent avec au moins 70 % des points) | M |
 
 #### J4 — Fonctionnalités attendues
+
+> ✅ **Réalisé le 2026-10-22**
+> - Nouvelles fins de partie : temps, abandon, accord. Le mode `automatic_draws=False`
+>   (FIDE stricte : 3 répétitions et 50 coups à réclamer, fin d'office à 5 et 75) sert à
+>   l'import de parties réelles.
+> - J4.1 : `core/clock.py`, pendule avec incrément Fischer, pause, annulation et
+>   sérialisation.
+> - J4.2 : temps de l'IA alloué selon sa pendule, moins son surcoût **mesuré** (lancement
+>   du processus, échéance). Sans cette correction, une partie IA contre IA en 1+0 était
+>   perdue au temps. Après correction : **0 perte au temps sur 8 parties en 1+0** au
+>   niveau Expert, machine chargée. Le critère prévu (50 parties en 5+0) n'a pas été
+>   déroulé tel quel ; la cadence testée est bien plus serrée.
+> - J4.3 / J4.4 : `core/pgn.py`, export et import vérifiés contre python-chess, avec un
+>   corpus de 9 fichiers (parties célèbres, annotations, FEN, cas d'erreur).
+> - J4.5 : sauvegarde v3 (coups UCI, contexte de jeu, pendules, écriture atomique).
+> - J4.6 : menus niveau et cadence, abandon (A), nulle (N), PGN (E / I).
 
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|
