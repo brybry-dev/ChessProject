@@ -221,6 +221,8 @@ class GameState:
 
         # Pour la règle des 50 coups
         self.fifty_move_counter: int = 0
+        # Numéro de coup FEN de la position de départ (1 sauf partie chargée par FEN).
+        self.start_fullmove: int = 1
         self.fifty_move_counter_log: list[int] = [0]
         # Pour la répétition de positions (utilise une chaîne de hash)
         self.position_history: dict[str, int] = {}

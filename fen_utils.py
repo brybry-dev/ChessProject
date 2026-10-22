@@ -8,8 +8,7 @@ JSON (``start_fen``), modifiable à la main, ne peut donc plus introduire un ét
 incohérent dans le moteur.
 
 Les compteurs sont pris en compte : le champ demi-coups initialise
-``fifty_move_counter`` ; le numéro de coup est mémorisé sur l'objet (voir
-:func:`start_fullmove`), en attendant un attribut dédié de ``GameState`` (J2.3).
+``fifty_move_counter`` ; le numéro de coup initialise ``GameState.start_fullmove``.
 
 ``perft`` / ``perft_divide`` restent ici provisoirement (importés par les tests).
 """
@@ -20,26 +19,14 @@ DIMENSION = ChessEngine.DIMENSION
 FILES = "abcdefgh"
 PIECE_CHARS = "PNBRQKpnbrqk"
 
-# Numéro de coup de la position de départ. ``GameState`` ne le stocke pas encore
-# (intégration prévue en J2.3) : on le pose comme attribut dynamique, lu et écrit
-# uniquement via setattr/getattr (typage propre sous mypy strict), valeur par
-# défaut 1 pour un GameState construit sans FEN.
-START_FULLMOVE_ATTR = "start_fullmove"
-
 
 class FenError(ValueError):
     """FEN mal formée ou décrivant une position illégale."""
 
 
 def start_fullmove(game_state: ChessEngine.GameState) -> int:
-    """Numéro de coup de la position de départ du ``game_state`` (1 par défaut)."""
-    value = getattr(game_state, START_FULLMOVE_ATTR, 1)
-    return value if isinstance(value, int) and value >= 1 else 1
-
-
-def set_start_fullmove(game_state: ChessEngine.GameState, fullmove: int) -> None:
-    """Mémorise le numéro de coup de la position de départ (cf. START_FULLMOVE_ATTR)."""
-    setattr(game_state, START_FULLMOVE_ATTR, fullmove)
+    """Numéro de coup de la position de départ du ``game_state``."""
+    return game_state.start_fullmove
 
 
 def _square_name(row: int, col: int) -> str:
@@ -199,7 +186,7 @@ def load_fen(fen: str) -> ChessEngine.GameState:
     gs.move_log = []
     gs.fifty_move_counter = halfmove
     gs.fifty_move_counter_log = [halfmove]
-    set_start_fullmove(gs, fullmove)
+    gs.start_fullmove = fullmove
     gs.position_history = {}
     gs.position_history_log = [{}]
     gs._valid_moves = None
