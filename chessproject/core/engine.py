@@ -105,9 +105,18 @@ class GameResult:
         return _DRAW_DESCRIPTIONS[self.termination]
 
 
-def is_valid_index(index: int) -> bool:
-    """Vérifier si un index est dans la plage du plateau."""
-    return 0 <= index < DIMENSION
+_KING_STEPS: tuple[Square, ...] = (
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+)
+# Code de la pièce de promotion dans Move.move_id (0 = pas de promotion).
+_PROMOTION_CODES: dict[str, int] = {"Q": 1, "R": 2, "B": 3, "N": 4}
 
 
 class GameState:
@@ -507,7 +516,7 @@ class GameState:
             for i in range(1, DIMENSION):
                 er = r + d[0] * i
                 ec = c + d[1] * i
-                if not (is_valid_index(er) and is_valid_index(ec)):
+                if not (0 <= er < 8 and 0 <= ec < 8):
                     break
                 piece = self.board[er][ec]
                 if piece == "--":
@@ -533,7 +542,7 @@ class GameState:
         for m in knight_moves:
             er = r + m[0]
             ec = c + m[1]
-            if is_valid_index(er) and is_valid_index(ec):
+            if 0 <= er < 8 and 0 <= ec < 8:
                 piece = self.board[er][ec]
                 if piece != "--" and piece[0] == enemy and piece[1] == "N":
                     return True
@@ -542,16 +551,12 @@ class GameState:
     def get_all_possible_moves(self) -> list["Move"]:
         """Retourne tous les mouvements possibles sans filtrer pour les échecs."""
         moves: list[Move] = []
-        for r in range(DIMENSION):
-            for c in range(DIMENSION):
-                if self.board[r][c] == "--":
-                    continue
-                turn: str = self.board[r][c][0]
-                if (turn == Color.WHITE.value and self.white_to_move) or (
-                    turn == Color.BLACK.value and not self.white_to_move
-                ):
-                    piece: str = self.board[r][c][1]
-                    self.move_functions[piece](r, c, moves)
+        ally = "w" if self.white_to_move else "b"
+        move_functions = self.move_functions
+        for r, row in enumerate(self.board):
+            for c, piece in enumerate(row):
+                if piece[0] == ally:
+                    move_functions[piece[1]](r, c, moves)
         return moves
 
     def get_pawn_moves(self, row: int, col: int, moves: list["Move"]) -> None:
@@ -574,7 +579,7 @@ class GameState:
             enemy_color = "w"
 
         # Avance d'une case (et de deux depuis la rangée de départ)
-        if is_valid_index(row + move_amount) and self.board[row + move_amount][col] == "--":
+        if 0 <= row + move_amount < 8 and self.board[row + move_amount][col] == "--":
             # Un pion cloué peut se déplacer le long de la ligne de clouage, dans un sens
             # comme dans l'autre (vers son roi ou vers le cloueur) : B46.
             if not piece_pinned or pin_direction in ((move_amount, 0), (-move_amount, 0)):
@@ -584,7 +589,7 @@ class GameState:
         # Captures et en passant
         for dc in (-1, 1):
             new_col = col + dc
-            if is_valid_index(new_col) and is_valid_index(row + move_amount):
+            if 0 <= new_col < 8 and 0 <= row + move_amount < 8:
                 if not piece_pinned or pin_direction in ((move_amount, dc), (-move_amount, -dc)):
                     target = self.board[row + move_amount][new_col]
                     if target[0] == enemy_color:
@@ -653,7 +658,7 @@ class GameState:
             for i in range(1, DIMENSION):
                 end_row: int = r + d[0] * i
                 end_col: int = c + d[1] * i
-                if is_valid_index(end_row) and is_valid_index(end_col):
+                if 0 <= end_row < 8 and 0 <= end_col < 8:
                     if not piece_pinned or pin_direction == d or pin_direction == (-d[0], -d[1]):
                         end_piece: str = self.board[end_row][end_col]
                         if end_piece == "--":
@@ -692,7 +697,7 @@ class GameState:
             for m in knight_moves:
                 end_row: int = r + m[0]
                 end_col: int = c + m[1]
-                if is_valid_index(end_row) and is_valid_index(end_col):
+                if 0 <= end_row < 8 and 0 <= end_col < 8:
                     end_piece: str = self.board[end_row][end_col]
                     if end_piece[0] != ally_color:
                         moves.append(Move((r, c), (end_row, end_col), self.board))
@@ -717,7 +722,7 @@ class GameState:
             for i in range(1, DIMENSION):
                 end_row: int = r + d[0] * i
                 end_col: int = c + d[1] * i
-                if is_valid_index(end_row) and is_valid_index(end_col):
+                if 0 <= end_row < 8 and 0 <= end_col < 8:
                     if not piece_pinned or pin_direction == d or pin_direction == (-d[0], -d[1]):
                         end_piece: str = self.board[end_row][end_col]
                         if end_piece == "--":
@@ -742,30 +747,24 @@ class GameState:
         Ajoute à la liste 'moves' tous les mouvements valides du roi situé en (r, c).
         Vérifie que le déplacement ne met pas le roi en échec.
         """
-        row_moves: tuple[int, ...] = (-1, -1, -1, 0, 0, 1, 1, 1)
-        col_moves: tuple[int, ...] = (-1, 0, 1, -1, 1, -1, 0, 1)
         ally_color: str = "w" if self.white_to_move else "b"
-        for i in range(8):
-            end_row: int = r + row_moves[i]
-            end_col: int = c + col_moves[i]
-            if is_valid_index(end_row) and is_valid_index(end_col):
-                end_piece: str = self.board[end_row][end_col]
-                if end_piece[0] != ally_color:
-                    # Sauvegarde de la position du roi pour le restaurer ensuite
-                    original_king_location: tuple[int, int] = (
-                        self.white_king_location if self.white_to_move else self.black_king_location
-                    )
-                    if ally_color == "w":
-                        self.white_king_location = (end_row, end_col)
-                    else:
-                        self.black_king_location = (end_row, end_col)
-                    king_in_check, _, _ = self.check_for_pins_and_checks()
-                    if not king_in_check:
-                        moves.append(Move((r, c), (end_row, end_col), self.board))
-                    if ally_color == "w":
-                        self.white_king_location = original_king_location
-                    else:
-                        self.black_king_location = original_king_location
+        # Le roi est retiré du plateau le temps du test : une pièce à longue portée qui
+        # l'attaque doit aussi « voir » la case située derrière lui sur la même ligne.
+        king = self.board[r][c]
+        self.board[r][c] = "--"
+        safe_squares: list[Square] = []
+        try:
+            for dr, dc in _KING_STEPS:
+                end_row, end_col = r + dr, c + dc
+                if 0 <= end_row < 8 and 0 <= end_col < 8:
+                    if self.board[end_row][end_col][0] != ally_color and not (
+                        self.square_under_attack(end_row, end_col)
+                    ):
+                        safe_squares.append((end_row, end_col))
+        finally:
+            self.board[r][c] = king
+        for square in safe_squares:
+            moves.append(Move((r, c), square, self.board))
 
     def get_castle_moves(self, row: int, col: int, moves: list["Move"]) -> None:
         """
@@ -832,7 +831,7 @@ class GameState:
             for i in range(1, DIMENSION):
                 end_row = king_row + d[0] * i
                 end_col = king_col + d[1] * i
-                if is_valid_index(end_row) and is_valid_index(end_col):
+                if 0 <= end_row < 8 and 0 <= end_col < 8:
                     end_piece = self.board[end_row][end_col]
                     if end_piece[0] == ally_color and end_piece[1] != "K":
                         if possible_pin is None:
@@ -870,7 +869,7 @@ class GameState:
         for m in knight_moves:
             end_row = king_row + m[0]
             end_col = king_col + m[1]
-            if is_valid_index(end_row) and is_valid_index(end_col):
+            if 0 <= end_row < 8 and 0 <= end_col < 8:
                 end_piece = self.board[end_row][end_col]
                 if end_piece[0] == enemy_color and end_piece[1] == "N":
                     king_in_check = True
@@ -948,7 +947,7 @@ class Move:
             )
         else:
             self.promotion_piece = None
-        promo_code: int = {"Q": 1, "R": 2, "B": 3, "N": 4}.get(self.promotion_piece or "", 0)
+        promo_code: int = _PROMOTION_CODES.get(self.promotion_piece or "", 0)
         self.move_id: int = (
             promo_code * 10000
             + self.start_row * 1000
