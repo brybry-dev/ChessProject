@@ -17,8 +17,8 @@ import subprocess
 import sys
 import unittest
 
-import ChessEngine
-from fen_utils import load_fen
+from chessproject.core import engine
+from chessproject.core.fen import load_fen
 
 
 class TestEndOfGame(unittest.TestCase):
@@ -50,7 +50,7 @@ class TestEndOfGame(unittest.TestCase):
 
 class TestThreefoldRepetition(unittest.TestCase):
     def test_shuffling_knights_three_times_is_a_draw(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
 
         def play(notation):
             for m in gs.get_valid_moves():
@@ -129,8 +129,8 @@ class TestPositionKeyIsDeterministic(unittest.TestCase):
     """
 
     SCRIPT = (
-        "import ChessEngine;"
-        "g = ChessEngine.GameState();"
+        "from chessproject.core import engine;"
+        "g = engine.GameState();"
         "g.make_move([m for m in g.get_valid_moves() if str(m) == 'e4'][0]);"
         "print(g.get_board_hash_str())"
     )
@@ -143,7 +143,6 @@ class TestPositionKeyIsDeterministic(unittest.TestCase):
             capture_output=True,
             text=True,
             check=True,
-            cwd=os.path.dirname(os.path.abspath(__file__)),
         )
         return out.stdout.strip()
 

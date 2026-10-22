@@ -22,8 +22,14 @@ dev = [
     "chess>=1.11",
 ]
 
-[tool.setuptools]
-py-modules = ["ChessAI", "ChessEngine", "ChessMain", "fen_utils", "notation", "paths", "serialization"]
+[project.scripts]
+chessproject = "chessproject.ui.app:main"
+
+[tool.setuptools.packages.find]
+include = ["chessproject*"]
+
+[tool.setuptools.package-data]
+chessproject = ["assets/images/*.png", "assets/sounds/*.wav"]
 
 # --------------------------------------------------------------------------
 # Lint et formatage
@@ -40,9 +46,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["E402"]  # les tests fixent SDL_VIDEODRIVER avant d'importer pygame
-# Noms de modules hérités (ChessEngine, ChessAI, ChessMain) : renommage avec le passage en paquet.
-"Chess*.py" = ["N999"]
+"tests/*.py" = ["E402"]  # les tests fixent SDL_VIDEODRIVER avant d'importer pygame
 
 # --------------------------------------------------------------------------
 # Typage : strict sur le moteur, souple sur l'UI et les tests (cf. rapport §4, J0.1)
@@ -55,7 +59,7 @@ warn_unused_ignores = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["ChessEngine", "ChessAI", "fen_utils", "notation", "paths", "serialization"]
+module = ["chessproject.core.*", "chessproject.ai.*", "chessproject.paths", "chessproject.serialization"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_any_generics = true
@@ -71,7 +75,7 @@ ignore_missing_imports = true
 # Tests
 # --------------------------------------------------------------------------
 [tool.pytest.ini_options]
-testpaths = ["."]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-m 'not slow'"
 markers = [

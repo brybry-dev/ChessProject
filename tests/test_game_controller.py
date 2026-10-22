@@ -1,4 +1,4 @@
-"""Tests de régression pour la boucle de jeu (``ChessMain.GameController``).
+"""Tests de régression pour la boucle de jeu (``app.GameController``).
 
 Vérifie notamment que l'IA reçoit toujours la liste des coups légaux de la
 position courante après le coup de l'humain — un décalage d'une itération
@@ -24,10 +24,10 @@ try:
 except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
-import ChessEngine
-import ChessMain
-import serialization
-from fen_utils import load_fen
+from chessproject import serialization
+from chessproject.core import engine
+from chessproject.core.fen import load_fen
+from chessproject.ui import app
 
 
 class _InlineProcess:
@@ -68,22 +68,20 @@ class AITurnAfterHumanMove(unittest.TestCase):
     def setUp(self):
         self.screen = p.display.get_surface()
         self.clock = p.time.Clock()
-        ui = ChessMain.UIManager(512, 512, 250, 512)
-        rm = ChessMain.ResourceManager(64)
+        ui = app.UIManager(512, 512, 250, 512)
+        rm = app.ResourceManager(64)
         # Humain = blancs, IA = noirs, plateau non retourné.
-        self.gc = ChessMain.GameController(
-            self.screen, self.clock, ui, rm, "PvC", True, False, False
-        )
-        self._orig_process = ChessMain.Process
-        self._orig_queue = ChessMain.Queue
+        self.gc = app.GameController(self.screen, self.clock, ui, rm, "PvC", True, False, False)
+        self._orig_process = app.Process
+        self._orig_queue = app.Queue
         # Monkeypatch volontaire de doublures (duck typing) : mypy refuse de
         # réaffecter une classe importée, d'où ces ignores ciblés.
-        ChessMain.Process = _InlineProcess  # type: ignore[misc, assignment]
-        ChessMain.Queue = _SyncQueue  # type: ignore[misc, assignment]
+        app.Process = _InlineProcess  # type: ignore[misc, assignment]
+        app.Queue = _SyncQueue  # type: ignore[misc, assignment]
 
     def tearDown(self):
-        ChessMain.Process = self._orig_process  # type: ignore[misc]  # restauration du monkeypatch
-        ChessMain.Queue = self._orig_queue  # type: ignore[misc]  # restauration du monkeypatch
+        app.Process = self._orig_process  # type: ignore[misc]  # restauration du monkeypatch
+        app.Queue = self._orig_queue  # type: ignore[misc]  # restauration du monkeypatch
 
     def _click_square(self, row, col):
         pos = self.gc.renderer.square_rect(row, col).center
@@ -113,18 +111,18 @@ class NewGameWhenAIToMove(unittest.TestCase):
     """B28 : après R (réinitialiser) ou L (charger), l'IA doit jouer si elle a le trait."""
 
     def setUp(self):
-        self._orig = (ChessMain.Process, ChessMain.Queue)
-        ChessMain.Process = _InlineProcess  # type: ignore[misc, assignment]
-        ChessMain.Queue = _SyncQueue  # type: ignore[misc, assignment]
+        self._orig = (app.Process, app.Queue)
+        app.Process = _InlineProcess  # type: ignore[misc, assignment]
+        app.Queue = _SyncQueue  # type: ignore[misc, assignment]
 
     def tearDown(self):
-        ChessMain.Process, ChessMain.Queue = self._orig  # type: ignore[misc]
+        app.Process, app.Queue = self._orig  # type: ignore[misc]
 
     def _controller(self, mode, white_human, black_human):
-        ui = ChessMain.UIManager(512, 512, 250, 512)
-        rm = ChessMain.ResourceManager(64)
+        ui = app.UIManager(512, 512, 250, 512)
+        rm = app.ResourceManager(64)
         flip = mode == "PvC" and not white_human
-        return ChessMain.GameController(
+        return app.GameController(
             p.display.get_surface(), p.time.Clock(), ui, rm, mode, white_human, black_human, flip
         )
 
@@ -155,7 +153,7 @@ class NewGameWhenAIToMove(unittest.TestCase):
     def test_load_with_ai_to_move(self):
         gc = self._controller("PvC", True, False)
         # Partie chargée où les noirs (IA) ont le trait.
-        loaded = ChessEngine.GameState()
+        loaded = engine.GameState()
         loaded.make_move([m for m in loaded.get_valid_moves() if str(m) == "e4"][0])
         gc._new_game(loaded)
         self._frames(gc)
@@ -169,9 +167,9 @@ class PromotionThroughTheUI(unittest.TestCase):
     FEN = "7k/P7/8/8/8/8/8/K7 w - - 0 1"
 
     def setUp(self):
-        ui = ChessMain.UIManager(512, 512, 250, 512)
-        rm = ChessMain.ResourceManager(64)
-        self.gc = ChessMain.GameController(
+        ui = app.UIManager(512, 512, 250, 512)
+        rm = app.ResourceManager(64)
+        self.gc = app.GameController(
             p.display.get_surface(), p.time.Clock(), ui, rm, "PvP", True, True, False
         )
         self.gc._new_game(load_fen(self.FEN))
@@ -250,7 +248,7 @@ class _HangingProcess(_InlineProcess):
 class _IllegalMoveProcess(_InlineProcess):
     def start(self):
         # Coup légal dans la position initiale mais pas pour les Noirs : e2-e4.
-        self._args[2].put(ChessEngine.Move((6, 4), (4, 4), ChessEngine.GameState().board))
+        self._args[2].put(engine.Move((6, 4), (4, 4), engine.GameState().board))
         self._ran = True
         self.exitcode = 0
 
@@ -260,12 +258,12 @@ class AIProcessRobustness(unittest.TestCase):
     """B33 / B45 : un processus d'IA défaillant ne doit ni figer ni bloquer l'UI."""
 
     def setUp(self):
-        self._orig = (ChessMain.Process, ChessMain.Queue)
-        ChessMain.Queue = _SyncQueue  # type: ignore[misc, assignment]
-        ui = ChessMain.UIManager(512, 512, 250, 512)
-        rm = ChessMain.ResourceManager(64)
+        self._orig = (app.Process, app.Queue)
+        app.Queue = _SyncQueue  # type: ignore[misc, assignment]
+        ui = app.UIManager(512, 512, 250, 512)
+        rm = app.ResourceManager(64)
         # Humain = blancs ; on joue e4 pour donner le trait à l'IA.
-        self.gc = ChessMain.GameController(
+        self.gc = app.GameController(
             p.display.get_surface(), p.time.Clock(), ui, rm, "PvC", True, False, False
         )
         gs = self.gc.game_state
@@ -273,10 +271,10 @@ class AIProcessRobustness(unittest.TestCase):
         self.gc.valid_moves = gs.get_valid_moves()
 
     def tearDown(self):
-        ChessMain.Process, ChessMain.Queue = self._orig  # type: ignore[misc]
+        app.Process, app.Queue = self._orig  # type: ignore[misc]
 
     def _use(self, process_cls):
-        ChessMain.Process = process_cls  # type: ignore[misc]
+        app.Process = process_cls  # type: ignore[misc]
 
     def _assert_black_played_a_legal_move(self):
         gs = self.gc.game_state
@@ -303,7 +301,7 @@ class AIProcessRobustness(unittest.TestCase):
         self._use(_HangingProcess)
         self.gc.update_ai()
         self.assertTrue(self.gc.ai_thinking)
-        self.gc.ai_started_at -= ChessMain.AI_MAX_THINK_SECONDS + 1
+        self.gc.ai_started_at -= app.AI_MAX_THINK_SECONDS + 1
         self.gc.update_ai()
         self.assertTrue(_HangingProcess.instances[-1].terminated)
         self._assert_black_played_a_legal_move()
@@ -311,7 +309,7 @@ class AIProcessRobustness(unittest.TestCase):
     def test_quitting_while_the_ai_thinks_stops_it(self):
         self._use(_HangingProcess)
         self.gc.update_ai()
-        with mock.patch.object(ChessMain.p, "quit"), self.assertRaises(SystemExit):
+        with mock.patch.object(app.p, "quit"), self.assertRaises(SystemExit):
             self.gc.handle_event(p.event.Event(p.QUIT, {}))
         self.assertTrue(_HangingProcess.instances[-1].terminated)
 
@@ -332,12 +330,12 @@ class ClockIgnoresMenusAndAnimation(unittest.TestCase):
 
     def setUp(self):
         self.now = _FakeClock()
-        self.ui = ChessMain.UIManager(512, 512, 250, 512, now=self.now)
-        self.gc = ChessMain.GameController(
+        self.ui = app.UIManager(512, 512, 250, 512, now=self.now)
+        self.gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
             self.ui,
-            ChessMain.ResourceManager(64),
+            app.ResourceManager(64),
             "PvP",
             True,
             True,
@@ -353,14 +351,14 @@ class ClockIgnoresMenusAndAnimation(unittest.TestCase):
         self.now.ms += 10_000
 
     def test_time_in_colour_menu_is_not_counted(self):
-        with mock.patch.object(ChessMain, "customization_menu", self._ten_seconds_in_a_menu):
+        with mock.patch.object(app, "customization_menu", self._ten_seconds_in_a_menu):
             self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_c}))
         self.now.ms += 1000
         self.ui.update_timer(white_to_move=True)
         self.assertAlmostEqual(self.ui.white_time, 1.0)
 
     def test_time_in_shortcuts_menu_is_not_counted(self):
-        with mock.patch.object(ChessMain, "show_shortcuts_menu", self._ten_seconds_in_a_menu):
+        with mock.patch.object(app, "show_shortcuts_menu", self._ten_seconds_in_a_menu):
             self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_h}))
         self.ui.update_timer(white_to_move=True)
         self.assertAlmostEqual(self.ui.white_time, 0.0)
@@ -382,11 +380,11 @@ class EndOfGameDisplay(unittest.TestCase):
     """J2.2 / B34 : le motif de fin est affiché et la partie est verrouillée."""
 
     def _controller(self, fen):
-        gc = ChessMain.GameController(
+        gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            ChessMain.UIManager(512, 512, 250, 512),
-            ChessMain.ResourceManager(64),
+            app.UIManager(512, 512, 250, 512),
+            app.ResourceManager(64),
             "PvP",
             True,
             True,

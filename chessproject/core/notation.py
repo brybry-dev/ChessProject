@@ -1,7 +1,7 @@
 """
 Notation SAN et UCI
 -------------------
-Conversion entre les ``ChessEngine.Move`` et les deux notations usuelles :
+Conversion entre les ``engine.Move`` et les deux notations usuelles :
 
 - **UCI** (« notation coordonnée longue ») : ``e2e4``, ``e7e8n``, roque noté par le
   déplacement du roi (``e1g1``) ;
@@ -22,7 +22,7 @@ import copy
 import re
 from collections.abc import Iterable
 
-from ChessEngine import GameState, Move, Termination
+from chessproject.core.engine import GameState, Move, Termination
 
 
 class NotationError(ValueError):

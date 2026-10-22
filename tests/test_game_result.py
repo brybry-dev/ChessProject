@@ -2,9 +2,9 @@
 
 import unittest
 
-import ChessEngine
-from ChessEngine import Color, GameResult, Termination
-from fen_utils import load_fen
+from chessproject.core import engine
+from chessproject.core.engine import Color, GameResult, Termination
+from chessproject.core.fen import load_fen
 
 
 def _play_uci(gs, ucis):
@@ -28,13 +28,13 @@ class GameResultTests(unittest.TestCase):
         return gs.result()
 
     def test_ongoing_game(self):
-        result = ChessEngine.GameState().result()
+        result = engine.GameState().result()
         self.assertEqual(result, GameResult.ongoing())
         self.assertFalse(result.is_over)
         self.assertEqual(result.pgn, "*")
 
     def test_checkmate_names_the_winner(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         _play_uci(gs, ["f2f3", "e7e5", "g2g4", "d8h4"])  # mat du lion
         result = gs.result()
         self.assertEqual(result.termination, Termination.CHECKMATE)
@@ -62,7 +62,7 @@ class GameResultTests(unittest.TestCase):
         self.assertEqual(gs.result().description, "Nulle par la règle des 50 coups")
 
     def test_threefold_repetition(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         _play_uci(gs, ["g1f3", "g8f6", "f3g1", "f6g8"] * 2)
         gs.get_valid_moves()
         self.assertEqual(gs.result().termination, Termination.THREEFOLD_REPETITION)
@@ -80,7 +80,7 @@ class GameResultTests(unittest.TestCase):
         self.assertEqual(gs.result().winner, Color.WHITE)
 
     def test_undo_clears_the_result(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         _play_uci(gs, ["f2f3", "e7e5", "g2g4", "d8h4"])
         gs.undo_move()
         gs.get_valid_moves()

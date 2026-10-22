@@ -13,16 +13,14 @@ from multiprocessing import Process, Queue
 
 import pygame as p
 
-import ChessAI
-import ChessEngine
-import notation
-import paths
-import serialization
+from chessproject import paths, serialization
+from chessproject.ai import search
+from chessproject.core import engine, notation
 
 # --------------------------------------------------
 # Constantes d'affichage
 # --------------------------------------------------
-DIMENSION = ChessEngine.DIMENSION
+DIMENSION = engine.DIMENSION
 BOARD_WIDTH = BOARD_HEIGHT = 512
 MOVE_LOG_PANEL_WIDTH = 250
 LEFT_PANEL_WIDTH = 250
@@ -695,7 +693,7 @@ class GameController:
         self.renderer = Renderer(screen, SQ_SIZE, ui_manager, resource_manager, flip_board)
         self.move_log_font = p.font.SysFont("Arial", 14)
 
-        self.game_state = ChessEngine.GameState()
+        self.game_state = engine.GameState()
         self.valid_moves = self.game_state.get_valid_moves()
         self.ui.reset_timer()
 
@@ -711,7 +709,7 @@ class GameController:
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
-        self.promotion_moves: list[ChessEngine.Move] = []
+        self.promotion_moves: list[engine.Move] = []
 
     # -- helpers -------------------------------------------------------
     @property
@@ -820,7 +818,7 @@ class GameController:
             self._try_move(self.player_clicks[0], self.player_clicks[1])
 
     def _try_move(self, start, end):
-        move = ChessEngine.Move(start, end, self.game_state.board)
+        move = engine.Move(start, end, self.game_state.board)
         for valid_move in self.valid_moves:
             if move != valid_move:
                 continue
@@ -857,7 +855,7 @@ class GameController:
             self.animate = False
             self._stop_ai()
         elif e.key == p.K_r:  # Réinitialiser
-            self._new_game(ChessEngine.GameState())
+            self._new_game(engine.GameState())
             logger.info("Partie réinitialisée")
         elif e.key == p.K_s:  # Sauvegarder
             serialization.save_game(
@@ -890,7 +888,7 @@ class GameController:
             self.return_queue = Queue()
             # daemon : le processus est tué avec l'application au lieu d'être attendu.
             self.move_finder_process = Process(
-                target=ChessAI.find_best_move,
+                target=search.find_best_move,
                 args=(self.game_state, valid_moves, self.return_queue),
                 daemon=True,
             )
@@ -908,7 +906,7 @@ class GameController:
         if ai_move not in valid_moves:
             if ai_move is not None:
                 logger.error("Coup de l'IA illégal ignoré : %s", ai_move)
-            ai_move = ChessAI.find_random_move(valid_moves)
+            ai_move = search.find_random_move(valid_moves)
         self.game_state.make_move(ai_move)
         _play_move_sound(ai_move)
         self.move_made = True

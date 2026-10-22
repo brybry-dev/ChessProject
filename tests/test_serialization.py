@@ -5,9 +5,9 @@ import os
 import tempfile
 import unittest
 
-import ChessEngine
-import serialization
-from fen_utils import load_fen
+from chessproject import serialization
+from chessproject.core import engine
+from chessproject.core.fen import load_fen
 
 
 def _play(game_state, coords):
@@ -19,14 +19,14 @@ def _play(game_state, coords):
 
 class ToFenTests(unittest.TestCase):
     def test_start_position_fen(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         self.assertEqual(
             serialization.to_fen(gs),
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
         )
 
     def test_fen_after_e4(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         _play(gs, [(6, 4, 4, 4)])
         self.assertEqual(
             serialization.to_fen(gs),
@@ -34,7 +34,7 @@ class ToFenTests(unittest.TestCase):
         )
 
     def test_fen_roundtrips_through_load_fen(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         _play(gs, [(6, 4, 4, 4), (1, 2, 3, 2), (7, 6, 5, 5)])
         fen = serialization.to_fen(gs)
         reloaded = load_fen(fen)
@@ -52,7 +52,7 @@ class SaveLoadTests(unittest.TestCase):
             os.remove(self.path)
 
     def test_roundtrip_preserves_position_and_history(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         _play(gs, [(6, 4, 4, 4), (1, 4, 3, 4), (7, 1, 5, 2), (0, 1, 2, 2)])
         serialization.save_game(gs, flip_board=False, filename=self.path)
 
@@ -65,11 +65,11 @@ class SaveLoadTests(unittest.TestCase):
 
     def test_roundtrip_preserves_flip_board(self):
         # L'orientation est une préférence d'affichage : la position reste standard (B26).
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         serialization.save_game(gs, flip_board=True, filename=self.path)
         loaded, flip = serialization.load_game(self.path)
         self.assertTrue(flip)
-        self.assertEqual(loaded.board, ChessEngine.GameState().board)
+        self.assertEqual(loaded.board, engine.GameState().board)
 
     def _write(self, data):
         with open(self.path, "w", encoding="utf-8") as f:
@@ -98,7 +98,7 @@ class SaveLoadTests(unittest.TestCase):
             {
                 "version": 1,
                 "flip_board": False,
-                "start_fen": serialization.to_fen(ChessEngine.GameState()),
+                "start_fen": serialization.to_fen(engine.GameState()),
                 "moves": [[6, 4, 4, 4, None]],
             }
         )
@@ -107,7 +107,7 @@ class SaveLoadTests(unittest.TestCase):
         self.assertEqual(loaded.board[4][4], "wp")
 
     def test_saves_are_written_in_version_2(self):
-        serialization.save_game(ChessEngine.GameState(), filename=self.path)
+        serialization.save_game(engine.GameState(), filename=self.path)
         with open(self.path, encoding="utf-8") as f:
             self.assertEqual(json.load(f)["version"], 2)
 
@@ -130,7 +130,7 @@ class SaveLoadTests(unittest.TestCase):
             serialization.load_game(self.path)
 
     def test_checkmate_flag_recomputed_on_load(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         # Mat du berger
         _play(
             gs,

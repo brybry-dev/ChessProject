@@ -558,7 +558,7 @@ Prochaine étape : Phase 4 — Feuille de route (§4).
 |---|---|---|---|
 | **J0** Outillage ✅ | Rendre la qualité mesurable et automatique | Court terme | ~1,5 j |
 | **J1** Correction ✅ | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
-| **J2** Socle moteur | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
+| **J2** Socle moteur ✅ | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
 | **J3** IA | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
 | **J4** Fonctionnalités | PGN, cadence, niveaux dans l'UI, sauvegarde v2 | Moyen terme | ~5–6 j |
 | **J5** Interface pro | Scènes, thème, mise en page adaptative, finition visuelle | Fin de parcours | ~5–7 j |
@@ -629,6 +629,19 @@ corrigés, chacun verrouillé par un test. C'est un bon moment pour un premier t
 >   correction, les 1 000 parties aléatoires coïncident avec python-chess.
 > - J2.2 ✅ : `GameResult` / `Termination`. Le mat prime sur les 50 coups, auparavant déclarés
 >   nuls au 100ᵉ demi-coup. L'UI affiche le motif de fin.
+> - J2.3 ✅ : numpy retiré, tables d'évaluation déplacées dans l'IA, `Move` avec `__slots__`.
+>   **Écart** : les pièces restent des chaînes (`"wp"`) ; leur passage en entiers est reporté
+>   en J3, à décider selon les mesures.
+> - J2.4 ✅ : pile d'`UndoInfo`. Perft +24 %, et le coût d'un coup reste constant au fil de la
+>   partie.
+> - J2.5 ✅ : module `notation` (SAN/UCI), identique à python-chess sur ~160 000 demi-coups.
+>   Historique SAN dans l'UI.
+> - J2.6 ✅ : `FenError` et 13 règles de validation, compteurs FEN. Deux FEN de test
+>   illégales sont corrigées.
+> - J2.7 ✅ : `snake_case` partout, règles ruff `N`, paquet `chessproject/{core,ai,ui}` avec
+>   `tests/`. Commande `chessproject` ou `python -m chessproject`, ressources incluses dans
+>   le wheel.
+> - Mesure globale : perft(3) Kiwipete passe de 98 k à 147 k nœuds/s.
 
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|

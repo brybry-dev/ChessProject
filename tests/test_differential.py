@@ -16,8 +16,8 @@ from unittest import mock
 
 import pytest
 
-import ChessEngine
-from fen_utils import load_fen
+from chessproject.core import engine
+from chessproject.core.fen import load_fen
 
 try:
     import chess
@@ -141,7 +141,7 @@ class DifferentialHarnessTests(unittest.TestCase):
 
     def test_a_missing_legal_move_is_reported(self):
         # Moteur saboté (plus de roques) : Kiwipete autorise le roque d'emblée.
-        no_castling = mock.patch.object(ChessEngine.GameState, "get_castle_moves", lambda *a: None)
+        no_castling = mock.patch.object(engine.GameState, "get_castle_moves", lambda *a: None)
         with no_castling, self.assertRaises(_MismatchError):
             _play_random_game(START_FENS[1], seed=0, max_plies=1)
 

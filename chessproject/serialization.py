@@ -17,8 +17,8 @@ import json
 import logging
 from typing import Any
 
-import ChessEngine
-from fen_utils import load_fen, start_fullmove
+from chessproject.core import engine
+from chessproject.core.fen import load_fen, start_fullmove
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +35,12 @@ def _piece_to_fen_char(piece: str) -> str:
     return letter.upper() if piece[0] == "w" else letter.lower()
 
 
-def fullmove_number(game_state: ChessEngine.GameState) -> int:
+def fullmove_number(game_state: engine.GameState) -> int:
     """Numéro de coup FEN de la position courante (cf. B36).
 
     ``start_fullmove + (demi-coups joués + (1 si la position de départ avait les
     Noirs au trait)) // 2``. Le numéro de départ vient de la FEN chargée
-    (:func:`fen_utils.start_fullmove`, 1 par défaut). Le camp au trait au départ
+    (:func:`chessproject.core.fen.start_fullmove`, 1 par défaut). Le camp au trait au départ
     se déduit du trait courant et de la parité du nombre de demi-coups joués.
     """
     plies = len(game_state.move_log)
@@ -48,7 +48,7 @@ def fullmove_number(game_state: ChessEngine.GameState) -> int:
     return start_fullmove(game_state) + (plies + int(start_black)) // 2
 
 
-def to_fen(game_state: ChessEngine.GameState) -> str:
+def to_fen(game_state: engine.GameState) -> str:
     """Retourne la FEN complète (6 champs) de la position courante.
 
     - Roque : droits tels que stockés par le moteur (cases standard roi/tour).
@@ -88,7 +88,7 @@ def to_fen(game_state: ChessEngine.GameState) -> str:
 
     ep = game_state.enpassant_possible
     if ep:
-        enpassant = chr(ord("a") + ep[1]) + str(ChessEngine.DIMENSION - ep[0])
+        enpassant = chr(ord("a") + ep[1]) + str(engine.DIMENSION - ep[0])
     else:
         enpassant = "-"
 
@@ -98,7 +98,7 @@ def to_fen(game_state: ChessEngine.GameState) -> str:
 
 
 def game_to_dict(
-    game_state: ChessEngine.GameState, flip_board: bool = False, start_fen: str | None = None
+    game_state: engine.GameState, flip_board: bool = False, start_fen: str | None = None
 ) -> dict[str, Any]:
     """Sérialise la partie : position de départ + liste des coups.
 
@@ -107,7 +107,7 @@ def game_to_dict(
     (chargée par FEN). ``flip_board`` n'est qu'une préférence d'affichage.
     """
     if start_fen is None:
-        start_fen = to_fen(ChessEngine.GameState())
+        start_fen = to_fen(engine.GameState())
     moves: list[list[Any | None]] = [
         [m.start_row, m.start_col, m.end_row, m.end_col, m.promotion_piece]
         for m in game_state.move_log
@@ -122,7 +122,7 @@ def game_to_dict(
 
 
 def save_game(
-    game_state: ChessEngine.GameState,
+    game_state: engine.GameState,
     flip_board: bool = False,
     filename: str = DEFAULT_SAVE_FILE,
     start_fen: str | None = None,
@@ -136,13 +136,13 @@ def save_game(
 
 
 def _find_move(
-    game_state: ChessEngine.GameState,
+    game_state: engine.GameState,
     start_row: int,
     start_col: int,
     end_row: int,
     end_col: int,
     promotion: str | None,
-) -> ChessEngine.Move:
+) -> engine.Move:
     for move in game_state.get_valid_moves():
         if (move.start_row, move.start_col, move.end_row, move.end_col) != (
             start_row,
@@ -180,12 +180,12 @@ def _mirror_fen_files(fen: str) -> str:
     return " ".join(fields)
 
 
-def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState, bool]:
+def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[engine.GameState, bool]:
     """Recharge une partie et renvoie ``(game_state, flip_board)``.
 
     Rejoue les coups depuis la position de départ : l'état obtenu est donc
     toujours conforme aux règles courantes du moteur. Une ``start_fen`` mal
-    formée ou illégale lève :class:`fen_utils.FenError` (cf. B41).
+    formée ou illégale lève :class:`chessproject.core.fen.FenError` (cf. B41).
     """
     with open(filename, encoding="utf-8") as f:
         data = json.load(f)
@@ -203,11 +203,11 @@ def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState,
     if start_fen:
         game_state = load_fen(_mirror_fen_files(start_fen) if mirror else start_fen)
     else:
-        game_state = ChessEngine.GameState()
+        game_state = engine.GameState()
     for entry in data.get("moves", []):
         start_row, start_col, end_row, end_col, promotion = entry
         if mirror:
-            last = ChessEngine.DIMENSION - 1
+            last = engine.DIMENSION - 1
             start_col, end_col = last - start_col, last - end_col
         move = _find_move(game_state, start_row, start_col, end_row, end_col, promotion)
         game_state.make_move(move, validate=False)

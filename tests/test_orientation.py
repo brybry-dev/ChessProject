@@ -19,18 +19,18 @@ try:
 except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
-import ChessEngine
-import ChessMain
+from chessproject.core import engine
+from chessproject.ui import app
 
-START_BOARD = ChessEngine.GameState().board
+START_BOARD = engine.GameState().board
 
 
-def _renderer(flip_board: bool) -> "ChessMain.Renderer":
-    return ChessMain.Renderer(
+def _renderer(flip_board: bool) -> "app.Renderer":
+    return app.Renderer(
         p.display.get_surface(),
-        ChessMain.SQ_SIZE,
-        ChessMain.UIManager(512, 512, 250, 512),
-        ChessMain.ResourceManager(ChessMain.SQ_SIZE),
+        app.SQ_SIZE,
+        app.UIManager(512, 512, 250, 512),
+        app.ResourceManager(app.SQ_SIZE),
         flip_board,
     )
 
@@ -48,8 +48,8 @@ class RendererRotationTests(unittest.TestCase):
 
     def test_flipped_view_is_a_180_degree_rotation(self):
         r = _renderer(True)
-        top_left = (ChessMain.LEFT_PANEL_WIDTH + 5, 5)
-        bottom_right = (ChessMain.LEFT_PANEL_WIDTH + 8 * ChessMain.SQ_SIZE - 5, 8 * 64 - 5)
+        top_left = (app.LEFT_PANEL_WIDTH + 5, 5)
+        bottom_right = (app.LEFT_PANEL_WIDTH + 8 * app.SQ_SIZE - 5, 8 * 64 - 5)
         self.assertEqual(r.square_from_pixel(top_left), (7, 7))  # h1 en haut à gauche
         self.assertEqual(r.square_from_pixel(bottom_right), (0, 0))  # a8 en bas à droite
 
@@ -92,14 +92,14 @@ class PlayingBlackTests(unittest.TestCase):
     """Partie Joueur (Noirs) contre IA : plateau retourné."""
 
     def setUp(self):
-        self._orig = (ChessMain.Process, ChessMain.Queue)
-        ChessMain.Process = _InlineProcess  # type: ignore[misc, assignment]
-        ChessMain.Queue = _ListQueue  # type: ignore[misc, assignment]
-        self.gc = ChessMain.GameController(
+        self._orig = (app.Process, app.Queue)
+        app.Process = _InlineProcess  # type: ignore[misc, assignment]
+        app.Queue = _ListQueue  # type: ignore[misc, assignment]
+        self.gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            ChessMain.UIManager(512, 512, 250, 512),
-            ChessMain.ResourceManager(ChessMain.SQ_SIZE),
+            app.UIManager(512, 512, 250, 512),
+            app.ResourceManager(app.SQ_SIZE),
             "PvC",
             False,
             True,
@@ -107,7 +107,7 @@ class PlayingBlackTests(unittest.TestCase):
         )
 
     def tearDown(self):
-        ChessMain.Process, ChessMain.Queue = self._orig  # type: ignore[misc]
+        app.Process, app.Queue = self._orig  # type: ignore[misc]
 
     def _click(self, row, col):
         pos = self.gc.renderer.square_rect(row, col).center

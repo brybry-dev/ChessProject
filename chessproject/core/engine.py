@@ -1,6 +1,6 @@
 """
-Module ChessEngine
--------------------
+Module chessproject.core.engine
+-------------------------------
 Gestion du plateau, des coups, de l’évaluation et du cache des mouvements.
 """
 

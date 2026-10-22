@@ -3,8 +3,8 @@ import unittest
 from enum import Enum
 from multiprocessing import Process, Queue
 
-import ChessAI
-import ChessEngine
+from chessproject.ai import search
+from chessproject.core import engine
 
 
 class Color(Enum):
@@ -14,7 +14,7 @@ class Color(Enum):
 
 class TestChessRules(unittest.TestCase):
     def setUp(self):
-        self.game = ChessEngine.GameState()
+        self.game = engine.GameState()
 
     def test_insufficient_material(self):
         # Test : roi seul vs roi seul
@@ -33,7 +33,7 @@ class TestChessRules(unittest.TestCase):
         self.game.board[7][4] = "wK"
         self.game.board[0][4] = "bK"
         self.game.white_to_move = False  # noir à jouer
-        move = ChessEngine.Move((1, 3), (3, 3), self.game.board)
+        move = engine.Move((1, 3), (3, 3), self.game.board)
         self.game.make_move(move, validate=False)
         # La case d'en passant doit être mise à jour
         expected = ((1 + 3) // 2, 3)
@@ -47,7 +47,7 @@ class TestChessRules(unittest.TestCase):
         self.game.board = [["--"] * 8 for _ in range(8)]
         self.game.board[7] = ["wR", "--", "--", "--", "wK", "--", "--", "wR"]
         self.game.white_king_location = (7, 4)
-        self.game.current_castling_rights = ChessEngine.CastleRights(True, True, True, True)
+        self.game.current_castling_rights = engine.CastleRights(True, True, True, True)
         self.game.white_to_move = True
         valid_moves = self.game.get_valid_moves()
         castling_moves = [m for m in valid_moves if m.is_castle_move]
@@ -76,14 +76,14 @@ class TestChessRules(unittest.TestCase):
 
 class TestAI(unittest.TestCase):
     def setUp(self):
-        self.game = ChessEngine.GameState()
+        self.game = engine.GameState()
 
     def test_ai_performance(self):
         # Teste que l'IA renvoie un coup en moins de 5 secondes
         valid_moves = self.game.get_valid_moves()
-        q: Queue[ChessEngine.Move | None] = Queue()
+        q: Queue[engine.Move | None] = Queue()
         start_time = time.time()
-        p_process = Process(target=ChessAI.find_best_move, args=(self.game, valid_moves, q))
+        p_process = Process(target=search.find_best_move, args=(self.game, valid_moves, q))
         p_process.start()
         p_process.join(timeout=5)
         end_time = time.time()

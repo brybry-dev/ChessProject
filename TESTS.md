@@ -9,11 +9,13 @@ python -m pip install -e ".[dev]"
 ## Lancer les tests
 
 ```bash
-# Suite rapide (~7 s) — les tests marqués `slow` sont exclus par défaut
+# Suite rapide (~17 s) — les tests marqués `slow` sont exclus par défaut
 python -m pytest -q
 ```
 
 ## Contenu
+
+Les tests sont dans `tests/`.
 
 | Fichier | Rôle |
 |---|---|
@@ -25,20 +27,17 @@ python -m pytest -q
 | `test_ai.py` | IA : mat préféré au pat, mat le plus court, coup toujours rendu, mat en 2, évaluation en centipions nulle au départ et antisymétrique par miroir, capture gratuite. |
 | `test_game_controller.py` | Contrôleur sans écran (doublures de `Process` / `Queue`) : coup de l'IA après l'humain, reprise après R / L, sous-promotion via le popup, robustesse du processus d'IA, pendule hors menus et animations. |
 | `test_paths.py` | Lancement depuis un autre dossier, journal et sauvegarde dans le dossier de données utilisateur (sous-processus). |
-| `fen_utils.py` | Chargement d'une position FEN + fonctions `perft` / `perft_divide` (utilitaires de test, pas du code de jeu). |
+| `test_differential.py` | Parties aléatoires comparées coup par coup à python-chess : coups légaux, échec, mat, pat, nulles (50 rapides, 1 000 en `slow`). |
+| `test_fen.py` | Validation des FEN (31 FEN invalides, une par règle), aller-retour exact, compteurs. |
+| `test_notation.py` | SAN / UCI : roques, désambiguïsation, en passant, promotions, échec et mat ; comparaison avec python-chess. |
+| `test_game_result.py` | Résultat de partie : vainqueur, motif de fin, notation PGN, le mat prime sur les 50 coups. |
 
-## Perft profond (lent, ~150 s)
+## Tests longs (`slow`, ~4 min)
 
 ```bash
 python -m pytest -m slow -q
 ```
 
-Vérifie jusqu'à ~4 millions de nœuds par position (perft(5) sur la position
-initiale, perft(4) sur Kiwipete, etc.). Toutes ces valeurs sont exactes :
-le générateur de coups est conforme.
-
-## Tests différentiels (optionnel)
-
-Avec `python-chess` installé, on peut comparer coup par coup le générateur du
-moteur à un moteur de référence (voir l'historique Git pour le script `_diff.py`
-utilisé pendant la campagne de correction).
+Perft profond (jusqu'à ~4 millions de nœuds par position : perft(5) sur la
+position initiale, perft(4) sur Kiwipete, etc.), 1 000 parties différentielles
+contre python-chess et 2 000 parties de comparaison SAN/UCI.

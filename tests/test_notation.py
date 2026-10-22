@@ -14,9 +14,9 @@ import unittest
 
 import pytest
 
-import ChessEngine
-from fen_utils import load_fen
-from notation import (
+from chessproject.core import engine
+from chessproject.core.fen import load_fen
+from chessproject.core.notation import (
     NotationError,
     format_move_lines,
     move_list_to_san,
@@ -81,7 +81,7 @@ class SquareTests(unittest.TestCase):
 
 class UciTests(unittest.TestCase):
     def test_simple_and_castle(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         self.assertEqual(to_uci(_move(gs, "e2e4")), "e2e4")
         gs = load_fen("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
         castle = parse_uci(gs, "e1g1")
@@ -101,7 +101,7 @@ class UciTests(unittest.TestCase):
             parse_uci(gs, "h1h2q")  # pièce de promotion sur un coup normal
 
     def test_errors(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         for text in ("e2e5", "e7e5", "e2", "e2e4x", "", "z9z9"):
             with self.subTest(text=text), self.assertRaises(NotationError):
                 parse_uci(gs, text)
@@ -213,7 +213,7 @@ class SanTests(unittest.TestCase):
         self.assertEqual(_san("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1", "a1a7"), "Ra7")
 
     def test_scholars_mate(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         sans = ["e4", "e5", "Bc4", "Nc6", "Qh5", "Nf6", "Qxf7#"]
         moves = []
         for text in sans[:-1]:
@@ -222,7 +222,7 @@ class SanTests(unittest.TestCase):
             gs.make_move(move)
         self.assertEqual(to_san(gs, _move(gs, "h5f7")), "Qxf7#")
         moves.append(parse_san(gs, "Qxf7#"))
-        self.assertEqual(move_list_to_san(ChessEngine.GameState(), moves), sans)
+        self.assertEqual(move_list_to_san(engine.GameState(), moves), sans)
 
     def test_mate_on_hundredth_half_move_is_still_mate(self):
         # Le mat prime sur la règle des 50 coups (FIDE 9.3), en SAN comme dans le moteur.
@@ -247,7 +247,7 @@ class SanTests(unittest.TestCase):
             self.assertEqual(_snapshot(gs), before)
 
     def test_move_list_to_san_leaves_start_intact(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         before = _snapshot(gs)
         moves = [parse_uci(gs, "g1f3")]
         self.assertEqual(move_list_to_san(gs, moves), ["Nf3"])
@@ -256,16 +256,16 @@ class SanTests(unittest.TestCase):
             move_list_to_san(gs, [moves[0], moves[0]])  # Nf3 illégal pour les Noirs
 
     def test_illegal_or_malformed(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         for text in ("Nf4", "e5", "Ke2", "O-O", "Bxe3", "Pe4", "e9", "xyz", "", "Nxf3"):
             with self.subTest(text=text), self.assertRaises(NotationError):
                 parse_san(gs, text)
-        illegal = ChessEngine.Move((7, 4), (5, 4), gs.board)
+        illegal = engine.Move((7, 4), (5, 4), gs.board)
         with self.assertRaises(NotationError):
             to_san(gs, illegal)
 
     def test_annotations_tolerated(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         for text in ("Nf3", "Nf3!", "Nf3?!", "Nf3+", "Nf3#", " Nf3 ", "Ng1f3", "Ngf3"):
             with self.subTest(text=text):
                 self.assertEqual(to_uci(parse_san(gs, text)), "g1f3")
@@ -348,7 +348,7 @@ class PythonChessReferenceTests(unittest.TestCase):
 
 class HistoryTests(unittest.TestCase):
     def test_san_history_replays_the_whole_game_and_leaves_it_intact(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         for san in ("e4", "e5", "Nf3", "Nc6", "Bb5", "a6"):
             gs.make_move(parse_san(gs, san))
         before = _snapshot(gs)

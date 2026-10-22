@@ -39,7 +39,8 @@ python -m pip install -e .
 ## Lancement
 
 ```bash
-python ChessMain.py
+chessproject            # commande installée par pip
+python -m chessproject  # équivalent
 ```
 
 Le jeu peut être lancé depuis n'importe quel dossier. La sauvegarde (`saved_game.json`)
@@ -75,16 +76,20 @@ l'arbre des coups légaux est comparé aux valeurs publiées. Le détail des tes
 
 ## Structure du dépôt
 
-| Fichier | Rôle |
+Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de pygame).
+
+| Chemin | Rôle |
 |---|---|
-| `ChessMain.py` | Point d'entrée, interface Pygame (menus, rendu, animation) et contrôleur de partie |
-| `ChessEngine.py` | Moteur de règles : plateau, coups, génération des coups légaux, fins de partie |
-| `ChessAI.py` | IA : recherche NegaMax alpha-bêta et évaluation de position |
-| `serialization.py` | Sauvegarde / chargement des parties en JSON, génération de FEN |
-| `paths.py` | Chemins des ressources (images, sons) et des données utilisateur |
-| `fen_utils.py` | Chargement d'une position FEN et fonctions `perft` (utilitaires de test) |
-| `test_*.py` | Tests : perft, régressions de règles, sérialisation, contrôleur |
-| `images/`, `sounds/` | Images des pièces et effets sonores |
+| `chessproject/core/engine.py` | Moteur de règles : plateau, génération des coups légaux, annulation, fins de partie (`GameResult`) |
+| `chessproject/core/fen.py` | Lecture validée des positions FEN |
+| `chessproject/core/notation.py` | Notation SAN et UCI (lecture et écriture) |
+| `chessproject/core/perft.py` | Comptage perft, validation du générateur de coups |
+| `chessproject/ai/search.py` | IA : NegaMax alpha-bêta, table de transposition, évaluation en centipions |
+| `chessproject/serialization.py` | Sauvegarde / chargement JSON versionné, export FEN |
+| `chessproject/paths.py` | Chemins des ressources et des données utilisateur |
+| `chessproject/ui/app.py` | Interface pygame : menus, rendu, contrôleur de partie, point d'entrée |
+| `chessproject/assets/` | Images des pièces et effets sonores |
+| `tests/` | Tests : perft, différentiels contre python-chess, règles, IA, notation, FEN, UI |
 | `pyproject.toml` | Métadonnées, dépendances, configuration de ruff, mypy et pytest |
 | `RAPPORT_ANALYSE.md` | Audit du projet, suivi des bugs et feuille de route |
 
@@ -92,7 +97,7 @@ l'arbre des coups légaux est comparé aux valeurs publiées. Le détail des tes
 
 - **J0 — Outillage** ✅ : `pyproject.toml`, ruff, mypy, CI multi-OS, README.
 - **J1 — Correction** ✅ : plus aucun bug bloquant connu (règles, IA, contrôleur).
-- **J2 — Socle moteur** : types, modèle de résultat de partie, notation SAN, FEN validée.
+- **J2 — Socle moteur** ✅ : types, modèle de résultat de partie, notation SAN, FEN validée.
 - **J3 — IA** : adversaire solide, borné en temps, avec niveaux de difficulté.
 - **J4 — Fonctionnalités** : import/export PGN, cadence (temps + incrément), sauvegarde v2.
 - **J5 — Interface** : refonte visuelle, mise en page adaptative, interactions soignées.

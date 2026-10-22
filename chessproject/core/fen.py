@@ -1,7 +1,7 @@
 """
 Utilitaires FEN
 ---------------
-Chargement **validé** d'une position au format FEN vers un ``ChessEngine.GameState``
+Chargement **validé** d'une position au format FEN vers un ``engine.GameState``
 (cf. rapport d'analyse B36, B41). Toute FEN mal formée ou décrivant une position
 illégale lève une :class:`FenError` au message explicite : la FEN d'une sauvegarde
 JSON (``start_fen``), modifiable à la main, ne peut donc plus introduire un état
@@ -10,12 +10,11 @@ incohérent dans le moteur.
 Les compteurs sont pris en compte : le champ demi-coups initialise
 ``fifty_move_counter`` ; le numéro de coup initialise ``GameState.start_fullmove``.
 
-``perft`` / ``perft_divide`` restent ici provisoirement (importés par les tests).
 """
 
-import ChessEngine
+from chessproject.core import engine
 
-DIMENSION = ChessEngine.DIMENSION
+DIMENSION = engine.DIMENSION
 FILES = "abcdefgh"
 PIECE_CHARS = "PNBRQKpnbrqk"
 
@@ -24,7 +23,7 @@ class FenError(ValueError):
     """FEN mal formée ou décrivant une position illégale."""
 
 
-def start_fullmove(game_state: ChessEngine.GameState) -> int:
+def start_fullmove(game_state: engine.GameState) -> int:
     """Numéro de coup de la position de départ du ``game_state``."""
     return game_state.start_fullmove
 
@@ -72,9 +71,9 @@ _CASTLING_REQUIREMENTS = {
 }
 
 
-def _parse_castling(castling: str, board: list[list[str]]) -> ChessEngine.CastleRights:
+def _parse_castling(castling: str, board: list[list[str]]) -> engine.CastleRights:
     if castling == "-":
-        return ChessEngine.CastleRights(False, False, False, False)
+        return engine.CastleRights(False, False, False, False)
     if any(ch not in "KQkq" for ch in castling):
         raise FenError(f"Champ de roque invalide : {castling!r} (attendu ⊂ 'KQkq' ou '-')")
     if len(set(castling)) != len(castling):
@@ -86,9 +85,7 @@ def _parse_castling(castling: str, board: list[list[str]]) -> ChessEngine.Castle
                 f"Droit de roque {right!r} incohérent : roi attendu en {_square_name(kr, kc)} "
                 f"et tour en {_square_name(rr, rc)}"
             )
-    return ChessEngine.CastleRights(
-        "K" in castling, "k" in castling, "Q" in castling, "q" in castling
-    )
+    return engine.CastleRights("K" in castling, "k" in castling, "Q" in castling, "q" in castling)
 
 
 def _parse_enpassant(
@@ -132,7 +129,7 @@ def _parse_counter(value: str, name: str, minimum: int) -> int:
     return int(value)
 
 
-def load_fen(fen: str) -> ChessEngine.GameState:
+def load_fen(fen: str) -> engine.GameState:
     """Construit un GameState à partir d'une chaîne FEN, après validation.
 
     Accepte 6 champs, ou 4 (compteurs omis : demi-coups 0, coup 1). Lève
@@ -163,7 +160,7 @@ def load_fen(fen: str) -> ChessEngine.GameState:
     halfmove = _parse_counter(halfmove_str, "de demi-coups", 0)
     fullmove = _parse_counter(fullmove_str, "de coups", 1)
 
-    gs = ChessEngine.GameState()
+    gs = engine.GameState()
     gs.board = board
     gs.white_king_location = white_king
     gs.black_king_location = black_king
@@ -182,25 +179,3 @@ def load_fen(fen: str) -> ChessEngine.GameState:
     gs.start_fullmove = fullmove
     gs.reset_history()
     return gs
-
-
-def perft(game_state: ChessEngine.GameState, depth: int) -> int:
-    """Compte les nœuds feuilles de l'arbre des coups légaux jusqu'à ``depth``."""
-    if depth == 0:
-        return 1
-    total = 0
-    for move in list(game_state.get_valid_moves()):
-        game_state.make_move(move, validate=False)
-        total += perft(game_state, depth - 1)
-        game_state.undo_move()
-    return total
-
-
-def perft_divide(game_state: ChessEngine.GameState, depth: int) -> "dict[str, int]":
-    """perft détaillé par coup racine (utile au diagnostic)."""
-    result: dict[str, int] = {}
-    for move in list(game_state.get_valid_moves()):
-        game_state.make_move(move, validate=False)
-        result[move.get_chess_notation()] = perft(game_state, depth - 1)
-        game_state.undo_move()
-    return result

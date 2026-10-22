@@ -1,6 +1,6 @@
 """
-Module ChessAI
-----------------
+Module chessproject.ai.search
+-----------------------------
 Recherche NegaMax avec élagage alpha-bêta, approfondissement itératif et une table de
 transposition simple.
 
@@ -18,7 +18,7 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
-import ChessEngine
+from chessproject.core import engine
 
 INF: int = 10**6  # Borne de la fenêtre alpha-bêta, strictement supérieure à MATE
 MATE: int = 100_000  # Score d'un mat à la racine ; un mat à `ply` demi-coups vaut MATE - ply
@@ -115,14 +115,14 @@ class TTEntry:
     depth: int
     score: int
     flag: int
-    best_move: ChessEngine.Move | None
+    best_move: engine.Move | None
 
 
 TranspositionTable = dict[str, TTEntry]
 
 
 def find_best_move(
-    game_state: ChessEngine.GameState, valid_moves: list[ChessEngine.Move], return_queue: Any
+    game_state: engine.GameState, valid_moves: list[engine.Move], return_queue: Any
 ) -> None:
     """
     Cherche le meilleur coup en itérant en profondeur et le dépose dans ``return_queue``.
@@ -131,7 +131,7 @@ def find_best_move(
     if not valid_moves:
         return_queue.put(None)
         return
-    best_move: ChessEngine.Move = valid_moves[0]
+    best_move: engine.Move = valid_moves[0]
     transposition_table: TranspositionTable = {}
     for current_depth in range(1, DEPTH + 1):
         score, move = negamax(
@@ -147,14 +147,14 @@ def find_best_move(
 
 
 def negamax(
-    game_state: ChessEngine.GameState,
-    valid_moves: list[ChessEngine.Move],
+    game_state: engine.GameState,
+    valid_moves: list[engine.Move],
     depth: int,
     alpha: int,
     beta: int,
     ply: int,
     transposition_table: TranspositionTable,
-) -> tuple[int, ChessEngine.Move | None]:
+) -> tuple[int, engine.Move | None]:
     """
     NegaMax avec élagage alpha-bêta.
 
@@ -174,7 +174,7 @@ def negamax(
 
     board_hash = game_state.get_board_hash_str()
     entry = transposition_table.get(board_hash)
-    tt_move: ChessEngine.Move | None = None
+    tt_move: engine.Move | None = None
     if entry is not None:
         tt_move = entry.best_move
         # Jamais de court-circuit à la racine : il faut un coup, pas seulement un score.
@@ -188,7 +188,7 @@ def negamax(
         reverse=True,
     )
     max_score = -INF
-    best_move: ChessEngine.Move = ordered[0]
+    best_move: engine.Move = ordered[0]
     for move in ordered:
         game_state.make_move(move, validate=False)
         next_moves = game_state.get_valid_moves()
@@ -214,7 +214,7 @@ def negamax(
     return max_score, best_move
 
 
-def move_ordering_heuristic(game_state: ChessEngine.GameState, move: ChessEngine.Move) -> int:
+def move_ordering_heuristic(game_state: engine.GameState, move: engine.Move) -> int:
     """
     Score d'ordonnancement, sans jouer le coup : MVV-LVA pour les captures
     (``10 × victime - attaquant``) et bonus pour les promotions. Plus grand = essayé avant.
@@ -229,7 +229,7 @@ def move_ordering_heuristic(game_state: ChessEngine.GameState, move: ChessEngine
     return score
 
 
-def score_board(game_state: ChessEngine.GameState) -> int:
+def score_board(game_state: engine.GameState) -> int:
     """
     Évaluation statique en centipions entiers, du point de vue des Blancs.
 
@@ -242,8 +242,8 @@ def score_board(game_state: ChessEngine.GameState) -> int:
     """
     board = game_state.board
     total = 0
-    for r in range(ChessEngine.DIMENSION):
-        for c in range(ChessEngine.DIMENSION):
+    for r in range(engine.DIMENSION):
+        for c in range(engine.DIMENSION):
             piece = board[r][c]
             if piece == "--":
                 continue
@@ -266,13 +266,13 @@ def _king_danger(board: list[list[str]], king: tuple[int, int], enemy_color: str
     penalty = 0
     for dr, dc in _KING_OFFSETS:
         nr, nc = king_row + dr, king_col + dc
-        if 0 <= nr < ChessEngine.DIMENSION and 0 <= nc < ChessEngine.DIMENSION:
+        if 0 <= nr < engine.DIMENSION and 0 <= nc < engine.DIMENSION:
             if board[nr][nc][0] == enemy_color:
                 penalty += KING_SAFETY_PENALTY
     return penalty
 
 
-def find_random_move(valid_moves: list[ChessEngine.Move]) -> ChessEngine.Move:
+def find_random_move(valid_moves: list[engine.Move]) -> engine.Move:
     """
     Retourne un coup aléatoire parmi ceux valides.
     """

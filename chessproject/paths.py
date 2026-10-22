@@ -15,9 +15,9 @@ from platformdirs import user_data_path
 
 APP_NAME = "ChessProject"
 
-ROOT_DIR = Path(__file__).resolve().parent
-IMAGES_DIR = ROOT_DIR / "images"
-SOUNDS_DIR = ROOT_DIR / "sounds"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+IMAGES_DIR = ASSETS_DIR / "images"
+SOUNDS_DIR = ASSETS_DIR / "sounds"
 
 SAVE_FILE_NAME = "saved_game.json"
 LOG_FILE_NAME = "chess.log"

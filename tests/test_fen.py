@@ -5,9 +5,9 @@ import os
 import tempfile
 import unittest
 
-import ChessEngine
-import serialization
-from fen_utils import FenError, load_fen, start_fullmove
+from chessproject import serialization
+from chessproject.core import engine
+from chessproject.core.fen import FenError, load_fen, start_fullmove
 
 EMPTY_KINGS = "4k3/8/8/8/8/8/8/4K3"
 
@@ -103,7 +103,7 @@ class TestFenRoundTrip(unittest.TestCase):
         self.assertEqual(start_fullmove(gs), 87)
 
     def test_standard_game_state_fullmove(self):
-        gs = ChessEngine.GameState()
+        gs = engine.GameState()
         self.assertEqual(serialization.fullmove_number(gs), 1)
 
 

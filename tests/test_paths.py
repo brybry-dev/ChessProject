@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 
-REPO = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _run_from(cwd, code, data_dir):
@@ -30,8 +30,8 @@ def _run_from(cwd, code, data_dir):
 class ResourcesTests(unittest.TestCase):
     def test_images_and_sounds_load_from_another_directory(self):
         code = (
-            "import ChessMain, paths;"
-            "ChessMain.ResourceManager(64).get_image('wK');"
+            "from chessproject import paths; from chessproject.ui import app;"
+            "app.ResourceManager(64).get_image('wK');"
             "assert all((paths.SOUNDS_DIR / n).is_file() for n in "
             "('move1.wav', 'capture1.wav', 'gameover.wav'))"
         )
@@ -43,10 +43,10 @@ class ResourcesTests(unittest.TestCase):
 class UserDataTests(unittest.TestCase):
     def test_log_goes_to_the_user_data_directory_at_info_level(self):
         code = (
-            "import logging, ChessMain;"
-            "ChessMain._configure_logging();"
-            "logging.getLogger('ChessMain').debug('bruit');"
-            "logging.getLogger('ChessMain').info('signal');"
+            "import logging; from chessproject.ui import app;"
+            "app._configure_logging();"
+            "logging.getLogger('chessproject.ui.app').debug('bruit');"
+            "logging.getLogger('chessproject.ui.app').info('signal');"
             "logging.shutdown()"
         )
         with tempfile.TemporaryDirectory() as cwd, tempfile.TemporaryDirectory() as data:
@@ -59,7 +59,7 @@ class UserDataTests(unittest.TestCase):
         self.assertNotIn("bruit", log)
 
     def test_save_file_lives_in_the_user_data_directory(self):
-        code = "import paths; print(paths.save_file())"
+        code = "from chessproject import paths; print(paths.save_file())"
         with tempfile.TemporaryDirectory() as cwd, tempfile.TemporaryDirectory() as data:
             result = _run_from(cwd, code, data)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -69,7 +69,7 @@ class UserDataTests(unittest.TestCase):
             )
 
     def test_legacy_save_in_the_working_directory_is_still_found(self):
-        code = "import paths; print(paths.existing_save_file())"
+        code = "from chessproject import paths; print(paths.existing_save_file())"
         with tempfile.TemporaryDirectory() as cwd, tempfile.TemporaryDirectory() as data:
             with open(os.path.join(cwd, "saved_game.json"), "w", encoding="utf-8") as f:
                 f.write("{}")
