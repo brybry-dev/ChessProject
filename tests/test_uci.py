@@ -190,3 +190,19 @@ def test_allocate_time_ms(
 def test_allocate_time_is_monotonic() -> None:
     values = [uci.allocate_time_ms(t, 100) for t in range(0, 300_000, 1000)]
     assert values == sorted(values)
+
+
+def test_level_command_line_option() -> None:
+    out = io.StringIO()
+    uci.run(io.StringIO("go movetime 50\nquit\n"), out, level="Débutant")
+    assert out.getvalue().strip().splitlines()[-1].startswith("bestmove ")
+    completed = subprocess.run(
+        [sys.executable, "-m", "chessproject.uci", "--level", "Facile"],
+        input="position startpos\ngo movetime 50\nquit\n",
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_S,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip().splitlines()[-1].startswith("bestmove ")

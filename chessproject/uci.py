@@ -30,6 +30,7 @@ le protocole. Une recherche réellement interruptible viendra avec J3.2.
 
 from __future__ import annotations
 
+import argparse
 import contextlib
 import sys
 from typing import TextIO
@@ -275,18 +276,29 @@ class UciEngine:
             self.send(f"bestmove {bestmove}")
 
 
-def run(stdin: TextIO, stdout: TextIO) -> None:
-    """Boucle principale : lit ``stdin`` ligne par ligne jusqu'à ``quit`` ou EOF."""
+def run(stdin: TextIO, stdout: TextIO, level: str | None = None) -> None:
+    """Boucle principale : lit ``stdin`` ligne par ligne jusqu'à ``quit`` ou EOF.
+
+    ``level`` fixe le niveau de départ (équivalent de ``setoption name Level``).
+    """
     engine = UciEngine(stdout)
+    engine.level = level
     for line in stdin:
         if not engine.handle(line):
             return
     engine._flush_pending()
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Moteur UCI ChessProject.")
+    parser.add_argument(
+        "--level",
+        choices=[level.name for level in levels.LEVELS],
+        help="niveau de difficulté de départ (défaut : pleine force)",
+    )
+    args = parser.parse_args(argv)
     with contextlib.suppress(KeyboardInterrupt, BrokenPipeError):
-        run(sys.stdin, sys.stdout)
+        run(sys.stdin, sys.stdout, args.level)
 
 
 if __name__ == "__main__":
