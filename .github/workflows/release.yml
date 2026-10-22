@@ -2,11 +2,23 @@ name: Release
 
 # Exécutables Windows, macOS et Linux (J6.2) : construits et testés à chaque tag de
 # version, puis publiés dans une release GitHub avec les notes du CHANGELOG (J6.4).
-# Lancé à la main (workflow_dispatch), il construit sans publier.
+# Lancé à la main (workflow_dispatch) ou par une PR qui touche à l'empaquetage, il
+# construit et teste sans publier.
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "tools/build_exe.py"
+      - "chessproject/__main__.py"
+      - "chessproject/assets/**"
+      - "pyproject.toml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
