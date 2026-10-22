@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Jeu d'échecs en Python / Pygame avec une IA NegaMax."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
 dependencies = [
     "pygame==2.6.1",
     "numpy==2.5.3",
