@@ -1,4 +1,5 @@
 """Tests de la sérialisation JSON des parties (module ``serialization``)."""
+
 import os
 import tempfile
 import unittest
@@ -89,8 +90,18 @@ class SaveLoadTests(unittest.TestCase):
     def test_checkmate_flag_recomputed_on_load(self):
         gs = ChessEngine.GameState()
         # Mat du berger
-        _play(gs, [(6, 4, 4, 4), (1, 4, 3, 4), (7, 5, 4, 2),
-                   (0, 1, 2, 2), (7, 3, 3, 7), (0, 6, 2, 5), (3, 7, 1, 5)])
+        _play(
+            gs,
+            [
+                (6, 4, 4, 4),
+                (1, 4, 3, 4),
+                (7, 5, 4, 2),
+                (0, 1, 2, 2),
+                (7, 3, 3, 7),
+                (0, 6, 2, 5),
+                (3, 7, 1, 5),
+            ],
+        )
         gs.getValidMoves()  # calcule les drapeaux de fin de partie
         self.assertTrue(gs.checkmate)
         serialization.save_game(gs, filename=self.path)

@@ -10,11 +10,12 @@ un risque de sécurité si le fichier provient d'ailleurs. Le format JSON ici
 est lisible, versionné et rejoue les coups par le moteur, donc toujours
 cohérent avec les règles courantes.
 """
+
 from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import ChessEngine
 from fen_utils import load_fen
@@ -28,13 +29,13 @@ def _piece_to_fen_char(piece: str) -> str:
     return letter.upper() if piece[0] == "w" else letter.lower()
 
 
-def to_fen(game_state: "ChessEngine.GameState") -> str:
+def to_fen(game_state: ChessEngine.GameState) -> str:
     """Retourne la FEN complète (6 champs) de la position courante.
 
     Le champ de roque suppose les cases standard roi/tour ; il n'est donné
     qu'à titre indicatif et n'est pas utilisé pour recharger la partie.
     """
-    rows: List[str] = []
+    rows: list[str] = []
     for board_row in game_state.board:
         fen_row = ""
         empties = 0
@@ -54,8 +55,12 @@ def to_fen(game_state: "ChessEngine.GameState") -> str:
     turn = "w" if game_state.white_to_move else "b"
 
     cr = game_state.current_castling_rights
-    castling = ("K" if cr.wks else "") + ("Q" if cr.wqs else "") + \
-               ("k" if cr.bks else "") + ("q" if cr.bqs else "")
+    castling = (
+        ("K" if cr.wks else "")
+        + ("Q" if cr.wqs else "")
+        + ("k" if cr.bks else "")
+        + ("q" if cr.bqs else "")
+    )
     castling = castling or "-"
 
     ep = game_state.enpassant_possible
@@ -69,8 +74,9 @@ def to_fen(game_state: "ChessEngine.GameState") -> str:
     return f"{board_part} {turn} {castling} {enpassant} {halfmove} {fullmove}"
 
 
-def game_to_dict(game_state: "ChessEngine.GameState", flip_board: bool = False,
-                 start_fen: Optional[str] = None) -> Dict[str, Any]:
+def game_to_dict(
+    game_state: ChessEngine.GameState, flip_board: bool = False, start_fen: str | None = None
+) -> dict[str, Any]:
     """Sérialise la partie : position de départ + liste des coups.
 
     ``start_fen`` par défaut = position initiale standard (roi/dame permutés si
@@ -79,7 +85,7 @@ def game_to_dict(game_state: "ChessEngine.GameState", flip_board: bool = False,
     """
     if start_fen is None:
         start_fen = to_fen(ChessEngine.GameState(flip_board=flip_board))
-    moves: List[List[Optional[Any]]] = [
+    moves: list[list[Any | None]] = [
         [m.start_row, m.start_col, m.end_row, m.end_col, m.promotion_piece]
         for m in game_state.move_log
     ]
@@ -92,8 +98,12 @@ def game_to_dict(game_state: "ChessEngine.GameState", flip_board: bool = False,
     }
 
 
-def save_game(game_state: "ChessEngine.GameState", flip_board: bool = False,
-              filename: str = DEFAULT_SAVE_FILE, start_fen: Optional[str] = None) -> None:
+def save_game(
+    game_state: ChessEngine.GameState,
+    flip_board: bool = False,
+    filename: str = DEFAULT_SAVE_FILE,
+    start_fen: str | None = None,
+) -> None:
     try:
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(game_to_dict(game_state, flip_board, start_fen), f, indent=2)
@@ -102,11 +112,21 @@ def save_game(game_state: "ChessEngine.GameState", flip_board: bool = False,
         logging.error("Erreur lors de la sauvegarde : %s", e)
 
 
-def _find_move(game_state: "ChessEngine.GameState", start_row: int, start_col: int,
-               end_row: int, end_col: int, promotion: Optional[str]) -> "ChessEngine.Move":
+def _find_move(
+    game_state: ChessEngine.GameState,
+    start_row: int,
+    start_col: int,
+    end_row: int,
+    end_col: int,
+    promotion: str | None,
+) -> ChessEngine.Move:
     for move in game_state.getValidMoves():
-        if (move.start_row, move.start_col, move.end_row, move.end_col) != \
-                (start_row, start_col, end_row, end_col):
+        if (move.start_row, move.start_col, move.end_row, move.end_col) != (
+            start_row,
+            start_col,
+            end_row,
+            end_col,
+        ):
             continue
         if move.is_pawn_promotion and promotion is not None and move.promotion_piece != promotion:
             continue
@@ -117,13 +137,13 @@ def _find_move(game_state: "ChessEngine.GameState", start_row: int, start_col: i
     )
 
 
-def load_game(filename: str = DEFAULT_SAVE_FILE) -> Tuple["ChessEngine.GameState", bool]:
+def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState, bool]:
     """Recharge une partie et renvoie ``(game_state, flip_board)``.
 
     Rejoue les coups depuis la position de départ : l'état obtenu est donc
     toujours conforme aux règles courantes du moteur.
     """
-    with open(filename, "r", encoding="utf-8") as f:
+    with open(filename, encoding="utf-8") as f:
         data = json.load(f)
 
     version = data.get("version")

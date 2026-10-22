@@ -3,40 +3,63 @@ Module ChessAI
 ----------------
 """
 
-from typing import List, Tuple, Dict, Any, Optional, Callable
 import random
+from typing import Any
+
 import ChessEngine
 
 CHECKMATE: int = 1000
 DEPTH: int = 3  # Profondeur maximale
 
-def findBestMove(game_state: ChessEngine.GameState, valid_moves: List[ChessEngine.Move], return_queue: Any) -> None:
+
+def findBestMove(
+    game_state: ChessEngine.GameState, valid_moves: list[ChessEngine.Move], return_queue: Any
+) -> None:
     """
     Cherche le meilleur coup en itérant en profondeur.
     """
-    best_move: Optional[ChessEngine.Move] = None
-    transposition_table: Dict[int, Dict[str, Any]] = {}
+    best_move: ChessEngine.Move | None = None
+    transposition_table: dict[int, dict[str, Any]] = {}
     for current_depth in range(1, DEPTH + 1):
-        best_score, best_move = negamax(game_state, valid_moves, current_depth, -CHECKMATE, CHECKMATE, 1 if game_state.white_to_move else -1, transposition_table)
+        best_score, best_move = negamax(
+            game_state,
+            valid_moves,
+            current_depth,
+            -CHECKMATE,
+            CHECKMATE,
+            1 if game_state.white_to_move else -1,
+            transposition_table,
+        )
     return_queue.put(best_move)
 
-def negamax(game_state: ChessEngine.GameState, valid_moves: List[ChessEngine.Move], depth: int, alpha: int, beta: int, turn_multiplier: int, transposition_table: Dict[int, Dict[str, Any]]) -> Tuple[int, Optional[ChessEngine.Move]]:
+
+def negamax(
+    game_state: ChessEngine.GameState,
+    valid_moves: list[ChessEngine.Move],
+    depth: int,
+    alpha: int,
+    beta: int,
+    turn_multiplier: int,
+    transposition_table: dict[int, dict[str, Any]],
+) -> tuple[int, ChessEngine.Move | None]:
     """
     Fonction récursive NegaMax avec élagage alpha‑beta.
     """
     board_hash = game_state.get_board_hash_str()
-    if board_hash in transposition_table and transposition_table[board_hash]['depth'] >= depth:
-        return transposition_table[board_hash]['score'], None
+    if board_hash in transposition_table and transposition_table[board_hash]["depth"] >= depth:
+        return transposition_table[board_hash]["score"], None
     if depth == 0:
         return turn_multiplier * scoreBoard(game_state), None
 
     valid_moves.sort(key=lambda move: moveOrderingHeuristic(game_state, move), reverse=True)
     max_score: int = -CHECKMATE
-    best_move: Optional[ChessEngine.Move] = None
+    best_move: ChessEngine.Move | None = None
     for move in valid_moves:
         game_state.makeMove(move, validate=False)
         next_moves = game_state.getValidMoves()
-        score, _ = negamax(game_state, next_moves, depth - 1, -beta, -alpha, -turn_multiplier, transposition_table)
+        score, _ = negamax(
+            game_state, next_moves, depth - 1, -beta, -alpha, -turn_multiplier, transposition_table
+        )
         score = -score
         game_state.undoMove()
         if score > max_score:
@@ -45,8 +68,9 @@ def negamax(game_state: ChessEngine.GameState, valid_moves: List[ChessEngine.Mov
         alpha = max(alpha, score)
         if alpha >= beta:
             break
-    transposition_table[board_hash] = {'score': max_score, 'depth': depth}
+    transposition_table[board_hash] = {"score": max_score, "depth": depth}
     return max_score, best_move
+
 
 def moveOrderingHeuristic(game_state: ChessEngine.GameState, move: ChessEngine.Move) -> int:
     """
@@ -66,6 +90,7 @@ def moveOrderingHeuristic(game_state: ChessEngine.GameState, move: ChessEngine.M
         score -= 20  # Pénalité pour position répétée
     return score
 
+
 def scoreBoard(game_state: ChessEngine.GameState) -> int:
     """
     Évalue le plateau en prenant en compte plusieurs critères :
@@ -82,7 +107,7 @@ def scoreBoard(game_state: ChessEngine.GameState) -> int:
 
     total_score: float = 0
     center_bonus: float = 0.5
-    center_squares: List[Tuple[int, int]] = [(3,3), (3,4), (4,3), (4,4)]
+    center_squares: list[tuple[int, int]] = [(3, 3), (3, 4), (4, 3), (4, 4)]
 
     # Valeur matériel et positionnelle
     for r in range(ChessEngine.DIMENSION):
@@ -92,7 +117,9 @@ def scoreBoard(game_state: ChessEngine.GameState) -> int:
                 piece_value = ChessEngine.piece_score.get(piece[1], 0)
                 position_score = 0
                 if piece[1] != "K":
-                    position_score = ChessEngine.piece_position_scores.get(piece, [[0]*ChessEngine.DIMENSION]*ChessEngine.DIMENSION)[r][c]
+                    position_score = ChessEngine.piece_position_scores.get(
+                        piece, [[0] * ChessEngine.DIMENSION] * ChessEngine.DIMENSION
+                    )[r][c]
                 # Bonus pour le contrôle du centre
                 if (r, c) in center_squares:
                     position_score += center_bonus
@@ -103,9 +130,7 @@ def scoreBoard(game_state: ChessEngine.GameState) -> int:
 
     # Sécurité du roi : pénalité si des pièces ennemies sont adjacentes
     king_safety_penalty = 0
-    adjacent_offsets = [(-1,-1), (-1,0), (-1,1),
-                        (0,-1),          (0,1),
-                        (1,-1),  (1,0),  (1,1)]
+    adjacent_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
     if game_state.white_to_move:
         king_row, king_col = game_state.white_king_location
         enemy_color = "b"
@@ -138,14 +163,16 @@ def scoreBoard(game_state: ChessEngine.GameState) -> int:
 
     return int(total_score)
 
-def get_board_hash(board: List[List[str]], white_to_move: bool) -> int:
+
+def get_board_hash(board: list[list[str]], white_to_move: bool) -> int:
     """
     Génère un hash pour l'état du plateau.
     """
     board_tuple = tuple(tuple(row) for row in board)
     return hash((board_tuple, white_to_move))
 
-def findRandomMove(valid_moves: List[ChessEngine.Move]) -> ChessEngine.Move:
+
+def findRandomMove(valid_moves: list[ChessEngine.Move]) -> ChessEngine.Move:
     """
     Retourne un coup aléatoire parmi ceux valides.
     """

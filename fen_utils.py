@@ -5,6 +5,7 @@ Chargement d'une position au format FEN vers un ``ChessEngine.GameState``.
 Utilisé par la suite de tests (perft, non-régression). Ne gère que ce qui est
 nécessaire au moteur : plateau, trait, droits de roque, case d'en passant.
 """
+
 import ChessEngine
 
 
@@ -30,14 +31,18 @@ def load_fen(fen: str) -> ChessEngine.GameState:
 
     gs = ChessEngine.GameState()
     gs.board = board
-    gs.white_to_move = (turn == "w")
+    gs.white_to_move = turn == "w"
     gs.current_castling_rights = ChessEngine.CastleRights(
         "K" in castling, "k" in castling, "Q" in castling, "q" in castling
     )
-    gs.castle_rights_log = [ChessEngine.CastleRights(
-        gs.current_castling_rights.wks, gs.current_castling_rights.bks,
-        gs.current_castling_rights.wqs, gs.current_castling_rights.bqs,
-    )]
+    gs.castle_rights_log = [
+        ChessEngine.CastleRights(
+            gs.current_castling_rights.wks,
+            gs.current_castling_rights.bks,
+            gs.current_castling_rights.wqs,
+            gs.current_castling_rights.bqs,
+        )
+    ]
 
     if enpassant != "-":
         col = ord(enpassant[0]) - ord("a")

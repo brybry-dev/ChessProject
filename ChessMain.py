@@ -2,10 +2,15 @@
 Fichier Principal, gérant les entrées/sorties, la personnalisation et les sauvegardes.
 """
 
-import pygame as p
-import sys, os, logging
+import logging
+import os
+import sys
 from multiprocessing import Process, Queue
-import ChessEngine, ChessAI
+
+import pygame as p
+
+import ChessAI
+import ChessEngine
 import serialization
 
 # --------------------------------------------------
@@ -24,9 +29,13 @@ def _configure_logging() -> None:
     """Configure le logging fichier. Appelé depuis main() pour éviter les
     effets de bord à l'import (les tests importent ce module)."""
     if not logging.getLogger().handlers:
-        logging.basicConfig(filename="chess_debug.log", level=logging.DEBUG,
-                            format="%(asctime)s - %(levelname)s - %(message)s")
+        logging.basicConfig(
+            filename="chess_debug.log",
+            level=logging.DEBUG,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+        )
     logging.info("Lancement du jeu d'échecs")
+
 
 # --------------------------------------------------
 # Gestion des ressources
@@ -36,7 +45,7 @@ class ResourceManager:
 
     def __new__(cls, sq_size, image_path="images"):
         if cls._instance is None:
-            cls._instance = super(ResourceManager, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
             cls._instance.sq_size = sq_size
             cls._instance.image_path = image_path
             cls._instance.cache = {}
@@ -52,6 +61,7 @@ class ResourceManager:
         image = p.transform.scale(p.image.load(path), (self.sq_size, self.sq_size))
         self.cache[piece] = image
         return image
+
 
 # --------------------------------------------------
 # UI Manager
@@ -96,8 +106,8 @@ class UIManager:
     def draw_timer(self, screen, white_to_move):
         # Fond du chronomètre
         timer_rect = p.Rect(10, 10, LEFT_PANEL_WIDTH - 20, 100)
-        p.draw.rect(screen, p.Color('black'), timer_rect)
-        p.draw.rect(screen, p.Color('white'), timer_rect, 2)
+        p.draw.rect(screen, p.Color("black"), timer_rect)
+        p.draw.rect(screen, p.Color("white"), timer_rect, 2)
 
         # Police pour le chronomètre
         font = p.font.SysFont("Arial", 24, bold=True)
@@ -109,33 +119,44 @@ class UIManager:
             return f"{minutes:02d}:{seconds:02d}"
 
         # Affichage du temps des blancs
-        white_text = font.render(f"Blancs: {format_time(self.white_time)}", True,
-                               p.Color('white') if white_to_move else p.Color('gray'))
+        white_text = font.render(
+            f"Blancs: {format_time(self.white_time)}",
+            True,
+            p.Color("white") if white_to_move else p.Color("gray"),
+        )
         screen.blit(white_text, (20, 20))
 
         # Affichage du temps des noirs
-        black_text = font.render(f"Noirs: {format_time(self.black_time)}", True,
-                               p.Color('white') if not white_to_move else p.Color('gray'))
+        black_text = font.render(
+            f"Noirs: {format_time(self.black_time)}",
+            True,
+            p.Color("white") if not white_to_move else p.Color("gray"),
+        )
         screen.blit(black_text, (20, 60))
 
     def draw_move_log(self, screen, game_state, font):
         # Panneau gauche
         left_panel_rect = p.Rect(0, 0, LEFT_PANEL_WIDTH, self.move_log_panel_height)
-        p.draw.rect(screen, p.Color('black'), left_panel_rect)
+        p.draw.rect(screen, p.Color("black"), left_panel_rect)
 
         # Affichage du chronomètre
         self.draw_timer(screen, game_state.white_to_move)
 
         # Panneau droit (historique des coups)
-        move_log_rect = p.Rect(self.board_width + LEFT_PANEL_WIDTH, 0, self.move_log_panel_width, self.move_log_panel_height)
-        p.draw.rect(screen, p.Color('black'), move_log_rect)
+        move_log_rect = p.Rect(
+            self.board_width + LEFT_PANEL_WIDTH,
+            0,
+            self.move_log_panel_width,
+            self.move_log_panel_height,
+        )
+        p.draw.rect(screen, p.Color("black"), move_log_rect)
 
         # Affichage des coups
         move_texts = []
         for i in range(0, len(game_state.move_log), 2):
-            move_str = f"{i//2 + 1}. {game_state.move_log[i]} "
-            if i+1 < len(game_state.move_log):
-                move_str += f"{game_state.move_log[i+1]}"
+            move_str = f"{i // 2 + 1}. {game_state.move_log[i]} "
+            if i + 1 < len(game_state.move_log):
+                move_str += f"{game_state.move_log[i + 1]}"
             move_texts.append(move_str)
 
         # Zone de défilement pour l'historique des coups
@@ -145,17 +166,22 @@ class UIManager:
         self.move_log_offset = min(self.move_log_offset, self.max_scroll)
 
         scroll_area = p.Surface((self.move_log_panel_width, self.move_log_panel_height))
-        scroll_area.fill(p.Color('black'))
+        scroll_area.fill(p.Color("black"))
         y = 5 - self.move_log_offset
         for i, text in enumerate(move_texts):
-            color = p.Color('yellow') if i == len(move_texts)-1 else p.Color('white')
+            color = p.Color("yellow") if i == len(move_texts) - 1 else p.Color("white")
             text_surf = font.render(text, True, color)
             scroll_area.blit(text_surf, (5, y))
             y += font.get_height() + 2
         screen.blit(scroll_area, (self.board_width + LEFT_PANEL_WIDTH, 0))
 
     def handle_scroll(self, event, mouse_pos):
-        move_log_rect = p.Rect(self.board_width + LEFT_PANEL_WIDTH, 0, self.move_log_panel_width, self.move_log_panel_height)
+        move_log_rect = p.Rect(
+            self.board_width + LEFT_PANEL_WIDTH,
+            0,
+            self.move_log_panel_width,
+            self.move_log_panel_height,
+        )
         if move_log_rect.collidepoint(mouse_pos):
             new_offset = self.move_log_offset - event.y * self.SCROLL_SPEED
             self.move_log_offset = max(0, min(new_offset, self.max_scroll))
@@ -163,8 +189,9 @@ class UIManager:
     def draw_loading_indicator(self, screen):
         font = p.font.SysFont("Arial", 24)
         dots = "." * ((p.time.get_ticks() // 500) % 4)
-        text = font.render("IA réfléchit" + dots, True, p.Color('white'))
+        text = font.render("IA réfléchit" + dots, True, p.Color("white"))
         screen.blit(text, (self.board_width + LEFT_PANEL_WIDTH + 10, self.board_height - 40))
+
 
 # --------------------------------------------------
 # Classes UI de base
@@ -179,20 +206,21 @@ class Button:
         self.hovered = False
 
     def draw(self, screen):
-        color = p.Color('dodgerblue2') if self.hovered else p.Color('lightgray')
+        color = p.Color("dodgerblue2") if self.hovered else p.Color("lightgray")
         p.draw.rect(screen, color, self.rect)
         font = p.font.SysFont("Arial", 24)
-        text_surf = font.render(self.text, True, p.Color('black'))
+        text_surf = font.render(self.text, True, p.Color("black"))
         text_rect = text_surf.get_rect(center=self.rect.center)
         screen.blit(text_surf, text_rect)
 
     def check_hover(self, mouse_pos):
         self.hovered = self.rect.collidepoint(mouse_pos)
 
+
 class PromotionPopup:
     def __init__(self, pos, size, callback):
         self.rect = p.Rect(pos, size)
-        self.pieces = ['Q', 'R', 'B', 'N']
+        self.pieces = ["Q", "R", "B", "N"]
         self.buttons = []
         btn_size = (60, 60)
         for i, piece in enumerate(self.pieces):
@@ -201,8 +229,8 @@ class PromotionPopup:
             self.buttons.append(Button(piece, (x, y), btn_size, lambda p=piece: callback(p)))
 
     def draw(self, screen):
-        p.draw.rect(screen, p.Color('white'), self.rect)
-        p.draw.rect(screen, p.Color('black'), self.rect, 3)
+        p.draw.rect(screen, p.Color("white"), self.rect)
+        p.draw.rect(screen, p.Color("black"), self.rect, 3)
         for btn in self.buttons:
             btn.check_hover(p.mouse.get_pos())
             btn.draw(screen)
@@ -240,8 +268,12 @@ class Renderer:
         return None
 
     def _rect(self, disp_row, col):
-        return p.Rect(col * self.sq_size + LEFT_PANEL_WIDTH,
-                      disp_row * self.sq_size, self.sq_size, self.sq_size)
+        return p.Rect(
+            col * self.sq_size + LEFT_PANEL_WIDTH,
+            disp_row * self.sq_size,
+            self.sq_size,
+            self.sq_size,
+        )
 
     # -- dessin ---------------------------------------------------------
     @staticmethod
@@ -258,10 +290,10 @@ class Renderer:
                 p.draw.rect(self.screen, color, self._rect(disp_row, col))
 
                 if self.flip_board:
-                    file_letter = chr(ord('h') - col)
+                    file_letter = chr(ord("h") - col)
                     rank_num = row + 1
                 else:
-                    file_letter = chr(ord('a') + col)
+                    file_letter = chr(ord("a") + col)
                     rank_num = 8 - row
 
                 if col == 0:
@@ -269,9 +301,12 @@ class Renderer:
                     self.screen.blit(rank_text, (LEFT_PANEL_WIDTH + 2, disp_row * self.sq_size + 2))
                 if row == DIMENSION - 1:
                     file_text = font.render(file_letter, True, text_color)
-                    text_rect = file_text.get_rect(bottomright=(
-                        col * self.sq_size + LEFT_PANEL_WIDTH + self.sq_size - 2,
-                        disp_row * self.sq_size + self.sq_size - 2))
+                    text_rect = file_text.get_rect(
+                        bottomright=(
+                            col * self.sq_size + LEFT_PANEL_WIDTH + self.sq_size - 2,
+                            disp_row * self.sq_size + self.sq_size - 2,
+                        )
+                    )
                     self.screen.blit(file_text, text_rect)
 
     def draw_pieces(self, board):
@@ -284,24 +319,28 @@ class Renderer:
 
     def highlight_squares(self, game_state, valid_moves, square_selected):
         if game_state.in_check:
-            king_row, king_col = game_state.white_king_location if game_state.white_to_move else game_state.black_king_location
+            king_row, king_col = (
+                game_state.white_king_location
+                if game_state.white_to_move
+                else game_state.black_king_location
+            )
             s = p.Surface((self.sq_size, self.sq_size))
             s.set_alpha(150)
-            s.fill(p.Color('red'))
+            s.fill(p.Color("red"))
             self.screen.blit(s, self._rect(self.display_row(king_row), king_col))
         if game_state.move_log:
             last_move = game_state.move_log[-1]
             s = p.Surface((self.sq_size, self.sq_size))
             s.set_alpha(100)
-            s.fill(p.Color('green'))
+            s.fill(p.Color("green"))
             self.screen.blit(s, self._rect(self.display_row(last_move.end_row), last_move.end_col))
         if square_selected:
             row, col = square_selected
             s = p.Surface((self.sq_size, self.sq_size))
             s.set_alpha(100)
-            s.fill(p.Color('blue'))
+            s.fill(p.Color("blue"))
             self.screen.blit(s, self._rect(self.display_row(row), col))
-            s.fill(p.Color('yellow'))
+            s.fill(p.Color("yellow"))
             for move in valid_moves:
                 if move.start_row == row and move.start_col == col:
                     self.screen.blit(s, self._rect(self.display_row(move.end_row), move.end_col))
@@ -311,9 +350,10 @@ class Renderer:
         text_object = font.render(text, True, p.Color("gray"))
         text_location = p.Rect(0, 0, BOARD_WIDTH, BOARD_HEIGHT).move(
             LEFT_PANEL_WIDTH + BOARD_WIDTH / 2 - text_object.get_width() / 2,
-            BOARD_HEIGHT / 2 - text_object.get_height() / 2)
+            BOARD_HEIGHT / 2 - text_object.get_height() / 2,
+        )
         self.screen.blit(text_object, text_location)
-        text_object = font.render(text, True, p.Color('black'))
+        text_object = font.render(text, True, p.Color("black"))
         self.screen.blit(text_object, text_location.move(2, 2))
 
     def animate_move(self, move, board, clock):
@@ -332,18 +372,32 @@ class Renderer:
             disp_row = self.display_row(row)
             self.draw_board()
             self.draw_pieces(board)
-            color = self.ui.board_color1 if (disp_end_row + move.end_col) % 2 == 0 else self.ui.board_color2
+            color = (
+                self.ui.board_color1
+                if (disp_end_row + move.end_col) % 2 == 0
+                else self.ui.board_color2
+            )
             p.draw.rect(self.screen, color, self._rect(disp_end_row, move.end_col))
-            if move.piece_captured != '--':
+            if move.piece_captured != "--":
                 capture_disp_row = disp_end_row
                 if move.is_enpassant_move:
-                    enpassant_row = move.end_row + 1 if move.piece_captured[0] == 'b' else move.end_row - 1
+                    enpassant_row = (
+                        move.end_row + 1 if move.piece_captured[0] == "b" else move.end_row - 1
+                    )
                     capture_disp_row = self.display_row(enpassant_row)
-                self.screen.blit(self.resources.get_image(move.piece_captured),
-                                 self._rect(capture_disp_row, move.end_col))
-            self.screen.blit(self.resources.get_image(move.piece_moved),
-                             p.Rect(col * self.sq_size + LEFT_PANEL_WIDTH,
-                                    disp_row * self.sq_size, self.sq_size, self.sq_size))
+                self.screen.blit(
+                    self.resources.get_image(move.piece_captured),
+                    self._rect(capture_disp_row, move.end_col),
+                )
+            self.screen.blit(
+                self.resources.get_image(move.piece_moved),
+                p.Rect(
+                    col * self.sq_size + LEFT_PANEL_WIDTH,
+                    disp_row * self.sq_size,
+                    self.sq_size,
+                    self.sq_size,
+                ),
+            )
             p.display.flip()
             clock.tick(60)
 
@@ -365,12 +419,32 @@ def gameModeMenu(screen):
         ((w - button_width) // 2, start_y),
         ((w - button_width) // 2, start_y + button_height + spacing),
         ((w - button_width) // 2, start_y + 2 * (button_height + spacing)),
-        ((w - button_width) // 2, start_y + 3 * (button_height + spacing))
+        ((w - button_width) // 2, start_y + 3 * (button_height + spacing)),
     ]
-    buttons.append(Button("Joueur vs Joueur", positions[0], (button_width, button_height), lambda: ("PvP", True, True)))
-    buttons.append(Button("Joueur vs IA", positions[1], (button_width, button_height), lambda: open_color_selection(screen, "PvC")))
-    buttons.append(Button("IA vs IA", positions[2], (button_width, button_height), lambda: ("CvC", False, False)))
-    buttons.append(Button("Quitter", positions[3], (button_width, button_height), lambda: sys.exit()))
+    buttons.append(
+        Button(
+            "Joueur vs Joueur",
+            positions[0],
+            (button_width, button_height),
+            lambda: ("PvP", True, True),
+        )
+    )
+    buttons.append(
+        Button(
+            "Joueur vs IA",
+            positions[1],
+            (button_width, button_height),
+            lambda: open_color_selection(screen, "PvC"),
+        )
+    )
+    buttons.append(
+        Button(
+            "IA vs IA", positions[2], (button_width, button_height), lambda: ("CvC", False, False)
+        )
+    )
+    buttons.append(
+        Button("Quitter", positions[3], (button_width, button_height), lambda: sys.exit())
+    )
     while True:
         menu_surface.fill(p.Color("white"))
         for btn in buttons:
@@ -385,6 +459,7 @@ def gameModeMenu(screen):
                         return btn.callback()
         screen.blit(menu_surface, (0, 0))
         p.display.flip()
+
 
 def open_color_selection(screen, mode):
     buttons = []
@@ -398,10 +473,14 @@ def open_color_selection(screen, mode):
     start_y = (h - total_height) // 2
     positions = [
         ((w - button_width) // 2, start_y),
-        ((w - button_width) // 2, start_y + button_height + spacing)
+        ((w - button_width) // 2, start_y + button_height + spacing),
     ]
-    buttons.append(Button("Blanc", positions[0], (button_width, button_height), lambda: (mode, True, False)))
-    buttons.append(Button("Noir", positions[1], (button_width, button_height), lambda: (mode, False, True)))
+    buttons.append(
+        Button("Blanc", positions[0], (button_width, button_height), lambda: (mode, True, False))
+    )
+    buttons.append(
+        Button("Noir", positions[1], (button_width, button_height), lambda: (mode, False, True))
+    )
     while True:
         menu_surface.fill(p.Color("white"))
         for btn in buttons:
@@ -417,11 +496,12 @@ def open_color_selection(screen, mode):
         screen.blit(menu_surface, (0, 0))
         p.display.flip()
 
+
 def customization_menu(screen, ui_manager):
     options = [
         (p.Color("white"), p.Color("gray")),
         (p.Color("beige"), p.Color("saddlebrown")),
-        (p.Color("lightgreen"), p.Color("darkgreen"))
+        (p.Color("lightgreen"), p.Color("darkgreen")),
     ]
     buttons = []
     button_width = 250
@@ -433,11 +513,13 @@ def customization_menu(screen, ui_manager):
     total_height = len(options) * button_height + (len(options) - 1) * spacing
     start_y = (h - total_height) // 2
     for i, (col1, col2) in enumerate(options):
-        pos = ((w - button_width) // 2, start_y + i*(button_height + spacing))
+        pos = ((w - button_width) // 2, start_y + i * (button_height + spacing))
+
         def callback(c1=col1, c2=col2):
             ui_manager.board_color1 = c1
             ui_manager.board_color2 = c2
-        buttons.append(Button(f"Couleurs {i+1}", pos, (button_width, button_height), callback))
+
+        buttons.append(Button(f"Couleurs {i + 1}", pos, (button_width, button_height), callback))
     while True:
         menu_surface.fill(p.Color("white"))
         for btn in buttons:
@@ -454,13 +536,14 @@ def customization_menu(screen, ui_manager):
         screen.blit(menu_surface, (0, 0))
         p.display.flip()
 
+
 def show_shortcuts_menu(screen):
     menu_surface = p.Surface(screen.get_size())
     menu_surface.fill(p.Color("white"))
     w, h = screen.get_size()
 
     # Création du bouton retour
-    back_button = Button("Retour", (w//2 - 100, h - 100), (200, 50), lambda: None)
+    back_button = Button("Retour", (w // 2 - 100, h - 100), (200, 50), lambda: None)
 
     # Liste des raccourcis
     shortcuts = [
@@ -469,7 +552,7 @@ def show_shortcuts_menu(screen):
         ("S", "Sauvegarder la partie"),
         ("L", "Charger la partie"),
         ("C", "Personnaliser les couleurs"),
-        ("H", "Afficher/masquer les raccourcis")
+        ("H", "Afficher/masquer les raccourcis"),
     ]
 
     # Affichage des raccourcis
@@ -478,7 +561,7 @@ def show_shortcuts_menu(screen):
 
     # Titre
     title = title_font.render("Raccourcis Clavier", True, p.Color("black"))
-    title_rect = title.get_rect(center=(w//2, 50))
+    title_rect = title.get_rect(center=(w // 2, 50))
     menu_surface.blit(title, title_rect)
 
     # Raccourcis
@@ -486,8 +569,8 @@ def show_shortcuts_menu(screen):
         key_text = font.render(f"{key}:", True, p.Color("blue"))
         desc_text = font.render(desc, True, p.Color("black"))
         y_pos = 150 + i * 40
-        menu_surface.blit(key_text, (w//2 - 150, y_pos))
-        menu_surface.blit(desc_text, (w//2 - 100, y_pos))
+        menu_surface.blit(key_text, (w // 2 - 150, y_pos))
+        menu_surface.blit(desc_text, (w // 2 - 100, y_pos))
 
     while True:
         for e in p.event.get():
@@ -504,6 +587,7 @@ def show_shortcuts_menu(screen):
         back_button.draw(menu_surface)
         screen.blit(menu_surface, (0, 0))
         p.display.flip()
+
 
 # --------------------------------------------------
 # Initialisation des sons
@@ -522,9 +606,11 @@ def _load_sounds() -> None:
     except Exception as e:
         logging.warning(f"Impossible d'initialiser l'audio: {e}")
         return
-    for name, path in (("move_sound", "sounds/move1.wav"),
-                       ("capture_sound", "sounds/capture1.wav"),
-                       ("gameover_sound", "sounds/gameover.wav")):
+    for name, path in (
+        ("move_sound", "sounds/move1.wav"),
+        ("capture_sound", "sounds/capture1.wav"),
+        ("gameover_sound", "sounds/gameover.wav"),
+    ):
         try:
             globals()[name] = p.mixer.Sound(path)
         except Exception as e:
@@ -544,14 +630,15 @@ class GameController:
     """Boucle de jeu : événements, IA, rendu. Extrait de l'ancienne fonction
     ``main()`` monolithique (cf. rapport d'analyse : découpage de main())."""
 
-    def __init__(self, screen, clock, ui_manager, resource_manager,
-                 mode, player_one, player_two, flip_board):
+    def __init__(
+        self, screen, clock, ui_manager, resource_manager, mode, player_one, player_two, flip_board
+    ):
         self.screen = screen
         self.clock = clock
         self.ui = ui_manager
         self.mode = mode
-        self.player_one = player_one   # humain joue les blancs
-        self.player_two = player_two   # humain joue les noirs
+        self.player_one = player_one  # humain joue les blancs
+        self.player_two = player_two  # humain joue les noirs
         self.renderer = Renderer(screen, SQ_SIZE, ui_manager, resource_manager, flip_board)
         self.move_log_font = p.font.SysFont("Arial", 14)
 
@@ -579,8 +666,9 @@ class GameController:
         return self.renderer.flip_board
 
     def human_turn(self):
-        return (self.game_state.white_to_move and self.player_one) or \
-               (not self.game_state.white_to_move and self.player_two)
+        return (self.game_state.white_to_move and self.player_one) or (
+            not self.game_state.white_to_move and self.player_two
+        )
 
     def _reset_selection(self):
         self.square_selected = ()
@@ -624,8 +712,9 @@ class GameController:
         for btn in self.promotion_popup.buttons:
             if btn.rect.collidepoint(e.pos):
                 chosen = btn.text
-                self.game_state.makeMove(self.promotion_pending_move,
-                                         promotion_callback=lambda: chosen)
+                self.game_state.makeMove(
+                    self.promotion_pending_move, promotion_callback=lambda chosen=chosen: chosen
+                )
                 _play_move_sound(self.promotion_pending_move)
                 self.move_made = True
                 self.animate = True
@@ -639,7 +728,7 @@ class GameController:
         if square is None:
             return
         row, col = square
-        my_color = 'w' if self.game_state.white_to_move else 'b'
+        my_color = "w" if self.game_state.white_to_move else "b"
         piece = self.game_state.board[row][col]
 
         if not self.player_clicks:
@@ -670,7 +759,9 @@ class GameController:
                 self.promotion_pending_move = valid_move
                 self.promotion_popup = PromotionPopup(
                     (BOARD_WIDTH // 2 - 150 + LEFT_PANEL_WIDTH, BOARD_HEIGHT // 2 - 50),
-                    (300, 100), lambda piece: piece)
+                    (300, 100),
+                    lambda piece: piece,
+                )
             else:
                 self.game_state.makeMove(valid_move)
                 self.move_made = True
@@ -721,8 +812,8 @@ class GameController:
             self.ai_thinking = True
             self.return_queue = Queue()
             self.move_finder_process = Process(
-                target=ChessAI.findBestMove,
-                args=(self.game_state, valid_moves, self.return_queue))
+                target=ChessAI.findBestMove, args=(self.game_state, valid_moves, self.return_queue)
+            )
             self.move_finder_process.start()
         if self.move_finder_process and not self.move_finder_process.is_alive():
             ai_move = self.return_queue.get()
@@ -747,7 +838,11 @@ class GameController:
             self.promotion_popup.draw(self.screen)
         if self.game_state.checkmate:
             self.game_over = True
-            end_text = "Noir gagne par échec et mat" if self.game_state.white_to_move else "Blanc gagne par échec et mat"
+            end_text = (
+                "Noir gagne par échec et mat"
+                if self.game_state.white_to_move
+                else "Blanc gagne par échec et mat"
+            )
             self.renderer.draw_end_game_text(end_text)
         elif self.game_state.stalemate:
             self.game_over = True
@@ -769,8 +864,9 @@ class GameController:
             # renvoie un coup rejeté par makeMove (« Mouvement non valide »).
             if self.move_made:
                 if self.animate and self.game_state.move_log:
-                    self.renderer.animate_move(self.game_state.move_log[-1],
-                                               self.game_state.board, self.clock)
+                    self.renderer.animate_move(
+                        self.game_state.move_log[-1], self.game_state.board, self.clock
+                    )
                 self.valid_moves = self.game_state.getValidMoves()
                 self.move_made = False
                 self.animate = False
@@ -791,17 +887,19 @@ def main():
     p.init()
     _load_sounds()
     screen = p.display.set_mode(
-        (BOARD_WIDTH + MOVE_LOG_PANEL_WIDTH + LEFT_PANEL_WIDTH, BOARD_HEIGHT), p.RESIZABLE)
+        (BOARD_WIDTH + MOVE_LOG_PANEL_WIDTH + LEFT_PANEL_WIDTH, BOARD_HEIGHT), p.RESIZABLE
+    )
     clock = p.time.Clock()
     ui_manager = UIManager(BOARD_WIDTH, BOARD_HEIGHT, MOVE_LOG_PANEL_WIDTH, MOVE_LOG_PANEL_HEIGHT)
     resource_manager = ResourceManager(SQ_SIZE)
 
     mode, player_one, player_two = gameModeMenu(screen)
     # En PvC, si le joueur humain a les noirs, on retourne le plateau.
-    flip_board = (mode == "PvC" and not player_one)
+    flip_board = mode == "PvC" and not player_one
 
-    controller = GameController(screen, clock, ui_manager, resource_manager,
-                                mode, player_one, player_two, flip_board)
+    controller = GameController(
+        screen, clock, ui_manager, resource_manager, mode, player_one, player_two, flip_board
+    )
     controller.run()
 
 

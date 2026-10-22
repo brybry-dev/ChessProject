@@ -8,6 +8,7 @@ découverte en prise en passant.
 
 Les cas profonds (lents) portent le marqueur ``slow`` : ``pytest -m slow``.
 """
+
 import unittest
 
 import pytest

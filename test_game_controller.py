@@ -5,6 +5,7 @@ position courante après le coup de l'humain — un décalage d'une itération
 faisait auparavant planter la partie avec « Mouvement non valide » dès le
 premier coup en mode Joueur (blancs) vs IA.
 """
+
 import os
 import queue
 import unittest
@@ -21,7 +22,6 @@ try:
 except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
-import ChessAI
 import ChessMain
 
 
@@ -62,8 +62,9 @@ class AITurnAfterHumanMove(unittest.TestCase):
         ui = ChessMain.UIManager(512, 512, 250, 512)
         rm = ChessMain.ResourceManager(64)
         # Humain = blancs, IA = noirs, plateau non retourné.
-        self.gc = ChessMain.GameController(self.screen, self.clock, ui, rm,
-                                           "PvC", True, False, False)
+        self.gc = ChessMain.GameController(
+            self.screen, self.clock, ui, rm, "PvC", True, False, False
+        )
         self._orig_process = ChessMain.Process
         self._orig_queue = ChessMain.Queue
         ChessMain.Process = _InlineProcess
@@ -79,8 +80,8 @@ class AITurnAfterHumanMove(unittest.TestCase):
         self.gc.handle_event(p.event.Event(p.MOUSEBUTTONDOWN, {"pos": pos, "button": 1}))
 
     def test_ai_replies_with_legal_move_after_first_white_move(self):
-        self._click_square(6, 4)   # e2
-        self._click_square(4, 4)   # e4
+        self._click_square(6, 4)  # e2
+        self._click_square(4, 4)  # e4
         self.assertTrue(self.gc.move_made)
         self.assertEqual(len(self.gc.game_state.move_log), 1)
 

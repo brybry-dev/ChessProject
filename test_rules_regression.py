@@ -11,6 +11,7 @@ Verrouille les bugs corrigés lors de l'étape « règles justes » :
   - sous-promotions générées ;
   - prise en passant interdite si elle expose le roi (échec à la découverte).
 """
+
 import unittest
 
 import ChessEngine
@@ -95,8 +96,9 @@ class TestPromotion(unittest.TestCase):
 
     def test_underpromotion_to_knight_is_applied(self):
         gs = load_fen("8/P7/8/8/8/8/8/K6k w - - 0 1")
-        move = next(m for m in gs.getValidMoves()
-                    if m.is_pawn_promotion and m.promotion_piece == "N")
+        move = next(
+            m for m in gs.getValidMoves() if m.is_pawn_promotion and m.promotion_piece == "N"
+        )
         gs.makeMove(move, validate=False)
         self.assertEqual(gs.board[0][0], "wN")
 

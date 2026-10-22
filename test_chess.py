@@ -1,14 +1,16 @@
-import unittest
 import time
-from multiprocessing import Process, Queue
-import ChessEngine
-import ChessAI
-import numpy as np
-
+import unittest
 from enum import Enum
+from multiprocessing import Process, Queue
+
+import ChessAI
+import ChessEngine
+
+
 class Color(Enum):
     WHITE = "w"
     BLACK = "b"
+
 
 class TestChessRules(unittest.TestCase):
     def setUp(self):
@@ -19,7 +21,9 @@ class TestChessRules(unittest.TestCase):
         self.game.board = [["--"] * 8 for _ in range(8)]
         self.game.board[0][0] = "wK"
         self.game.board[7][7] = "bK"
-        self.assertTrue(self.game.insufficient_material(), "Devrait détecter une insuffisance de matériel")
+        self.assertTrue(
+            self.game.insufficient_material(), "Devrait détecter une insuffisance de matériel"
+        )
 
     def test_en_passant(self):
         # Met en place une situation d'en passant
@@ -29,10 +33,10 @@ class TestChessRules(unittest.TestCase):
         self.game.board[7][4] = "wK"
         self.game.board[0][4] = "bK"
         self.game.white_to_move = False  # noir à jouer
-        move = ChessEngine.Move((1,3), (3,3), self.game.board)
+        move = ChessEngine.Move((1, 3), (3, 3), self.game.board)
         self.game.makeMove(move, validate=False)
         # La case d'en passant doit être mise à jour
-        expected = ((1+3)//2, 3)
+        expected = ((1 + 3) // 2, 3)
         self.assertEqual(self.game.enpassant_possible, expected, "En passant non mis à jour")
         valid_moves = self.game.getValidMoves()
         en_passant_moves = [m for m in valid_moves if m.is_enpassant_move]
@@ -42,7 +46,7 @@ class TestChessRules(unittest.TestCase):
         # Test de roque : création d'un plateau simplifié pour le roque
         self.game.board = [["--"] * 8 for _ in range(8)]
         self.game.board[7] = ["wR", "--", "--", "--", "wK", "--", "--", "wR"]
-        self.game.white_king_location = (7,4)
+        self.game.white_king_location = (7, 4)
         self.game.current_castling_rights = ChessEngine.CastleRights(True, True, True, True)
         self.game.white_to_move = True
         valid_moves = self.game.getValidMoves()
@@ -65,7 +69,10 @@ class TestChessRules(unittest.TestCase):
         # Simule le compteur des 50 coups
         self.game.fifty_move_counter = 100
         valid_moves = self.game.getValidMoves()
-        self.assertEqual(len(valid_moves), 0, "La règle des 50 coups doit provoquer un draw (aucun mouvement)")
+        self.assertEqual(
+            len(valid_moves), 0, "La règle des 50 coups doit provoquer un draw (aucun mouvement)"
+        )
+
 
 class TestAI(unittest.TestCase):
     def setUp(self):
@@ -86,6 +93,7 @@ class TestAI(unittest.TestCase):
             self.assertIsNotNone(best_move, "L'IA doit renvoyer un coup")
         else:
             self.fail("Aucun coup n'a été renvoyé par l'IA")
+
 
 if __name__ == "__main__":
     unittest.main()
