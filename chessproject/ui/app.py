@@ -31,6 +31,10 @@ MAX_FPS = 30
 # repli est joué. La limite de réflexion pilotée par niveau viendra en J3.
 AI_MAX_THINK_SECONDS = 30.0
 AI_RESULT_TIMEOUT_SECONDS = 1.0
+# Surcoût d'un coup de l'IA hors réflexion (lancement du processus, transmission du
+# résultat, dépassement de l'échéance) : estimé au départ, puis mesuré en jeu.
+AI_INITIAL_OVERHEAD_MS = 250.0
+AI_OVERHEAD_SMOOTHING = 0.3
 SQ_SIZE = BOARD_HEIGHT // DIMENSION
 
 
@@ -802,6 +806,8 @@ class GameController:
 
         self.ai_thinking = False
         self.ai_started_at = 0.0
+        self.ai_overhead_ms = AI_INITIAL_OVERHEAD_MS
+        self._ai_requested_ms = None
         # Niveau de l'IA (choix dans le menu prévu en J4.6).
         self.ai_level = levels.DEFAULT_LEVEL.name
         self.move_finder_process = None
@@ -1086,6 +1092,7 @@ class GameController:
         if not self.ai_thinking:
             self.ai_thinking = True
             self.ai_started_at = time.monotonic()
+            self._ai_requested_ms = self._ai_think_time_ms()
             self.return_queue = Queue()
             # daemon : le processus est tué avec l'application au lieu d'être attendu.
             self.move_finder_process = Process(
@@ -1095,7 +1102,7 @@ class GameController:
                     valid_moves,
                     self.return_queue,
                     self.ai_level,
-                    self._ai_think_time_ms(),
+                    self._ai_requested_ms,
                 ),
                 daemon=True,
             )
@@ -1114,6 +1121,7 @@ class GameController:
             if ai_move is not None:
                 logger.error("Coup de l'IA illégal ignoré : %s", ai_move)
             ai_move = search.find_random_move(valid_moves)
+        self._measure_ai_overhead()
         self.game_state.make_move(ai_move)
         _play_move_sound(ai_move)
         self.move_made = True
@@ -1127,12 +1135,22 @@ class GameController:
             return None
         color = engine.Color.WHITE if self.game_state.white_to_move else engine.Color.BLACK
         remaining = self.chess_clock.remaining_ms(color) or 0
-        return chess_clock_module.allocate_think_time_ms(
+        budget = chess_clock_module.allocate_think_time_ms(
             remaining,
             self.time_control.increment_ms,
             len(self.game_state.move_log),
             max_ms=levels.LEVELS_BY_NAME[self.ai_level].movetime_ms,
         )
+        # Le surcoût mesuré se paie sur la pendule : on le retranche du temps de réflexion.
+        return max(10, int(budget - self.ai_overhead_ms))
+
+    def _measure_ai_overhead(self):
+        """Met à jour l'estimation du surcoût (temps réel - temps de réflexion demandé)."""
+        if self._ai_requested_ms is None:
+            return
+        actual_ms = (time.monotonic() - self.ai_started_at) * 1000
+        overhead = max(0.0, actual_ms - self._ai_requested_ms)
+        self.ai_overhead_ms += AI_OVERHEAD_SMOOTHING * (overhead - self.ai_overhead_ms)
 
     def _collect_ai_move(self):
         """Récupère le coup d'un processus d'IA terminé, ou None s'il n'en a pas rendu."""

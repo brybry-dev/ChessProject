@@ -43,7 +43,8 @@ EXACT: int = 0
 LOWER: int = 1
 UPPER: int = 2
 TT_MAX_ENTRIES: int = 1 << 20  # au-delà, la table est vidée (remplacement simple)
-TIME_CHECK_INTERVAL: int = 1024  # nœuds entre deux lectures de l'horloge
+# Nœuds entre deux lectures de l'horloge : ~25 ms à ~10 k nœuds/s, assez fin pour le bullet.
+TIME_CHECK_INTERVAL: int = 256
 QUIESCENCE_MAX_PLY: int = 16  # garde-fou : la quiescence s'arrête au-delà
 
 

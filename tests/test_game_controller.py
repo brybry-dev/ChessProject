@@ -632,6 +632,20 @@ class ClockInTheGame(unittest.TestCase):
         self.assertLessEqual(movetime, level.movetime_ms)
         self.assertLessEqual(movetime, 60_000 // 3)
 
+    def test_measured_overhead_is_taken_off_the_think_time(self):
+        gc = self._controller(clock.TimeControl.from_minutes(1), "PvC", True, False)
+        gc.game_state.make_move(notation.parse_san(gc.game_state, "e4"))
+        gc.ai_overhead_ms = 0.0
+        without = gc._ai_think_time_ms()
+        gc.ai_overhead_ms = 400.0
+        self.assertEqual(gc._ai_think_time_ms(), max(10, without - 400))
+        # Mesure : 900 ms réels pour 500 ms demandés -> surcoût observé 400 ms.
+        gc.ai_overhead_ms = 0.0
+        gc._ai_requested_ms = 500
+        with mock.patch.object(app.time, "monotonic", return_value=gc.ai_started_at + 0.9):
+            gc._measure_ai_overhead()
+        self.assertAlmostEqual(gc.ai_overhead_ms, app.AI_OVERHEAD_SMOOTHING * 400, places=3)
+
     def test_unlimited_games_never_flag(self):
         gc = self._controller(clock.UNLIMITED)
         self.now.t += 10_000
