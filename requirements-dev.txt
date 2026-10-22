@@ -1,9 +1,0 @@
--r requirements.txt
-
-# Outils de développement
-pytest>=8.0
-ruff>=0.6
-mypy>=1.11
-
-# Optionnel : moteur de référence pour les tests différentiels de génération de coups
-# python-chess>=1.11

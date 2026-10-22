@@ -1,0 +1,91 @@
+name: Release
+
+# Exécutables Windows, macOS et Linux (J6.2) : construits et testés à chaque tag de
+# version, puis publiés dans une release GitHub avec les notes du CHANGELOG (J6.4).
+# Lancé à la main (workflow_dispatch) ou par une PR qui touche à l'empaquetage, il
+# construit et teste sans publier.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "tools/build_exe.py"
+      - "chessproject/__main__.py"
+      - "chessproject/assets/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Exécutable (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux : glibc 2.35, pour tourner aussi sur les distributions un peu anciennes.
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Installation
+        run: python -m pip install -e ".[build]"
+
+      - name: Version du tag = version du paquet
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          version=$(python -c "import chessproject; print(chessproject.__version__)")
+          test "v$version" = "${GITHUB_REF_NAME}" || {
+            echo "Tag ${GITHUB_REF_NAME} différent de la version du paquet ($version)"; exit 1; }
+
+      - name: Construction et test de démarrage
+        run: python tools/build_exe.py --smoke-test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chessproject-${{ matrix.os }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publication
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Notes de version
+        run: python tools/release_notes.py "${GITHUB_REF_NAME}" > notes.md
+
+      - name: Release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${GITHUB_REF_NAME}" dist/*.zip
+          --title "ChessProject ${GITHUB_REF_NAME}"
+          --notes-file notes.md
+          --verify-tag

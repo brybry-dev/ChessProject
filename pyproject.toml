@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chessproject"
+version = "1.0.0"
+description = "Jeu d'échecs en Python / Pygame avec une IA NegaMax."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "pygame==2.6.1",
+    "platformdirs>=4.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    # Moteur de référence pour les tests différentiels de génération de coups (J2.1)
+    "chess>=1.11",
+]
+# Exécutables autonomes (J6.2) : python tools/build_exe.py
+build = [
+    "pyinstaller==6.21.0",
+    "pillow==11.3.0",  # conversion de l'icône PNG en .ico / .icns
+]
+
+[project.scripts]
+chessproject = "chessproject.ui.app:main"
+chessproject-uci = "chessproject.uci:main"
+
+[tool.setuptools.packages.find]
+include = ["chessproject*"]
+
+[tool.setuptools.package-data]
+chessproject = [
+    "assets/images/*.png",
+    "assets/pieces/*.svg",
+    "assets/pieces/LICENSE.txt",
+    "assets/fonts/*.ttf",
+    "assets/fonts/OFL.txt",
+    "assets/sounds/*.wav",
+    "assets/icon.png",
+]
+
+# --------------------------------------------------------------------------
+# Lint et formatage
+# --------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "N", "UP", "SIM"]
+ignore = [
+    "SIM102",  # if imbriqués : gardés quand ils suivent la structure des règles
+    "SIM108",  # ternaires : pas imposés quand le if/else est plus lisible
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*.py" = ["E402"]  # les tests fixent SDL_VIDEODRIVER avant d'importer pygame
+
+# --------------------------------------------------------------------------
+# Typage : strict sur le moteur, souple sur l'UI et les tests (cf. rapport §4, J0.1)
+# --------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "chessproject.core.*",
+    "chessproject.ai.*",
+    "chessproject.paths",
+    "chessproject.serialization",
+    "chessproject.settings",
+    "chessproject.ui.layout",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+# pygame sans annotations ; PyInstaller et Pillow ne servent qu'aux outils de livraison
+# (extra « build »), absents de l'environnement de lint.
+module = ["pygame", "pygame.*", "PyInstaller", "PyInstaller.*", "PIL", "PIL.*"]
+ignore_missing_imports = true
+
+# --------------------------------------------------------------------------
+# Tests
+# --------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-m 'not slow'"
+# Un test bloqué affiche la pile de tous les threads au lieu d'un simple timeout CI.
+faulthandler_timeout = 300
+markers = [
+    "slow: tests longs (perft profond, ~150 s), lancés avec `pytest -m slow`",
+]
+filterwarnings = [
+    "ignore:pkg_resources is deprecated:DeprecationWarning",
+]

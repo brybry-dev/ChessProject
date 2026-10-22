@@ -1,0 +1,55 @@
+# Suite tactique de J3 (format EPD) : <4 champs FEN> bm <SAN ...>; [dm N;] id "<nom>";
+# bm : coups acceptés ; dm N : mat en N coups (absent = gain de matériel).
+# Toutes les solutions sont vérifiées par programme sur notre moteur :
+#   python tools/tactics.py --verify   (et tests/test_tactics.py)
+# - mats : solveur exhaustif ; bm = tous les coups qui matent en N, aucun mat plus court ;
+# - gains : minimax matériel 4 demi-coups + captures ; bm = l'unique coup qui gagne au
+#   moins la valeur d'un cavalier.
+# Sources : mats et pièges d'ouverture classiques (partie de l'Opéra, Immortelle,
+# Toujours jeune, Réti-Tartakower 1910, Ed. Lasker-Thomas 1912, mat de Légal, du berger,
+# mat étouffé, pièges de Lasker et Englund…), WAC.001, positions construites (fourchettes,
+# enfilades, attaque à la découverte).
+6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - bm Ra8#; dm 1; id "mate1.back-rank";
+r5k1/5ppp/8/8/8/8/5PPP/6K1 b - - bm Ra1#; dm 1; id "mate1.back-rank-black";
+r1b1kbnr/pppp1Npp/8/8/3nq3/8/PPPPBP1P/RNBQKR2 b Qkq - bm Nf3#; dm 1; id "mate1.blackburne-nf3";
+r1b1k2r/ppppqppp/2n5/4n3/1PP2B2/5N2/1P1NPPPP/R2QKB1R b KQkq - bm Nd3#; dm 1; id "mate1.budapest-nd3";
+r1bqkb1r/pp1npppp/2p2n2/8/3PN3/8/PPP1QPPP/R1B1KBNR w KQkq - bm Nd6#; dm 1; id "mate1.caro-kann-smothered";
+r1b1k1nr/pppp1ppp/2n5/4P3/8/2Q2N2/PqP1PPPP/RN2KB1R b KQkq - bm Qc1#; dm 1; id "mate1.englund-qc1";
+rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq - bm Qh4#; dm 1; id "mate1.fools-mate";
+rnbqk1nr/ppp2p1p/3b4/6p1/8/5N1P/PPPPP1P1/RNBQKB1R b KQkq - bm Bg3#; dm 1; id "mate1.from-gambit";
+r6k/6pp/7N/3Q4/8/8/8/6K1 w - - bm Qxa8#; dm 1; id "mate1.long-diagonal";
+k7/1pP5/1P6/8/8/8/8/6K1 w - - bm c8=Q# c8=R#; dm 1; id "mate1.promotion";
+r1bqkbnr/pppp1p1p/6p1/4p3/2BnP3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - bm Qxf7#; dm 1; id "mate1.qf3-nd4";
+k7/8/1K6/8/8/8/7Q/8 w - - bm Qh8#; dm 1; id "mate1.queen-corner";
+r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - bm Qxf7#; dm 1; id "mate1.scholars-mate";
+6rk/6pp/8/6N1/8/8/8/6K1 w - - bm Nf7#; dm 1; id "mate1.smothered";
+r1bk2nr/p2p1pNp/n2B4/1p1NP2P/6P1/3P1Q2/P1P1K3/q5b1 w - - bm Qf6+; dm 2; id "mate2.immortal-game";
+k7/8/2K5/8/8/8/8/7R w - - bm Kc7 Kb6; dm 2; id "mate2.king-rook";
+rn3r2/pbppq1p1/1p2pN2/8/3P2NP/3B1kP1/PPP2P2/R3K2R w KQ - bm Kf1 O-O; dm 2; id "mate2.lasker-thomas-kf3";
+rn3r2/pbppq1p1/1p2pN2/8/3P2NP/6P1/PPP1BPk1/R3K2R w KQ - bm Rh2+ O-O-O; dm 2; id "mate2.lasker-thomas-kg2";
+rn1qkbnr/ppp2p1p/3p2p1/4N3/2B1P3/2N5/PPPP1PPP/R1BbK2R w KQkq - bm Bxf7+; dm 2; id "mate2.legal";
+4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - bm Qb8+; dm 2; id "mate2.opera-game";
+5r1k/6pp/7N/3Q4/8/8/8/6K1 w - - bm Qg8+; dm 2; id "mate2.philidor-smothered";
+r1b2k1r/ppp1bppp/8/1B1Q4/5q2/2P5/PPP2PPP/R3R1K1 w - - bm Qd8+; dm 2; id "mate2.queen-sac-re8";
+rnbk1b1r/pp3ppp/2p5/4q3/4n3/8/PPPB1PPP/2KR1BNR w - - bm Bg5+; dm 2; id "mate2.reti-tartakower";
+7k/8/8/8/8/8/R7/1R4K1 w - - bm Ra7 Rb7; dm 2; id "mate2.rook-roller";
+2rr3k/pp3pp1/1nnqbN1p/3pN3/2pP4/2P3Q1/PPB4P/R4RK1 w - - bm Qg6; dm 2; id "mate2.wac001";
+1r4r1/pbpknp1p/1b3P2/8/8/B1PB1q2/P4PPP/3R2K1 w - - bm Bf5+; dm 3; id "mate3.evergreen";
+r1b1k1nr/p2p1ppp/n2B4/1p1NPN1P/6P1/3P1Q2/P1P1K3/q5b1 w kq - bm Nxg7+; dm 3; id "mate3.immortal-game";
+r1b1kb1r/pppp1ppp/5q2/4n3/3KP3/2N3PN/PPP4P/R1BQ1B1R b kq - bm Bc5+; dm 3; id "mate3.king-hunt-bc5";
+rn3r2/pbppq1p1/1p2pN2/8/3P1kNP/3B4/PPP2PP1/R3K2R w KQ - bm g3+; dm 3; id "mate3.lasker-thomas-kf4";
+rnb1kb1r/pp3ppp/2p5/4q3/4n3/3Q4/PPPB1PPP/2KR1BNR w kq - bm Qd8+; dm 3; id "mate3.reti-tartakower";
+r5k1/5Npp/8/8/2Q5/8/8/6K1 w - - bm Nh6+; dm 3; id "mate3.smothered-double-check";
+4k3/8/8/q7/8/4B3/8/4RK2 w - - bm Bd2+; id "gain.bishop-discovered";
+q7/8/8/3k4/8/8/4B3/4K3 w - - bm Bf3+; id "gain.bishop-skewer";
+r1b1kbnr/pp3ppp/4p3/3pP3/3q4/3B4/PP3PPP/RNBQK2R w KQkq - bm Bb5+; id "gain.french-bb5";
+rnb1kbnr/pppp1ppp/8/4p1q1/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - bm Nxg5; id "gain.hanging-queen";
+6k1/5ppp/8/8/3n4/8/5PPP/2Q3K1 b - - bm Ne2+; id "gain.knight-fork-black";
+4k3/8/8/4n3/8/8/3Q1P1P/6K1 b - - bm Nf3+; id "gain.knight-fork-f3";
+2q3k1/5ppp/8/3N4/8/8/5PPP/6K1 w - - bm Ne7+; id "gain.knight-fork-queen";
+rnbqk1nr/ppp2ppp/8/4P3/1BP5/8/PP2KpPP/RN1Q1BNR b kq - bm fxg1=N+; id "gain.lasker-trap";
+4k3/8/8/4p3/8/3N1N2/8/4K3 b - - bm e4; id "gain.pawn-fork-knights-black";
+3qk3/8/8/8/8/8/8/R5K1 b - - bm Qd4+; id "gain.queen-fork-diagonals";
+4k3/8/8/8/7r/8/8/K2Q4 w - - bm Qe1+; id "gain.queen-fork-file";
+r6k/8/8/8/4K3/8/8/4Q3 b - - bm Re8+; id "gain.rook-skewer-file";
+r3kbnr/ppp2ppp/8/3N4/8/8/PPP2PPP/R3KBNR w KQkq - bm Nxc7+; id "gain.royal-fork-c7";
