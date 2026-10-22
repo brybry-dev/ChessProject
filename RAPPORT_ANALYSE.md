@@ -622,6 +622,14 @@ corrigés, chacun verrouillé par un test. C'est un bon moment pour un premier t
 
 #### J2 — Socle moteur (prérequis des fonctionnalités)
 
+> **Avancement (2026-10-22)**
+> - J2.1 ✅ : les tests différentiels contre python-chess ont trouvé **B46**. Un pion cloué ne
+>   pouvait pas avancer le long du clouage en direction de son roi (ex. pion noir d6, roi d4,
+>   tour blanche d8 : `d6-d5` refusé). Aucune des 6 positions perft ne contenait ce cas. Après
+>   correction, les 1 000 parties aléatoires coïncident avec python-chess.
+> - J2.2 ✅ : `GameResult` / `Termination`. Le mat prime sur les 50 coups, auparavant déclarés
+>   nuls au 100ᵉ demi-coup. L'UI affiche le motif de fin.
+
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|
 | J2.1 | **Tests différentiels** contre `python-chess` (dépendance de développement uniquement) : parties aléatoires, mêmes coups légaux et même statut à chaque demi-coup | 1 000 parties en mode `slow`, 50 en mode rapide, sans divergence | M |
