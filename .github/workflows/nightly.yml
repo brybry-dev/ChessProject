@@ -1,0 +1,36 @@
+name: Nightly (perft profond)
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perft:
+    name: Perft profond (pytest -m slow)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Installation
+        run: python -m pip install -e ".[dev]"
+
+      - name: pytest -m slow
+        run: python -m pytest -q -m slow
