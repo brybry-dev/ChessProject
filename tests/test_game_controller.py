@@ -10,6 +10,7 @@ import os
 import queue
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -673,6 +674,62 @@ class ClockInTheGame(unittest.TestCase):
             self.assertEqual(other.chess_clock.remaining_ms(engine.Color.BLACK), 177_000 + 2_000)
         finally:
             os.remove(path)
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class PgnKeys(unittest.TestCase):
+    """J4.6 : E exporte la partie en PGN, I la réimporte."""
+
+    def test_export_then_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = os.path.join(directory, "partie.pgn")
+            gc = app.GameController(
+                p.display.get_surface(),
+                p.time.Clock(),
+                app.UIManager(512, 512, 250, 512),
+                app.ResourceManager(64),
+                "PvC",
+                True,
+                False,
+                False,
+                time_control=clock.BLITZ_3_2,
+            )
+            for san in ("e4", "e5", "Nf3"):
+                gc.game_state.make_move(notation.parse_san(gc.game_state, san))
+            with mock.patch.object(app.paths, "pgn_file", return_value=Path(target)):
+                gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_e}))
+                text = Path(target).read_text(encoding="utf-8")
+                self.assertIn('[White "Humain"]', text)
+                self.assertIn('[TimeControl "180+2"]', text)
+                self.assertIn("1. e4 e5 2. Nf3 *", text)
+                other = app.GameController(
+                    p.display.get_surface(),
+                    p.time.Clock(),
+                    app.UIManager(512, 512, 250, 512),
+                    app.ResourceManager(64),
+                    "PvP",
+                    True,
+                    True,
+                    False,
+                )
+                other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_i}))
+            self.assertEqual(len(other.game_state.move_log), 3)
+            self.assertTrue(other.game_state.automatic_draws)
+
+    def test_import_of_a_missing_file_is_harmless(self):
+        gc = app.GameController(
+            p.display.get_surface(),
+            p.time.Clock(),
+            app.UIManager(512, 512, 250, 512),
+            app.ResourceManager(64),
+            "PvP",
+            True,
+            True,
+            False,
+        )
+        with mock.patch.object(app.paths, "pgn_file", return_value=Path("/inexistant/x.pgn")):
+            gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_i}))
+        self.assertEqual(gc.game_state.move_log, [])
 
 
 if __name__ == "__main__":

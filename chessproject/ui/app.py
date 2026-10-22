@@ -16,7 +16,7 @@ import pygame as p
 from chessproject import paths, serialization
 from chessproject.ai import levels, search
 from chessproject.core import clock as chess_clock_module
-from chessproject.core import engine, notation
+from chessproject.core import engine, notation, pgn
 
 # --------------------------------------------------
 # Constantes d'affichage
@@ -674,6 +674,8 @@ def show_shortcuts_menu(screen):
         ("S", "Sauvegarder la partie"),
         ("L", "Charger la partie"),
         ("C", "Personnaliser les couleurs"),
+        ("E", "Exporter la partie en PGN"),
+        ("I", "Importer la partie PGN"),
         ("A", "Abandonner la partie"),
         ("N", "Proposer / accepter la nulle"),
         ("H", "Afficher/masquer les raccourcis"),
@@ -1033,6 +1035,10 @@ class GameController:
                 self.ai_level = saved.level
             self._new_game(saved.game_state, saved.clock)
             self.external_result = saved.result
+        elif e.key == p.K_e:  # Exporter en PGN
+            self._export_pgn()
+        elif e.key == p.K_i:  # Importer un PGN
+            self._import_pgn()
         elif e.key == p.K_a:  # Abandonner
             self._resign()
         elif e.key == p.K_n:  # Proposer / accepter la nulle
@@ -1043,6 +1049,40 @@ class GameController:
         elif e.key == p.K_h:  # Raccourcis
             with self._paused():
                 show_shortcuts_menu(self.screen)
+
+    def _player_name(self, white):
+        human = self.player_one if white else self.player_two
+        return "Humain" if human else f"ChessProject ({self.ai_level})"
+
+    def _export_pgn(self):
+        headers = {
+            "Event": "Partie ChessProject",
+            "Date": time.strftime("%Y.%m.%d"),
+            "White": self._player_name(True),
+            "Black": self._player_name(False),
+        }
+        if not self.time_control.is_unlimited:
+            headers["TimeControl"] = self.time_control.pgn_tag
+        text = pgn.export_pgn(self.game_state, result=self.result, headers=headers)
+        path = paths.pgn_file()
+        try:
+            path.write_text(text, encoding="utf-8")
+            logger.info("Partie exportée en PGN dans %s", path)
+        except OSError as ex:
+            logger.error("Export PGN impossible : %s", ex)
+
+    def _import_pgn(self):
+        try:
+            game = pgn.read_pgn_file(paths.pgn_file())[-1]
+            state = game.replay()
+        except (OSError, IndexError, pgn.PgnError) as ex:
+            logger.error("Import PGN impossible : %s", ex)
+            return
+        # La partie continue avec les règles du jeu (nulles automatiques).
+        state.automatic_draws = True
+        state._valid_moves = None
+        self._new_game(state)
+        logger.info("Partie importée (%d coups)", len(state.move_log))
 
     def _human_color(self):
         """Camp de l'humain qui agit : celui au trait en PvP, l'unique humain en PvC."""

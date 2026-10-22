@@ -21,6 +21,7 @@ SOUNDS_DIR = ASSETS_DIR / "sounds"
 
 SAVE_FILE_NAME = "saved_game.json"
 LOG_FILE_NAME = "chess.log"
+PGN_FILE_NAME = "partie.pgn"
 
 
 def user_data_dir() -> Path:
@@ -48,3 +49,8 @@ def existing_save_file() -> Path:
 
 def log_file() -> Path:
     return user_data_dir() / LOG_FILE_NAME
+
+
+def pgn_file() -> Path:
+    """Fichier PGN d'export / d'import de la partie (touches E et I)."""
+    return user_data_dir() / PGN_FILE_NAME
