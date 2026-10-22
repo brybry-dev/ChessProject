@@ -108,10 +108,10 @@ class TestRootAlwaysReturnsAMove(unittest.TestCase):
 
     def test_negamax_root_move_not_none_when_all_moves_lose(self):
         gs = load_fen("k7/8/1K6/8/8/8/8/7R b - - 0 1")
-        tt: search.TranspositionTable = {}
+        searcher = search.Searcher()
         for depth in (1, 2, 3):
-            score, move = search.negamax(
-                gs, gs.get_valid_moves(), depth, -search.INF, search.INF, 0, tt
+            score, move = searcher.negamax(
+                gs, gs.get_valid_moves(), depth, -search.INF, search.INF, 0
             )
             self.assertIsNotNone(move)
         # Rh8# suit Kb8 : mat en 2 demi-coups depuis la racine.
@@ -123,7 +123,9 @@ class TestMateSearch(unittest.TestCase):
 
     def test_mate_in_two_found(self):
         gs = load_fen(self.MATE_IN_2)
-        score, move = search.negamax(gs, gs.get_valid_moves(), 3, -search.INF, search.INF, 0, {})
+        score, move = search.Searcher().negamax(
+            gs, gs.get_valid_moves(), 3, -search.INF, search.INF, 0
+        )
         self.assertEqual(score, search.MATE - 3)
         self.assertEqual(str(move), "Ra6")
 
