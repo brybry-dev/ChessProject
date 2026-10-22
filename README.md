@@ -112,4 +112,4 @@ Le détail des tâches et des critères d'acceptation est dans
 
 ## Licence
 
-À définir : le dépôt ne contient pas encore de fichier `LICENSE`.
+[MIT](LICENSE).

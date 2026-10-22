@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Jeu d'échecs en Python / Pygame avec une IA NegaMax."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "pygame==2.6.1",
     "platformdirs>=4.2",
