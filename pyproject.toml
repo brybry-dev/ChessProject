@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chessproject"
-version = "0.1.0"
+version = "1.0.0"
 description = "Jeu d'échecs en Python / Pygame avec une IA NegaMax."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,6 +23,11 @@ dev = [
     # Moteur de référence pour les tests différentiels de génération de coups (J2.1)
     "chess>=1.11",
 ]
+# Exécutables autonomes (J6.2) : python tools/build_exe.py
+build = [
+    "pyinstaller==6.21.0",
+    "pillow==11.3.0",  # conversion de l'icône PNG en .ico / .icns
+]
 
 [project.scripts]
 chessproject = "chessproject.ui.app:main"
@@ -39,6 +44,7 @@ chessproject = [
     "assets/fonts/*.ttf",
     "assets/fonts/OFL.txt",
     "assets/sounds/*.wav",
+    "assets/icon.png",
 ]
 
 # --------------------------------------------------------------------------
@@ -85,7 +91,9 @@ no_implicit_reexport = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["pygame", "pygame.*"]
+# pygame sans annotations ; PyInstaller et Pillow ne servent qu'aux outils de livraison
+# (extra « build »), absents de l'environnement de lint.
+module = ["pygame", "pygame.*", "PyInstaller", "PyInstaller.*", "PIL", "PIL.*"]
 ignore_missing_imports = true
 
 # --------------------------------------------------------------------------

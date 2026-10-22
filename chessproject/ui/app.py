@@ -25,7 +25,7 @@ from typing import Any
 
 import pygame as p
 
-from chessproject import paths, serialization
+from chessproject import __version__, paths, serialization
 from chessproject import settings as settings_module
 from chessproject.ai import levels, search
 from chessproject.core import clock as chess_clock_module
@@ -1391,17 +1391,73 @@ class App:
 # --------------------------------------------------
 # Fonction principale
 # --------------------------------------------------
-def main():
+SMOKE_TEST_TIMEOUT_S = 30.0
+
+
+def smoke_test(screen, pieces) -> bool:
+    """Test de démarrage (exécutables J6.2) : écran « Nouvelle partie », partie contre
+    l'IA dans son processus séparé, fenêtres superposées. Renvoie True si tout marche."""
+    settings = Settings(mode="PvC", color="w", level="Débutant", time_control="-")
+    application = App(screen, settings, pieces)
+    application.step()
+    application.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_RETURN}))
+    game = application.scene
+    if not isinstance(game, GameController):
+        return False
+    game._try_move((6, 4), (4, 4), animate=True)  # e4
+    deadline = time.monotonic() + SMOKE_TEST_TIMEOUT_S
+    while len(game.game_state.move_log) < 2 and time.monotonic() < deadline:
+        application.step()
+        p.display.flip()
+        time.sleep(0.01)
+    for key in (p.K_h, p.K_c):
+        game.handle_event(p.event.Event(p.KEYDOWN, {"key": key}))
+        application.step()
+        game.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_ESCAPE}))
+    game._stop_ai()
+    replied = len(game.game_state.move_log) == 2
+    logger.info("Test de démarrage : %s", "réussi" if replied else "l'IA n'a pas joué")
+    return replied
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+    import multiprocessing
+    import os
+    import tempfile
+
+    # Indispensable dans un exécutable (PyInstaller) : le processus d'IA relance le
+    # programme lui-même sous Windows et macOS.
+    multiprocessing.freeze_support()
+    parser = argparse.ArgumentParser(prog="chessproject", description="Jeu d'échecs ChessProject.")
+    parser.add_argument("--version", action="version", version=f"ChessProject {__version__}")
+    parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="lance une partie automatique de deux coups puis quitte (code 0 si tout marche)",
+    )
+    args = parser.parse_args(argv)
+    if args.smoke_test and "CHESSPROJECT_DATA_DIR" not in os.environ:
+        # Ni préférences ni journal de l'utilisateur ne sont touchés par le test.
+        os.environ["CHESSPROJECT_DATA_DIR"] = tempfile.mkdtemp(prefix="chessproject-smoke-")
+
     _configure_logging()
     p.init()
-    _load_sounds()
+    if not args.smoke_test:
+        _load_sounds()
     info = p.display.Info()
     size = layout_module.initial_window_size(info.current_w, info.current_h)
     screen = p.display.set_mode(size, p.RESIZABLE)
     p.display.set_caption("ChessProject")
     pieces = PieceSet()
     with contextlib.suppress(OSError, p.error):  # icône facultative
-        p.display.set_icon(pieces.get_image("wN", 64))
+        p.display.set_icon(p.image.load(str(paths.ASSETS_DIR / "icon.png")))
+    if args.smoke_test:
+        ok = smoke_test(screen, pieces)
+        if sys.stdout is not None:  # None dans un exécutable fenêtré sous Windows
+            print("smoke test:", "ok" if ok else "ÉCHEC")
+        p.quit()
+        sys.exit(0 if ok else 1)
     p.key.set_repeat(350, 60)
     App(screen, settings_module.load(), pieces).run()
 
