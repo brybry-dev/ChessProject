@@ -15,7 +15,7 @@ priorité à la rigueur, à la maintenabilité, aux tests et à la robustesse.
 | 1. Vérification | Tests, outils statiques, contrôle des correctifs B1–B25 | ✅ ce document, §1 |
 | 2. Bilan | Avancement global, points forts | ✅ §2 |
 | 3. Audit | Dette, bugs cachés, typage, cas limites (B26–B45) | ✅ §3 |
-| 4. Feuille de route | Plan court / moyen terme, tâches incrémentales | ⏳ |
+| 4. Feuille de route | Plan court / moyen terme, tâches incrémentales | ✅ §4 |
 
 Le rapport du 2026-09-06 (étapes 0 à 2, bugs B1–B25) est conservé tel quel en
 **Annexe A**, en fin de document.
@@ -535,12 +535,163 @@ Règle de dépendance, vérifiable en CI : `core` ← `ai` ← `app` ← `ui`. A
   drapeaux, `ChessMain.py` sans types. On la traite progressivement, protégé par le perft
   et par des tests différentiels contre `python-chess`.
 
-Prochaine étape, après validation : **Phase 4 — Feuille de route** (court et moyen terme,
-tâches incrémentales et critères d'acceptation).
+Prochaine étape : Phase 4 — Feuille de route (§4).
+
+## 4. Phase 4 — Feuille de route (2026-10-22)
+
+### 4.1 Règles de travail
+
+1. **Une tâche = un commit (ou une PR) qui passe** : tests, perft rapide, ruff et mypy au vert.
+2. **Un bug se corrige test d'abord** : le test qui reproduit le bug échoue avant le
+   correctif et passe après. Les scripts de reproduction de la phase 1 servent de point de
+   départ.
+3. **Un refactor du moteur ne change aucun comportement** : perft exact, tests
+   différentiels identiques. Le refactor et les changements de comportement ne vont jamais
+   dans le même commit.
+4. **Pas de grande réécriture** : l'architecture cible (§3.5) s'atteint par déplacements
+   successifs.
+5. Tailles : **S** ≤ ½ jour · **M** ≈ 1 jour · **L** 2–3 jours.
+
+### 4.2 Vue d'ensemble
+
+| Jalon | Objectif | Horizon | Effort |
+|---|---|---|---|
+| **J0** Outillage | Rendre la qualité mesurable et automatique | Court terme | ~1,5 j |
+| **J1** Correction | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
+| **J2** Socle moteur | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
+| **J3** IA | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
+| **J4** Fonctionnalités | PGN, cadence, niveaux dans l'UI, sauvegarde v2 | Moyen terme | ~5–6 j |
+| **J5** Interface pro | Scènes, thème, mise en page adaptative, finition visuelle | Fin de parcours | ~5–7 j |
+| **J6** Packaging et vitrine | Exécutables, README illustré, version publiée, UCI minimal (optionnel) | Fin de parcours | ~3–4 j |
+
+Dépendances : J0 → J1 → J2 → {J3, J4} → J5 → J6. Dans J4, PGN et cadence ne dépendent
+que de J2. Les niveaux de difficulté dépendent de J3.
+
+---
+
+### 4.3 Court terme
+
+#### J0 — Outillage (filet de sécurité de la vitrine)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J0.1 | `pyproject.toml` : métadonnées, dépendances, configuration `ruff` (`E,F,B,I,UP,SIM`, ligne de 100), `ruff format`, `mypy` (strict pour `ChessEngine`, `serialization`, `fen_utils`, souple pour `ChessMain`), `pytest` (marqueur `slow` à la place de `RUN_SLOW_PERFT`) | `ruff check`, `ruff format --check`, `mypy` et `pytest -m "not slow"` passent localement. Les fichiers `requirements*.txt` sont générés depuis le pyproject ou supprimés | M |
+| J0.2 | Passage `ruff --fix` + `ruff format` (commit purement mécanique) et corrections des 4 constats `F/B` | Diff sans changement de comportement, tests au vert | S |
+| J0.3 | Corriger les 9 erreurs mypy : `Optional[Square]` pour l'en passant et les broches, clé de la table de transposition, scores `int` | `mypy` sans erreur ni `# type: ignore` dans le moteur | S |
+| J0.4 | CI GitHub Actions : lint, types, tests rapides sur **Linux, Windows et macOS** (Python 3.12 et 3.13), perft lent la nuit | Badge vert. La matrice multi-OS fait apparaître B32 et B42 comme attendu, en échec « attendu » marqué `xfail` jusqu'à J1 | M |
+| J0.5 | `README.md` minimal : présentation, installation, lancement, tests, lien vers ce rapport | Lisible sur GitHub. Captures d'écran remises à J6 | S |
+
+#### J1 — Correction (aucun bug bloquant connu)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J1.1 | **B26** Rotation à 180° dans `Renderer` / `square_from_pixel` (rangées et colonnes, libellés a–h et 1–8). Suppression de `flip_board` du moteur. Sauvegarde **v2** qui refuse ou migre les v1 retournées. Réécriture de `test_roundtrip_preserves_flip_board` | Test : en mode Noirs, `GameState()` standard, roi en e1/e8, échec détecté, roque par le roi. Test de rendu : le clic sur e2 en vue retournée donne la case logique e2. Perft inchangé | M |
+| J1.2 | **B28** Corriger le déblocage après `R` / `L` (correctif minimal d'abord ; la machine à états vient en J2/J5) | Test contrôleur : PvC avec l'humain aux Noirs, puis `R`, puis l'IA joue. IA contre IA, puis `R`, puis la partie reprend | S |
+| J1.3 | **B29 + B40** Le popup sélectionne le `Move` dont `promotion_piece` correspond au choix. Suppression de `promotion_callback`. Annulation par `Échap` ou par un clic hors du popup | Test contrôleur : promotion en cavalier, historique `a8=N`, sauvegarde puis rechargement donnent `wN` | S |
+| J1.4 | **B27 + B31** Nœud sans coup : `-MATE + ply` si échec, sinon 0. `INF` distinct de `MATE`. `best_move` initialisé au premier coup. Pas d'accès à la table de transposition à la racine | Tests tactiques : K+D contre R mate sans pater (profondeurs 1 à 4). Racine perdante : renvoie un coup. Mat en 2 trouvé et choisi le plus court | M |
+| J1.5 | **B30** Évaluation en centipions entiers, retrait de la pénalité de répétition, mobilité retirée (traite aussi B11) | Tests : `eval(position initiale) == 0`. **Symétrie** `eval(p) == -eval(miroir(p))` sur 20 positions. Plus de `int()` final | S |
+| J1.6 | **B32** Clé de position déterministe (provisoire : chaîne de type FEN sans les compteurs ; Zobrist en J3.1) | Test : clé identique sous `PYTHONHASHSEED=1` et `=2` (sous-processus). Le `xfail` de CI levé | S |
+| J1.7 | **B33 + B45** Processus d'IA `daemon`, `get(timeout)`, vérification d'`exitcode`, repli journalisé, `terminate()` à la fermeture | Test : une IA factice qui lève une exception ne fige pas la boucle ; la fermeture pendant la réflexion est immédiate | S |
+| J1.8 | **B44** Pause de l'horloge pendant les menus en jeu et l'animation ; horloge à temps injectable | Test : 10 s simulées dans un menu ne sont pas imputées | S |
+| J1.9 | **B42** Ressources via `Path(__file__)` ; sauvegarde et journal dans un dossier utilisateur (`platformdirs`) ; **B43** logger par module, `INFO`, rotation | Lancement depuis un autre dossier : OK. Le `xfail` multi-OS est levé | S |
+
+**Fin du court terme (J0 + J1, ~6 jours)** : CI verte sur 3 OS, B26–B33 et B40–B45
+corrigés, chacun verrouillé par un test. C'est un bon moment pour un premier tag `v0.2`.
+
+---
+
+### 4.4 Moyen terme
+
+#### J2 — Socle moteur (prérequis des fonctionnalités)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J2.1 | **Tests différentiels** contre `python-chess` (dépendance de développement uniquement) : parties aléatoires, mêmes coups légaux et même statut à chaque demi-coup | 1 000 parties en mode `slow`, 50 en mode rapide, sans divergence | M |
+| J2.2 | **`GameResult` / `DrawReason`** (mat, pat, 50/75 coups, 3/5 répétitions, matériel insuffisant, et plus tard abandon, temps, accord). Fonction pure `status(position)`. Le mat prime sur les 50 coups. Règles automatiques ou à réclamer documentées (**B34**) | L'UI affiche le motif. Test : mat au 100ᵉ demi-coup gagné. `game_over` retiré de `draw()` | M |
+| J2.3 | **Types** : `Color`, `Piece`, `Square`, `Move` en `dataclass(frozen, slots)`. Une seule source de constantes. Retrait de numpy | `mypy --strict` sur le moteur. `numpy` retiré des dépendances. Perft et tests différentiels identiques | L |
+| J2.4 | **Historique unifié** : pile d'`UndoInfo` à la place des 5 piles et du `deepcopy` (**B38**, partie moteur). Génération sans effet de bord sur `pins` ni sur le cache (**B39**) | Perft identique. Bench avant/après (nœuds par seconde, Kiwipete perft 4) consigné dans le rapport | M |
+| J2.5 | **Notation SAN et UCI** : `to_san`, `parse_san` (désambiguïsation, `+`, `#`, `O-O`, `=N`), `to_uci`, `parse_uci` (**B19**, **B35**). Historique de l'UI en SAN | Aller-retour SAN sur toutes les positions des tests différentiels. Comparaison avec `python-chess` | M |
+| J2.6 | **FEN** : `fen_utils` devient `fen.py` de production avec validation (**B41**) et compteurs (**B36**). `perft` part dans les tests | FEN invalides rejetées par une `FenError` (8 cas testés). Aller-retour exact des compteurs | S |
+| J2.7 | `snake_case` partout (renommage outillé, un seul commit), passage au paquet `chessproject/core` | Aucun changement de comportement. Imports mis à jour | M |
+
+#### J3 — IA : un bon adversaire
+
+Les techniques sont classiques, et chaque étape est mesurée par une **mini-ligue** :
+N parties contre la version précédente, avec un script `tools/match.py`.
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J3.1 | **Zobrist** incrémental (clé de position, répétition, table de transposition) | Clé égale à un recalcul complet après chaque coup et chaque annulation (test sur les parties différentielles) | M |
+| J3.2 | API `search(position, limits) -> SearchResult(move, score, depth, nodes, pv)` avec `SearchLimits(depth, movetime_ms, nodes)`. Approfondissement itératif interruptible | Respect du temps imparti (tolérance de 10 %). La meilleure ligne (PV) est affichable | M |
+| J3.3 | **Table de transposition** à bornes EXACT/LOWER/UPPER et coup mémorisé, taille limitée (**B6**) | Mêmes résultats tactiques, moins de nœuds (mesuré) | M |
+| J3.4 | **Ordonnancement** : coup de la table, MVV-LVA, coups tueurs, historique (**B12**) | Nœuds pour une profondeur 5 depuis Kiwipete réduits d'au moins 50 % | S |
+| J3.5 | **Quiescence** (captures et promotions) | Suite tactique (environ 30 positions de type « gagner une pièce » ou « mat en 2–3 ») résolue à au moins 80 % en 1 s | M |
+| J3.6 | **Évaluation** : tables début et fin de partie interpolées selon la phase, structure de pions (doublés, isolés, passés), paire de fous, abri du roi | Mini-ligue : au moins +100 Elo contre J3.5 sur 200 parties | L |
+| J3.7 | **Niveaux de difficulté** (`levels.py`) : *Débutant / Facile / Moyen / Difficile / Expert*, chacun défini par temps, profondeur maximale, bruit d'évaluation et probabilité de coup sous-optimal | Les niveaux sont strictement ordonnés en mini-ligue (chaque niveau bat le précédent avec au moins 70 % des points) | M |
+
+#### J4 — Fonctionnalités attendues
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J4.1 | **Cadence** `clock.py` : temps initial, incrément (Fischer), perte au temps (nulle si l'adversaire n'a pas de matériel suffisant pour mater), pause. Préréglages (Bullet 1+0, Blitz 3+2 et 5+0, Rapide 10+5 et 15+10, sans limite) | Tests à temps simulé : incrément crédité après le coup, perte au temps, nulle au temps contre un roi seul, annulation qui restaure la pendule | M |
+| J4.2 | Cadence dans l'IA : temps alloué par coup selon le temps restant et l'incrément | L'IA ne perd jamais au temps en 5+0 (sur 50 parties) | S |
+| J4.3 | **Export PGN** : sept en-têtes obligatoires (Seven Tag Roster), `[FEN]`/`[SetUp]` si nécessaire, `[TimeControl]`, `[Result]`, coups en SAN, retour à la ligne à 80 caractères | Le fichier produit est relu à l'identique par `python-chess` | S |
+| J4.4 | **Import PGN** : en-têtes, SAN, commentaires `{}`, variantes `()` et NAG `$n` ignorés proprement, limites de taille | Corpus de test (10 PGN réels, dont une partie qui commence par une FEN). Erreurs explicites (`PgnError`) affichées dans l'UI | M |
+| J4.5 | **Sauvegarde v2** (§3.2) : coups en UCI, mode, couleur de l'humain, cadence et pendules, résultat. Écriture atomique (**B37**) | Migration v1 vers v2 testée. Chargement d'une partie d'un autre mode : mode et couleur restaurés | S |
+| J4.6 | UI : choix du niveau et de la cadence dans le menu de partie, abandon, proposition de nulle (contre l'IA : acceptée selon l'évaluation) | Parcours complet testé avec le contrôleur sans écran | M |
+
+---
+
+### 4.5 Fin de parcours
+
+#### J5 — Interface « pro »
+
+Elle vient **après** J1–J4, pour habiller une logique stable et ne pas avoir à redessiner
+deux fois.
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J5.1 | Une seule boucle avec des **scènes** (menu, partie, popup, réglages) ; contrôleur en **machine à états** explicite ; animation avancée d'une étape par image (**B28** définitif, **B45**) | Plus aucun `while True` hors de la boucle principale. Toutes les transitions sont testées | L |
+| J5.2 | **Système de design** : `theme.py` (palette, typographie embarquée, espacements, rayons), polices précalculées (**B38**), thèmes clair et sombre, 3–4 thèmes de plateau | Plus de couleur en dur hors de `theme.py`. 60 images/s stables | M |
+| J5.3 | **Mise en page adaptative** : plateau carré qui s'adapte à la fenêtre, panneaux latéraux qui se replient, pièces mises à l'échelle (de préférence en SVG ou haute résolution) | Lisible de 800×600 à 4K, sans chevauchement | M |
+| J5.4 | **Interactions** : glisser-déposer en plus du clic, prévisualisation des coups (points et anneaux de capture), flèches et surlignage au clic droit, dernier coup, roi en échec, pendules mises en avant au trait, sons discrets | Revue UX par une checklist (contraste WCAG AA, cibles ≥ 32 px, retour visuel < 100 ms) | M |
+| J5.5 | Panneau de partie : historique SAN cliquable (navigation dans la partie), matériel capturé, barre d'évaluation (optionnelle), affichage de la PV de l'IA en mode analyse | Navigation dans l'historique sans modifier la partie en cours | M |
+
+*Note* : la maquette visuelle peut être produite en amont (design artifact, ou le skill
+« ui-ux-pro-max » s'il est disponible), puis traduite en `theme.py`.
+
+#### J6 — Packaging et vitrine
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J6.1 | Point d'entrée `python -m chessproject` et script console `chessproject` ; installation par `pipx` | `pipx install .` puis `chessproject` fonctionne | S |
+| J6.2 | **PyInstaller** (ou Briefcase) : exécutables Windows, macOS et Linux construits par la CI lors d'un tag, ressources embarquées | Les trois exécutables se lancent sur une machine sans Python (test de démarrage dans la CI) | M |
+| J6.3 | README vitrine : GIF de partie, captures, architecture (schéma des couches), choix techniques (perft, tests différentiels, Zobrist, machine à états), badges CI et couverture | Relu comme une page portfolio | S |
+| J6.4 | `CHANGELOG.md`, versionnage sémantique, release GitHub `v1.0` | Notes de version générées depuis le changelog | S |
+| J6.5 | *(Optionnel)* **UCI minimal** (`uci`, `isready`, `ucinewgame`, `position`, `go movetime/wtime/btime/winc/binc`, `stop`, `bestmove`, `quit`) | Le moteur joue sous `cutechess-cli` contre Stockfish bridé. Elo estimé des niveaux publié dans le README | M |
+
+---
+
+### 4.6 Jalons de livraison et indicateurs
+
+| Version | Contenu | Indicateurs |
+|---|---|---|
+| `v0.2` | J0 + J1 | CI verte sur 3 OS, 0 bug 🔴 ou 🟠 connu |
+| `v0.5` | + J2 + J3 | `mypy --strict` sur le moteur, couverture moteur ≥ 90 %, 1 000 parties différentielles sans divergence, IA ≥ 80 % sur la suite tactique |
+| `v0.8` | + J4 | PGN lu et écrit en accord avec `python-chess`, cadence testée, 5 niveaux ordonnés |
+| `v1.0` | + J5 + J6 | Exécutables sur 3 OS, README vitrine, UI à 60 images/s |
+
+### 4.7 Prochaine action proposée
+
+Commencer par **J0.1 → J0.5** (environ 1,5 jour), puis **J1.1 (B26)**, le bug le plus grave
+pour l'utilisateur. Chaque tâche sera livrée en commit séparé sur la branche de travail,
+avec son test.
 
 ---
 
 # Annexe A — Rapport du 2026-09-06 (historique des étapes 0 à 2)
+
+> Document historique. Son plan (étapes 3 à 5) est **remplacé** par la feuille de route du §4.
 
 ## Rapport initial
 
