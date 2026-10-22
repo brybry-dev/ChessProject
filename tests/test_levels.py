@@ -34,6 +34,13 @@ class ChooseMoveTests(unittest.TestCase):
                 move = levels.choose_move(gs, level, random.Random(1))
                 self.assertIn(move, gs.get_valid_moves())
 
+    def test_noisy_level_works_when_the_search_uses_up_its_time(self):
+        # Régression (CI Windows) : la réévaluation des coups après think() levait
+        # SearchLimitError, la limite de temps de think() étant déjà dépassée.
+        level = levels.Level("Pressé", 1, 5, 50, 0.0, 1)
+        gs = engine.GameState()
+        self.assertIn(levels.choose_move(gs, level, random.Random(0)), gs.get_valid_moves())
+
     def test_choice_is_reproducible_with_a_seed(self):
         gs = engine.GameState()
         level = levels.LEVELS_BY_NAME["Débutant"]

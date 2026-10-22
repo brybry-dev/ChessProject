@@ -221,6 +221,10 @@ class Searcher:
                 break  # mat trouvé (pour l'un ou l'autre camp) : chercher plus loin est inutile
         result.nodes = self.nodes
         result.elapsed_ms = int((self.clock() - start) * 1000)
+        # Les limites ne valent que pour cet appel : un negamax lancé ensuite sur le même
+        # Searcher (ex. réévaluation des coups par les niveaux) ne doit pas être interrompu.
+        self._deadline = None
+        self._max_nodes = None
         result.pv = self._principal_variation(game_state, result.depth)
         return result
 
