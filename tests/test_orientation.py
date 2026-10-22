@@ -25,14 +25,11 @@ from chessproject.ui import app
 START_BOARD = engine.GameState().board
 
 
+BOARD = p.Rect(100, 60, 512, 512)
+
+
 def _renderer(flip_board: bool) -> "app.Renderer":
-    return app.Renderer(
-        p.display.get_surface(),
-        app.SQ_SIZE,
-        app.UIManager(512, 512, 250, 512),
-        app.ResourceManager(app.SQ_SIZE),
-        flip_board,
-    )
+    return app.Renderer(p.display.get_surface(), app.ResourceManager(), BOARD, flip_board)
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
@@ -48,8 +45,8 @@ class RendererRotationTests(unittest.TestCase):
 
     def test_flipped_view_is_a_180_degree_rotation(self):
         r = _renderer(True)
-        top_left = (app.LEFT_PANEL_WIDTH + 5, 5)
-        bottom_right = (app.LEFT_PANEL_WIDTH + 8 * app.SQ_SIZE - 5, 8 * 64 - 5)
+        top_left = (BOARD.x + 5, BOARD.y + 5)
+        bottom_right = (BOARD.right - 5, BOARD.bottom - 5)
         self.assertEqual(r.square_from_pixel(top_left), (7, 7))  # h1 en haut à gauche
         self.assertEqual(r.square_from_pixel(bottom_right), (0, 0))  # a8 en bas à droite
 
@@ -98,8 +95,8 @@ class PlayingBlackTests(unittest.TestCase):
         self.gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            app.UIManager(512, 512, 250, 512),
-            app.ResourceManager(app.SQ_SIZE),
+            app.UIManager(),
+            app.ResourceManager(),
             "PvC",
             False,
             True,

@@ -70,8 +70,8 @@ class AITurnAfterHumanMove(unittest.TestCase):
     def setUp(self):
         self.screen = p.display.get_surface()
         self.clock = p.time.Clock()
-        ui = app.UIManager(512, 512, 250, 512)
-        rm = app.ResourceManager(64)
+        ui = app.UIManager()
+        rm = app.ResourceManager()
         # Humain = blancs, IA = noirs, plateau non retourné.
         self.gc = app.GameController(self.screen, self.clock, ui, rm, "PvC", True, False, False)
         self._orig_process = app.Process
@@ -121,8 +121,8 @@ class NewGameWhenAIToMove(unittest.TestCase):
         app.Process, app.Queue = self._orig  # type: ignore[misc]
 
     def _controller(self, mode, white_human, black_human):
-        ui = app.UIManager(512, 512, 250, 512)
-        rm = app.ResourceManager(64)
+        ui = app.UIManager()
+        rm = app.ResourceManager()
         flip = mode == "PvC" and not white_human
         return app.GameController(
             p.display.get_surface(), p.time.Clock(), ui, rm, mode, white_human, black_human, flip
@@ -140,7 +140,10 @@ class NewGameWhenAIToMove(unittest.TestCase):
         gc = self._controller("PvC", False, True)
         self._frames(gc)
         self.assertEqual(len(gc.game_state.move_log), 1)
-        self._press(gc, p.K_r)
+        self._press(gc, p.K_r)  # partie en cours : confirmation demandée
+        self.assertIsInstance(gc.overlay, app.ConfirmOverlay)
+        self._press(gc, p.K_RETURN)
+        self.assertIsNone(gc.overlay)
         self._frames(gc)
         self.assertEqual(len(gc.game_state.move_log), 1, "l'IA doit rejouer après R")
         self.assertFalse(gc.game_state.white_to_move)
@@ -149,6 +152,7 @@ class NewGameWhenAIToMove(unittest.TestCase):
         gc = self._controller("CvC", False, False)
         self._frames(gc, 2)
         self._press(gc, p.K_r)
+        self._press(gc, p.K_RETURN)
         self._frames(gc, 4)
         self.assertGreaterEqual(len(gc.game_state.move_log), 2, "la partie IA/IA doit reprendre")
 
@@ -169,8 +173,8 @@ class PromotionThroughTheUI(unittest.TestCase):
     FEN = "7k/P7/8/8/8/8/8/K7 w - - 0 1"
 
     def setUp(self):
-        ui = app.UIManager(512, 512, 250, 512)
-        rm = app.ResourceManager(64)
+        ui = app.UIManager()
+        rm = app.ResourceManager()
         self.gc = app.GameController(
             p.display.get_surface(), p.time.Clock(), ui, rm, "PvP", True, True, False
         )
@@ -262,8 +266,8 @@ class AIProcessRobustness(unittest.TestCase):
     def setUp(self):
         self._orig = (app.Process, app.Queue)
         app.Queue = _SyncQueue  # type: ignore[misc, assignment]
-        ui = app.UIManager(512, 512, 250, 512)
-        rm = app.ResourceManager(64)
+        ui = app.UIManager()
+        rm = app.ResourceManager()
         # Humain = blancs ; on joue e4 pour donner le trait à l'IA.
         self.gc = app.GameController(
             p.display.get_surface(), p.time.Clock(), ui, rm, "PvC", True, False, False
@@ -332,12 +336,12 @@ class ClockIgnoresMenusAndAnimation(unittest.TestCase):
 
     def setUp(self):
         self.now = _FakeClock()
-        self.ui = app.UIManager(512, 512, 250, 512, now=self.now)
+        self.ui = app.UIManager(now=self.now)
         self.gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
             self.ui,
-            app.ResourceManager(64),
+            app.ResourceManager(),
             "PvP",
             True,
             True,
@@ -349,32 +353,33 @@ class ClockIgnoresMenusAndAnimation(unittest.TestCase):
         self.ui.update_timer(white_to_move=True)
         self.assertAlmostEqual(self.ui.white_time, 3.0)
 
-    def _ten_seconds_in_a_menu(self, *args):
+    def _ten_seconds_in_a_window(self, key):
+        self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": key}))
+        self.assertIsNotNone(self.gc.overlay)
         self.now.ms += 10_000
+        self.gc.update()
+        self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_ESCAPE}))
+        self.assertIsNone(self.gc.overlay)
+        self.gc.update()
 
-    def test_time_in_colour_menu_is_not_counted(self):
-        with mock.patch.object(app, "customization_menu", self._ten_seconds_in_a_menu):
-            self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_c}))
+    def test_time_in_appearance_window_is_not_counted(self):
+        self._ten_seconds_in_a_window(p.K_c)
         self.now.ms += 1000
-        self.ui.update_timer(white_to_move=True)
+        self.gc.update()
         self.assertAlmostEqual(self.ui.white_time, 1.0)
 
-    def test_time_in_shortcuts_menu_is_not_counted(self):
-        with mock.patch.object(app, "show_shortcuts_menu", self._ten_seconds_in_a_menu):
-            self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_h}))
-        self.ui.update_timer(white_to_move=True)
+    def test_time_in_shortcuts_window_is_not_counted(self):
+        self._ten_seconds_in_a_window(p.K_h)
         self.assertAlmostEqual(self.ui.white_time, 0.0)
 
-    def test_time_during_move_animation_is_not_counted(self):
+    def test_move_animation_does_not_block_the_loop(self):
+        # J5 : l'animation est dessinée image par image ; update() rend la main aussitôt.
         gs = self.gc.game_state
         gs.make_move([m for m in gs.get_valid_moves() if str(m) == "e4"][0])
         self.gc.move_made = self.gc.animate = True
-        with mock.patch.object(
-            self.gc.renderer, "animate_move", lambda *a: self._ten_seconds_in_a_menu()
-        ):
-            self.gc.update()
-        self.ui.update_timer(white_to_move=False)
-        self.assertAlmostEqual(self.ui.black_time, 0.0)
+        self.gc.update()
+        self.assertIsNotNone(self.gc.renderer.animation)
+        self.assertFalse(self.gc.move_made)
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
@@ -385,8 +390,8 @@ class EndOfGameDisplay(unittest.TestCase):
         gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            app.UIManager(512, 512, 250, 512),
-            app.ResourceManager(64),
+            app.UIManager(),
+            app.ResourceManager(),
             "PvP",
             True,
             True,
@@ -396,9 +401,9 @@ class EndOfGameDisplay(unittest.TestCase):
         return gc
 
     def _end_text(self, gc):
-        with mock.patch.object(gc.renderer, "draw_end_game_text") as draw_text:
-            gc.draw()
-        return draw_text.call_args.args[0] if draw_text.called else None
+        gc.update()
+        overlay = gc.overlay
+        return overlay.description if isinstance(overlay, app.EndGameOverlay) else None
 
     def test_draw_reason_is_displayed(self):
         gc = self._controller("8/8/4k3/8/8/3NK3/8/8 w - - 0 1")
@@ -431,8 +436,8 @@ class ResignAndDrawOffers(unittest.TestCase):
         return app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            app.UIManager(512, 512, 250, 512),
-            app.ResourceManager(64),
+            app.UIManager(),
+            app.ResourceManager(),
             mode,
             white_human,
             black_human,
@@ -442,9 +447,14 @@ class ResignAndDrawOffers(unittest.TestCase):
     def _press(self, gc, key):
         gc.handle_event(p.event.Event(p.KEYDOWN, {"key": key}))
 
+    def _resign(self, gc):
+        self._press(gc, p.K_a)  # demande de confirmation…
+        self.assertIsInstance(gc.overlay, app.ConfirmOverlay)
+        self._press(gc, p.K_RETURN)  # … puis confirmation
+
     def test_human_resigns_against_the_ai(self):
         gc = self._controller("PvC", False, True)  # humain = Noirs
-        self._press(gc, p.K_a)
+        self._resign(gc)
         self.assertTrue(gc.game_over)
         self.assertEqual(
             gc.result, engine.GameResult(engine.Termination.RESIGNATION, engine.Color.WHITE)
@@ -452,14 +462,23 @@ class ResignAndDrawOffers(unittest.TestCase):
 
     def test_side_to_move_resigns_in_pvp(self):
         gc = self._controller("PvP", True, True)
-        self._press(gc, p.K_a)
+        self._resign(gc)
         self.assertEqual(gc.result.winner, engine.Color.BLACK)
+
+    def test_resignation_can_be_cancelled(self):
+        gc = self._controller("PvP", True, True)
+        self._press(gc, p.K_a)
+        self._press(gc, p.K_ESCAPE)
+        self.assertIsNone(gc.overlay)
+        self.assertFalse(gc.game_over)
 
     def test_undo_cancels_a_resignation(self):
         gc = self._controller("PvP", True, True)
         gc.game_state.make_move(gc.game_state.get_valid_moves()[0])
-        self._press(gc, p.K_a)
+        self._resign(gc)
         self.assertTrue(gc.game_over)
+        gc.update()  # la carte de fin s'ouvre…
+        self._press(gc, p.K_ESCAPE)  # … et se referme pour revoir la partie
         self._press(gc, p.K_z)
         self.assertFalse(gc.game_over)
 
@@ -509,8 +528,8 @@ class SaveRestoresTheGameContext(unittest.TestCase):
             gc = app.GameController(
                 p.display.get_surface(),
                 p.time.Clock(),
-                app.UIManager(512, 512, 250, 512),
-                app.ResourceManager(64),
+                app.UIManager(),
+                app.ResourceManager(),
                 "PvC",
                 False,
                 True,
@@ -525,8 +544,8 @@ class SaveRestoresTheGameContext(unittest.TestCase):
             other = app.GameController(
                 p.display.get_surface(),
                 p.time.Clock(),
-                app.UIManager(512, 512, 250, 512),
-                app.ResourceManager(64),
+                app.UIManager(),
+                app.ResourceManager(),
                 "PvP",
                 True,
                 True,
@@ -561,8 +580,8 @@ class ClockInTheGame(unittest.TestCase):
         return app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            app.UIManager(512, 512, 250, 512),
-            app.ResourceManager(64),
+            app.UIManager(),
+            app.ResourceManager(),
             mode,
             white,
             black,
@@ -608,11 +627,15 @@ class ClockInTheGame(unittest.TestCase):
         def ten_minutes(*args):
             self.now.t += 600
 
-        with mock.patch.object(app, "show_shortcuts_menu", ten_minutes):
-            gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_h}))
+        gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_h}))
+        ten_minutes()
         gc.update()
         self.assertEqual(gc.chess_clock.remaining_ms(engine.Color.WHITE), 180_000)
         self.assertFalse(gc.game_over)
+        gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_ESCAPE}))
+        gc.update()
+        self.now.t += 2
+        self.assertEqual(gc.chess_clock.remaining_ms(engine.Color.WHITE), 178_000)
 
     def test_ai_think_time_is_capped_by_its_clock(self):
         gc = self._controller(clock.TimeControl.from_minutes(1), "PvC", True, False)
@@ -686,8 +709,8 @@ class PgnKeys(unittest.TestCase):
             gc = app.GameController(
                 p.display.get_surface(),
                 p.time.Clock(),
-                app.UIManager(512, 512, 250, 512),
-                app.ResourceManager(64),
+                app.UIManager(),
+                app.ResourceManager(),
                 "PvC",
                 True,
                 False,
@@ -705,8 +728,8 @@ class PgnKeys(unittest.TestCase):
                 other = app.GameController(
                     p.display.get_surface(),
                     p.time.Clock(),
-                    app.UIManager(512, 512, 250, 512),
-                    app.ResourceManager(64),
+                    app.UIManager(),
+                    app.ResourceManager(),
                     "PvP",
                     True,
                     True,
@@ -720,8 +743,8 @@ class PgnKeys(unittest.TestCase):
         gc = app.GameController(
             p.display.get_surface(),
             p.time.Clock(),
-            app.UIManager(512, 512, 250, 512),
-            app.ResourceManager(64),
+            app.UIManager(),
+            app.ResourceManager(),
             "PvP",
             True,
             True,

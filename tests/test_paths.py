@@ -23,15 +23,26 @@ def _run_from(cwd, code, data_dir):
         CHESSPROJECT_DATA_DIR=data_dir,
     )
     return subprocess.run(
-        [sys.executable, "-c", code], cwd=cwd, env=env, capture_output=True, text=True
+        [sys.executable, "-c", code],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
 
 
 class ResourcesTests(unittest.TestCase):
-    def test_images_and_sounds_load_from_another_directory(self):
+    def test_pieces_fonts_and_sounds_load_from_another_directory(self):
         code = (
             "from chessproject import paths; from chessproject.ui import app;"
-            "app.ResourceManager(64).get_image('wK');"
+            "import pygame; pygame.font.init();"
+            "from chessproject.ui import theme;"
+            "assert app.ResourceManager().get_image('wK', 64).get_size() == (64, 64);"
+            "assert (paths.PIECES_DIR / 'bP.svg').is_file();"
+            "theme.font(14, 'semibold'); theme.font(14, mono=True);"
+            "assert all((paths.FONTS_DIR / n).is_file() for n in "
+            "('IBMPlexSans-Regular.ttf', 'IBMPlexMono-SemiBold.ttf'));"
             "assert all((paths.SOUNDS_DIR / n).is_file() for n in "
             "('move1.wav', 'capture1.wav', 'gameover.wav'))"
         )

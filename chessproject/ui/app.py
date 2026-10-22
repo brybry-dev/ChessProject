@@ -1,42 +1,68 @@
 """
-Fichier Principal, gérant les entrées/sorties, la personnalisation et les sauvegardes.
+Interface du jeu (J5)
+---------------------
+Machine à états des scènes (:class:`App`) : écran « Nouvelle partie », puis partie
+(:class:`GameController`) avec ses fenêtres superposées. Aucune boucle bloquante :
+chaque scène reçoit les événements, avance d'une étape, puis se dessine.
+
+Le contrôleur de partie gère l'échiquier (clic-clic et glisser-déposer, flèches et
+marques au clic droit), l'historique navigable, la pendule, l'IA dans un processus
+séparé, la sauvegarde et le PGN.
 """
 
+import contextlib
+import copy
 import logging
 import logging.handlers
-import os
 import queue
 import sys
 import time
-from contextlib import contextmanager
+from collections.abc import Callable
+from dataclasses import replace
 from multiprocessing import Process, Queue
+from pathlib import Path
+from typing import Any
 
 import pygame as p
 
 from chessproject import paths, serialization
+from chessproject import settings as settings_module
 from chessproject.ai import levels, search
 from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation, pgn
+from chessproject.settings import Settings
+from chessproject.ui import layout as layout_module
+from chessproject.ui import theme as th
+from chessproject.ui import widgets as w
+from chessproject.ui.board_view import BoardScene, Drag, PieceSet, Renderer
+from chessproject.ui.new_game import GameConfig, NewGameMenu, config_from
+from chessproject.ui.overlays import (
+    AppearanceOverlay,
+    ConfirmOverlay,
+    EndGameOverlay,
+    Overlay,
+    PromotionPopup,
+    ShortcutsOverlay,
+)
+from chessproject.ui.panel import Header, MoveRow, PanelModel, PlayerCard, SidePanel
 
-# --------------------------------------------------
-# Constantes d'affichage
-# --------------------------------------------------
+# Ancien nom de la classe des images de pièces.
+ResourceManager = PieceSet
+
 DIMENSION = engine.DIMENSION
-BOARD_WIDTH = BOARD_HEIGHT = 512
-MOVE_LOG_PANEL_WIDTH = 250
-LEFT_PANEL_WIDTH = 250
-MOVE_LOG_PANEL_HEIGHT = BOARD_HEIGHT
-MAX_FPS = 30
-# Garde-fous du processus d'IA (B33) : au-delà, il est arrêté et un coup de
-# repli est joué. La limite de réflexion pilotée par niveau viendra en J3.
+MAX_FPS = 60
+# Garde-fous du processus d'IA (B33) : au-delà, il est arrêté et un coup de repli est joué.
 AI_MAX_THINK_SECONDS = 30.0
 AI_RESULT_TIMEOUT_SECONDS = 1.0
 # Surcoût d'un coup de l'IA hors réflexion (lancement du processus, transmission du
 # résultat, dépassement de l'échéance) : estimé au départ, puis mesuré en jeu.
 AI_INITIAL_OVERHEAD_MS = 250.0
 AI_OVERHEAD_SMOOTHING = 0.3
-SQ_SIZE = BOARD_HEIGHT // DIMENSION
-
+DRAG_THRESHOLD_PX = 4
+NOTICE_MS = 3500
+LOW_TIME_MS = 20_000
+EVAL_MOVETIME_MS = 25
+PIECE_VALUES = {"p": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "K": 0}
 
 logger = logging.getLogger(__name__)
 
@@ -64,659 +90,48 @@ def _configure_logging() -> None:
 
 
 # --------------------------------------------------
-# Gestion des ressources
-# --------------------------------------------------
-class ResourceManager:
-    _instance = None
-    # Attributs posés dynamiquement dans __new__ (singleton) : déclarés ici pour mypy.
-    sq_size: int
-    image_path: str
-    cache: dict[str, p.Surface]
-
-    def __new__(cls, sq_size, image_path=str(paths.IMAGES_DIR)):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.sq_size = sq_size
-            cls._instance.image_path = image_path
-            cls._instance.cache = {}
-        return cls._instance
-
-    def get_image(self, piece):
-        if piece in self.cache:
-            return self.cache[piece]
-        path = os.path.join(self.image_path, piece + ".png")
-        if not os.path.exists(path):
-            logger.error("Image not found: %s", path)
-            raise FileNotFoundError(f"Image not found: {path}")
-        image = p.transform.scale(p.image.load(path), (self.sq_size, self.sq_size))
-        self.cache[piece] = image
-        return image
-
-
-# --------------------------------------------------
-# UI Manager
+# Chronomètre des parties sans cadence
 # --------------------------------------------------
 class UIManager:
-    def __init__(
-        self, board_width, board_height, move_log_panel_width, move_log_panel_height, now=None
-    ):
+    """Temps écoulé de chaque camp, affiché quand la partie n'a pas de pendule."""
+
+    def __init__(self, now=None):
         # Source de temps en millisecondes, injectable pour les tests.
         self.now = now or p.time.get_ticks
-        self.board_width = board_width
-        self.board_height = board_height
-        self.move_log_panel_width = move_log_panel_width
-        self.move_log_panel_height = move_log_panel_height
-        self.move_log_offset = 0
-        self.max_scroll = 0
-        self.SCROLL_SPEED = 20
-        self._move_lines_key = None
-        self._move_lines_cache = []
-        # Couleurs par défaut du plateau
-        self.board_color1 = p.Color("white")
-        self.board_color2 = p.Color("gray")
-        # Temps de jeu
         self.white_time: float = 0
         self.black_time: float = 0
         self.last_time = self.now()
         self.is_running = True
-        # Pendule à cadence affichée à la place du chronomètre (fournie par le contrôleur).
-        self.chess_clock: chess_clock_module.ChessClock | None = None
 
     def reset_timer(self):
-        """Remet les pendules à zéro et resynchronise l'horloge de référence.
-        À appeler quand la partie (re)commence, après les menus."""
+        """Remet les compteurs à zéro et resynchronise l'horloge de référence."""
         self.white_time = 0
         self.black_time = 0
         self.last_time = self.now()
         self.is_running = True
 
-    @contextmanager
-    def timer_paused(self):
-        """Exclut du décompte le temps passé dans le bloc (menu, animation : B44)."""
-        try:
-            yield
-        finally:
-            self.last_time = self.now()
+    def skip(self):
+        """Le temps écoulé depuis la dernière mesure n'est pas compté."""
+        self.last_time = self.now()
 
     def update_timer(self, white_to_move):
         current_time = self.now()
-        elapsed = (current_time - self.last_time) / 1000  # Convertir en secondes
+        elapsed = (current_time - self.last_time) / 1000
         self.last_time = current_time
-
         if self.is_running:
             if white_to_move:
                 self.white_time += elapsed
             else:
                 self.black_time += elapsed
 
-    def draw_timer(self, screen, white_to_move):
-        # Fond du chronomètre
-        timer_rect = p.Rect(10, 10, LEFT_PANEL_WIDTH - 20, 100)
-        p.draw.rect(screen, p.Color("black"), timer_rect)
-        p.draw.rect(screen, p.Color("white"), timer_rect, 2)
 
-        # Police pour le chronomètre
-        font = p.font.SysFont("Arial", 24, bold=True)
-
-        # Avec une cadence : temps restant de la pendule ; sans limite : temps écoulé.
-        chess_clock = self.chess_clock
-        if chess_clock is not None and not chess_clock.is_unlimited:
-            for i, (label, color) in enumerate(
-                (("Blancs", engine.Color.WHITE), ("Noirs", engine.Color.BLACK))
-            ):
-                remaining = chess_clock.remaining_ms(color)
-                active = (color is engine.Color.WHITE) == white_to_move
-                low = remaining is not None and remaining < 10_000
-                tint = "orangered" if low and active else ("white" if active else "gray")
-                text = font.render(
-                    f"{label}: {chess_clock_module.format_ms(remaining)}", True, p.Color(tint)
-                )
-                screen.blit(text, (20, 20 + 40 * i))
-            return
-
-        # Formatage du temps
-        def format_time(seconds):
-            minutes = int(seconds // 60)
-            seconds = int(seconds % 60)
-            return f"{minutes:02d}:{seconds:02d}"
-
-        # Affichage du temps des blancs
-        white_text = font.render(
-            f"Blancs: {format_time(self.white_time)}",
-            True,
-            p.Color("white") if white_to_move else p.Color("gray"),
-        )
-        screen.blit(white_text, (20, 20))
-
-        # Affichage du temps des noirs
-        black_text = font.render(
-            f"Noirs: {format_time(self.black_time)}",
-            True,
-            p.Color("white") if not white_to_move else p.Color("gray"),
-        )
-        screen.blit(black_text, (20, 60))
-
-    def draw_move_log(self, screen, game_state, font):
-        # Panneau gauche
-        left_panel_rect = p.Rect(0, 0, LEFT_PANEL_WIDTH, self.move_log_panel_height)
-        p.draw.rect(screen, p.Color("black"), left_panel_rect)
-
-        # Affichage du chronomètre
-        self.draw_timer(screen, game_state.white_to_move)
-
-        # Panneau droit (historique des coups)
-        move_log_rect = p.Rect(
-            self.board_width + LEFT_PANEL_WIDTH,
-            0,
-            self.move_log_panel_width,
-            self.move_log_panel_height,
-        )
-        p.draw.rect(screen, p.Color("black"), move_log_rect)
-
-        # Affichage des coups
-        move_texts = self._move_lines(game_state)
-
-        # Zone de défilement pour l'historique des coups
-        line_height = font.get_height() + 2
-        content_height = 5 + len(move_texts) * line_height
-        self.max_scroll = max(0, content_height - self.move_log_panel_height)
-        self.move_log_offset = min(self.move_log_offset, self.max_scroll)
-
-        scroll_area = p.Surface((self.move_log_panel_width, self.move_log_panel_height))
-        scroll_area.fill(p.Color("black"))
-        y = 5 - self.move_log_offset
-        for i, text in enumerate(move_texts):
-            color = p.Color("yellow") if i == len(move_texts) - 1 else p.Color("white")
-            text_surf = font.render(text, True, color)
-            scroll_area.blit(text_surf, (5, y))
-            y += font.get_height() + 2
-        screen.blit(scroll_area, (self.board_width + LEFT_PANEL_WIDTH, 0))
-
-    def _move_lines(self, game_state):
-        """Historique en SAN, recalculé seulement quand la liste des coups change."""
-        key = (id(game_state), tuple(m.move_id for m in game_state.move_log))
-        if key != self._move_lines_key:
-            sans = notation.san_history(game_state)
-            white_starts = game_state.white_to_move == (len(sans) % 2 == 0)
-            self._move_lines_cache = notation.format_move_lines(
-                sans, game_state.start_fullmove, white_starts
-            )
-            self._move_lines_key = key
-        return self._move_lines_cache
-
-    def handle_scroll(self, event, mouse_pos):
-        move_log_rect = p.Rect(
-            self.board_width + LEFT_PANEL_WIDTH,
-            0,
-            self.move_log_panel_width,
-            self.move_log_panel_height,
-        )
-        if move_log_rect.collidepoint(mouse_pos):
-            new_offset = self.move_log_offset - event.y * self.SCROLL_SPEED
-            self.move_log_offset = max(0, min(new_offset, self.max_scroll))
-
-    def draw_loading_indicator(self, screen):
-        font = p.font.SysFont("Arial", 24)
-        dots = "." * ((p.time.get_ticks() // 500) % 4)
-        text = font.render("IA réfléchit" + dots, True, p.Color("white"))
-        screen.blit(text, (self.board_width + LEFT_PANEL_WIDTH + 10, self.board_height - 40))
+def format_elapsed(seconds: float) -> str:
+    minutes, rest = divmod(int(seconds), 60)
+    return f"{minutes}:{rest:02d}"
 
 
 # --------------------------------------------------
-# Classes UI de base
-# --------------------------------------------------
-class Button:
-    def __init__(self, text, pos, size, callback):
-        self.text = text
-        self.pos = pos
-        self.size = size
-        self.callback = callback
-        self.rect = p.Rect(pos, size)
-        self.hovered = False
-
-    def draw(self, screen):
-        color = p.Color("dodgerblue2") if self.hovered else p.Color("lightgray")
-        p.draw.rect(screen, color, self.rect)
-        font = p.font.SysFont("Arial", 24)
-        text_surf = font.render(self.text, True, p.Color("black"))
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        screen.blit(text_surf, text_rect)
-
-    def check_hover(self, mouse_pos):
-        self.hovered = self.rect.collidepoint(mouse_pos)
-
-
-class PromotionPopup:
-    """Choix de la pièce de promotion. Échap ou clic hors du popup : annulation."""
-
-    def __init__(self, pos, size):
-        self.rect = p.Rect(pos, size)
-        self.pieces = ["Q", "R", "B", "N"]
-        self.buttons = []
-        btn_size = (60, 60)
-        for i, piece in enumerate(self.pieces):
-            x = self.rect.x + 10 + i * (btn_size[0] + 10)
-            y = self.rect.centery - btn_size[1] // 2
-            self.buttons.append(Button(piece, (x, y), btn_size, lambda: None))
-
-    def draw(self, screen):
-        p.draw.rect(screen, p.Color("white"), self.rect)
-        p.draw.rect(screen, p.Color("black"), self.rect, 3)
-        for btn in self.buttons:
-            btn.check_hover(p.mouse.get_pos())
-            btn.draw(screen)
-
-
-# --------------------------------------------------
-# Rendu du plateau
-# --------------------------------------------------
-class Renderer:
-    """Encapsule tout le dessin du plateau et l'orientation.
-
-    Remplace les fonctions de dessin au niveau module et la variable globale
-    ``flip_board`` (cf. rapport d'analyse B22) : l'orientation est désormais un
-    attribut d'objet, passé explicitement au lieu d'être mutée un peu partout.
-    """
-
-    def __init__(self, screen, sq_size, ui_manager, resource_manager, flip_board=False):
-        self.screen = screen
-        self.sq_size = sq_size
-        self.ui = ui_manager
-        self.resources = resource_manager
-        self.flip_board = flip_board
-
-    # -- conversion logique <-> affichage --------------------------------
-    # Plateau retourné = rotation de 180° : rangées ET colonnes sont inversées.
-    # La position du moteur, elle, ne change jamais (cf. rapport d'analyse B26).
-    def display_row(self, row):
-        return row if not self.flip_board else DIMENSION - 1 - row
-
-    def display_col(self, col):
-        return col if not self.flip_board else DIMENSION - 1 - col
-
-    def square_from_pixel(self, pos):
-        """(x, y) écran -> (row, col) logique, ou None si hors plateau."""
-        disp_col = (pos[0] - LEFT_PANEL_WIDTH) // self.sq_size
-        disp_row = pos[1] // self.sq_size
-        if 0 <= disp_col < DIMENSION and 0 <= disp_row < DIMENSION:
-            # La rotation est son propre inverse.
-            return self.display_row(disp_row), self.display_col(disp_col)
-        return None
-
-    def square_rect(self, row, col):
-        """Rectangle écran de la case logique (row, col)."""
-        return self._rect(self.display_row(row), self.display_col(col))
-
-    def file_label(self, disp_col):
-        """Lettre de colonne affichée sous la colonne d'affichage ``disp_col``."""
-        return "abcdefgh"[self.display_col(disp_col)]
-
-    def rank_label(self, disp_row):
-        """Numéro de rangée affiché à gauche de la rangée d'affichage ``disp_row``."""
-        return str(DIMENSION - self.display_row(disp_row))
-
-    def _rect(self, disp_row, disp_col):
-        return p.Rect(
-            disp_col * self.sq_size + LEFT_PANEL_WIDTH,
-            disp_row * self.sq_size,
-            self.sq_size,
-            self.sq_size,
-        )
-
-    # -- dessin ---------------------------------------------------------
-    @staticmethod
-    def ease_out_cubic(t: float) -> float:
-        return 1 - pow(1 - t, 3)
-
-    def _square_color(self, disp_row, disp_col):
-        # La rotation conserve la parité : a1 reste une case foncée.
-        return self.ui.board_color1 if (disp_row + disp_col) % 2 == 0 else self.ui.board_color2
-
-    def draw_board(self):
-        font = p.font.SysFont("Arial", 16, bold=True)
-        text_color = p.Color("black")
-        for disp_row in range(DIMENSION):
-            for disp_col in range(DIMENSION):
-                rect = self._rect(disp_row, disp_col)
-                p.draw.rect(self.screen, self._square_color(disp_row, disp_col), rect)
-                if disp_col == 0:
-                    rank_text = font.render(self.rank_label(disp_row), True, text_color)
-                    self.screen.blit(rank_text, (rect.x + 2, rect.y + 2))
-                if disp_row == DIMENSION - 1:
-                    file_text = font.render(self.file_label(disp_col), True, text_color)
-                    text_rect = file_text.get_rect(bottomright=(rect.right - 2, rect.bottom - 2))
-                    self.screen.blit(file_text, text_rect)
-
-    def draw_pieces(self, board):
-        for row in range(DIMENSION):
-            for col in range(DIMENSION):
-                piece = board[row][col]
-                if piece != "--":
-                    self.screen.blit(self.resources.get_image(piece), self.square_rect(row, col))
-
-    def highlight_squares(self, game_state, valid_moves, square_selected):
-        if game_state.in_check:
-            king_row, king_col = (
-                game_state.white_king_location
-                if game_state.white_to_move
-                else game_state.black_king_location
-            )
-            s = p.Surface((self.sq_size, self.sq_size))
-            s.set_alpha(150)
-            s.fill(p.Color("red"))
-            self.screen.blit(s, self.square_rect(king_row, king_col))
-        if game_state.move_log:
-            last_move = game_state.move_log[-1]
-            s = p.Surface((self.sq_size, self.sq_size))
-            s.set_alpha(100)
-            s.fill(p.Color("green"))
-            self.screen.blit(s, self.square_rect(last_move.end_row, last_move.end_col))
-        if square_selected:
-            row, col = square_selected
-            s = p.Surface((self.sq_size, self.sq_size))
-            s.set_alpha(100)
-            s.fill(p.Color("blue"))
-            self.screen.blit(s, self.square_rect(row, col))
-            s.fill(p.Color("yellow"))
-            for move in valid_moves:
-                if move.start_row == row and move.start_col == col:
-                    self.screen.blit(s, self.square_rect(move.end_row, move.end_col))
-
-    def draw_end_game_text(self, text):
-        # Taille réduite au besoin pour que le texte tienne dans le plateau (marge 16 px).
-        size = 32
-        font = p.font.SysFont("Helvetica", size, True, False)
-        while font.size(text)[0] > BOARD_WIDTH - 32 and size > 12:
-            size -= 2
-            font = p.font.SysFont("Helvetica", size, True, False)
-        text_object = font.render(text, True, p.Color("gray"))
-        text_location = p.Rect(0, 0, BOARD_WIDTH, BOARD_HEIGHT).move(
-            LEFT_PANEL_WIDTH + BOARD_WIDTH / 2 - text_object.get_width() / 2,
-            BOARD_HEIGHT / 2 - text_object.get_height() / 2,
-        )
-        self.screen.blit(text_object, text_location)
-        text_object = font.render(text, True, p.Color("black"))
-        self.screen.blit(text_object, text_location.move(2, 2))
-
-    def animate_move(self, move, board, clock):
-        d_row = move.end_row - move.start_row
-        d_col = move.end_col - move.start_col
-        frames_per_square = 3
-        frame_count = int((abs(d_row) + abs(d_col)) * frames_per_square)
-        if frame_count == 0:
-            return
-        end_rect = self.square_rect(move.end_row, move.end_col)
-        end_color = self._square_color(
-            self.display_row(move.end_row), self.display_col(move.end_col)
-        )
-        for frame in range(frame_count + 1):
-            t = frame / frame_count
-            eased_t = self.ease_out_cubic(t)
-            # Coordonnées logiques fractionnaires, puis passage en affichage.
-            disp_row = self.display_row(move.start_row + d_row * eased_t)
-            disp_col = self.display_col(move.start_col + d_col * eased_t)
-            self.draw_board()
-            self.draw_pieces(board)
-            p.draw.rect(self.screen, end_color, end_rect)
-            if move.piece_captured != "--":
-                capture_rect = end_rect
-                if move.is_enpassant_move:
-                    capture_rect = self.square_rect(move.start_row, move.end_col)
-                self.screen.blit(self.resources.get_image(move.piece_captured), capture_rect)
-            self.screen.blit(
-                self.resources.get_image(move.piece_moved),
-                p.Rect(
-                    disp_col * self.sq_size + LEFT_PANEL_WIDTH,
-                    disp_row * self.sq_size,
-                    self.sq_size,
-                    self.sq_size,
-                ),
-            )
-            p.display.flip()
-            clock.tick(60)
-
-
-# --------------------------------------------------
-# Menus dynamiques de personnalisation
-# --------------------------------------------------
-def game_mode_menu(screen):
-    buttons = []
-    button_width = 200
-    button_height = 50
-    spacing = 20
-    menu_surface = p.Surface(screen.get_size())
-    menu_surface.fill(p.Color("white"))
-    w, h = screen.get_size()
-    total_height = 4 * button_height + 3 * spacing
-    start_y = (h - total_height) // 2
-    positions = [
-        ((w - button_width) // 2, start_y),
-        ((w - button_width) // 2, start_y + button_height + spacing),
-        ((w - button_width) // 2, start_y + 2 * (button_height + spacing)),
-        ((w - button_width) // 2, start_y + 3 * (button_height + spacing)),
-    ]
-    buttons.append(
-        Button(
-            "Joueur vs Joueur",
-            positions[0],
-            (button_width, button_height),
-            lambda: ("PvP", True, True),
-        )
-    )
-    buttons.append(
-        Button(
-            "Joueur vs IA",
-            positions[1],
-            (button_width, button_height),
-            lambda: open_color_selection(screen, "PvC"),
-        )
-    )
-    buttons.append(
-        Button(
-            "IA vs IA", positions[2], (button_width, button_height), lambda: ("CvC", False, False)
-        )
-    )
-    buttons.append(
-        Button("Quitter", positions[3], (button_width, button_height), lambda: sys.exit())
-    )
-    while True:
-        menu_surface.fill(p.Color("white"))
-        for btn in buttons:
-            btn.check_hover(p.mouse.get_pos())
-            btn.draw(menu_surface)
-        for e in p.event.get():
-            if e.type == p.QUIT:
-                sys.exit()
-            if e.type == p.MOUSEBUTTONDOWN:
-                for btn in buttons:
-                    if btn.rect.collidepoint(e.pos):
-                        return btn.callback()
-        screen.blit(menu_surface, (0, 0))
-        p.display.flip()
-
-
-def choice_menu(screen, title, options):
-    """Menu générique : un titre et une colonne de boutons ; renvoie la valeur choisie.
-    ``options`` : liste de couples (libellé, valeur)."""
-    button_width, button_height, spacing = 240, 44, 14
-    w, h = screen.get_size()
-    total_height = len(options) * (button_height + spacing) - spacing
-    start_y = max(70, (h - total_height) // 2)
-    buttons = [
-        Button(
-            label,
-            ((w - button_width) // 2, start_y + i * (button_height + spacing)),
-            (button_width, button_height),
-            lambda value=value: value,
-        )
-        for i, (label, value) in enumerate(options)
-    ]
-    title_font = p.font.SysFont("Arial", 30, bold=True)
-    title_surface = title_font.render(title, True, p.Color("black"))
-    menu_surface = p.Surface(screen.get_size())
-    while True:
-        menu_surface.fill(p.Color("white"))
-        menu_surface.blit(title_surface, title_surface.get_rect(center=(w // 2, start_y - 40)))
-        for btn in buttons:
-            btn.check_hover(p.mouse.get_pos())
-            btn.draw(menu_surface)
-        for e in p.event.get():
-            if e.type == p.QUIT:
-                sys.exit()
-            if e.type == p.MOUSEBUTTONDOWN:
-                for btn in buttons:
-                    if btn.rect.collidepoint(e.pos):
-                        return btn.callback()
-        screen.blit(menu_surface, (0, 0))
-        p.display.flip()
-
-
-def level_menu(screen):
-    return choice_menu(
-        screen, "Niveau de l'IA", [(level.name, level.name) for level in levels.LEVELS]
-    )
-
-
-def time_control_menu(screen):
-    return choice_menu(
-        screen, "Cadence", [(control.name, control) for control in chess_clock_module.PRESETS]
-    )
-
-
-def open_color_selection(screen, mode):
-    buttons = []
-    button_width = 200
-    button_height = 50
-    spacing = 20
-    menu_surface = p.Surface(screen.get_size())
-    menu_surface.fill(p.Color("white"))
-    w, h = screen.get_size()
-    total_height = 2 * button_height + spacing
-    start_y = (h - total_height) // 2
-    positions = [
-        ((w - button_width) // 2, start_y),
-        ((w - button_width) // 2, start_y + button_height + spacing),
-    ]
-    buttons.append(
-        Button("Blanc", positions[0], (button_width, button_height), lambda: (mode, True, False))
-    )
-    buttons.append(
-        Button("Noir", positions[1], (button_width, button_height), lambda: (mode, False, True))
-    )
-    while True:
-        menu_surface.fill(p.Color("white"))
-        for btn in buttons:
-            btn.check_hover(p.mouse.get_pos())
-            btn.draw(menu_surface)
-        for e in p.event.get():
-            if e.type == p.QUIT:
-                sys.exit()
-            if e.type == p.MOUSEBUTTONDOWN:
-                for btn in buttons:
-                    if btn.rect.collidepoint(e.pos):
-                        return btn.callback()
-        screen.blit(menu_surface, (0, 0))
-        p.display.flip()
-
-
-def customization_menu(screen, ui_manager):
-    options = [
-        (p.Color("white"), p.Color("gray")),
-        (p.Color("beige"), p.Color("saddlebrown")),
-        (p.Color("lightgreen"), p.Color("darkgreen")),
-    ]
-    buttons = []
-    button_width = 250
-    button_height = 50
-    spacing = 20
-    menu_surface = p.Surface(screen.get_size())
-    menu_surface.fill(p.Color("white"))
-    w, h = screen.get_size()
-    total_height = len(options) * button_height + (len(options) - 1) * spacing
-    start_y = (h - total_height) // 2
-    for i, (col1, col2) in enumerate(options):
-        pos = ((w - button_width) // 2, start_y + i * (button_height + spacing))
-
-        def callback(c1=col1, c2=col2):
-            ui_manager.board_color1 = c1
-            ui_manager.board_color2 = c2
-
-        buttons.append(Button(f"Couleurs {i + 1}", pos, (button_width, button_height), callback))
-    while True:
-        menu_surface.fill(p.Color("white"))
-        for btn in buttons:
-            btn.check_hover(p.mouse.get_pos())
-            btn.draw(menu_surface)
-        for e in p.event.get():
-            if e.type == p.QUIT:
-                sys.exit()
-            if e.type == p.MOUSEBUTTONDOWN:
-                for btn in buttons:
-                    if btn.rect.collidepoint(e.pos):
-                        btn.callback()
-                        return
-        screen.blit(menu_surface, (0, 0))
-        p.display.flip()
-
-
-def show_shortcuts_menu(screen):
-    menu_surface = p.Surface(screen.get_size())
-    menu_surface.fill(p.Color("white"))
-    w, h = screen.get_size()
-
-    # Création du bouton retour
-    back_button = Button("Retour", (w // 2 - 100, h - 100), (200, 50), lambda: None)
-
-    # Liste des raccourcis
-    shortcuts = [
-        ("Z", "Annuler le dernier coup"),
-        ("R", "Réinitialiser la partie"),
-        ("S", "Sauvegarder la partie"),
-        ("L", "Charger la partie"),
-        ("C", "Personnaliser les couleurs"),
-        ("E", "Exporter la partie en PGN"),
-        ("I", "Importer la partie PGN"),
-        ("A", "Abandonner la partie"),
-        ("N", "Proposer / accepter la nulle"),
-        ("H", "Afficher/masquer les raccourcis"),
-    ]
-
-    # Affichage des raccourcis
-    font = p.font.SysFont("Arial", 24)
-    title_font = p.font.SysFont("Arial", 32, bold=True)
-
-    # Titre
-    title = title_font.render("Raccourcis Clavier", True, p.Color("black"))
-    title_rect = title.get_rect(center=(w // 2, 50))
-    menu_surface.blit(title, title_rect)
-
-    # Raccourcis
-    for i, (key, desc) in enumerate(shortcuts):
-        key_text = font.render(f"{key}:", True, p.Color("blue"))
-        desc_text = font.render(desc, True, p.Color("black"))
-        y_pos = 150 + i * 40
-        menu_surface.blit(key_text, (w // 2 - 150, y_pos))
-        menu_surface.blit(desc_text, (w // 2 - 100, y_pos))
-
-    while True:
-        for e in p.event.get():
-            if e.type == p.QUIT:
-                sys.exit()
-            if e.type == p.MOUSEBUTTONDOWN:
-                if back_button.rect.collidepoint(e.pos):
-                    return
-            if e.type == p.KEYDOWN:
-                if e.key == p.K_h:
-                    return
-
-        back_button.check_hover(p.mouse.get_pos())
-        back_button.draw(menu_surface)
-        screen.blit(menu_surface, (0, 0))
-        p.display.flip()
-
-
-# --------------------------------------------------
-# Initialisation des sons
+# Sons
 # --------------------------------------------------
 move_sound = None
 capture_sound = None
@@ -750,7 +165,7 @@ def _play_move_sound(move) -> None:
 
 
 # --------------------------------------------------
-# Contrôleur de partie
+# IA : nulle et évaluation affichée
 # --------------------------------------------------
 DRAW_ACCEPT_THRESHOLD_CP = 25  # l'IA accepte la nulle si elle ne s'estime pas mieux
 
@@ -765,9 +180,46 @@ def ai_accepts_draw(game_state, ai_is_white):
     return ai_score <= DRAW_ACCEPT_THRESHOLD_CP
 
 
+def evaluate_for_display(game_state) -> int:
+    """Évaluation rapide (centipions, point de vue des blancs) pour la barre
+    d'évaluation ; un mat vaut ±search.MATE."""
+    result = game_state.result()
+    if result.is_over:
+        if result.winner is engine.Color.WHITE:
+            return search.MATE
+        if result.winner is engine.Color.BLACK:
+            return -search.MATE
+        return 0
+    # Sur une copie : la recherche laisse dans l'état des indicateurs (échec, mat) de la
+    # dernière position visitée.
+    found = search.think(
+        copy.deepcopy(game_state), search.SearchLimits(depth=2, movetime_ms=EVAL_MOVETIME_MS)
+    )
+    return found.score if game_state.white_to_move else -found.score
+
+
+def eval_text(cp: int) -> str:
+    """« +0,4 », « −1,2 » ou « #3 » / « −#3 » (mat en 3 coups)."""
+    if abs(cp) >= search.MATE_THRESHOLD:
+        moves = max(1, (search.MATE - abs(cp) + 1) // 2)
+        return f"#{moves}" if cp > 0 else f"−#{moves}"
+    value = f"{abs(cp) / 100:.1f}".replace(".", ",")
+    return ("+" if cp >= 0 else "−") + value
+
+
+def eval_share(cp: int) -> float:
+    """Part de la barre revenant aux blancs (probabilité de gain logistique)."""
+    if abs(cp) >= search.MATE_THRESHOLD:
+        return 1.0 if cp > 0 else 0.0
+    share = 1 / (1 + 10 ** (-cp / 400))
+    return max(0.04, min(0.96, share))
+
+
+# --------------------------------------------------
+# Contrôleur de partie
+# --------------------------------------------------
 class GameController:
-    """Boucle de jeu : événements, IA, rendu. Extrait de l'ancienne fonction
-    ``main()`` monolithique (cf. rapport d'analyse : découpage de main())."""
+    """Scène de partie : événements, IA, pendule, rendu."""
 
     def __init__(
         self,
@@ -782,15 +234,28 @@ class GameController:
         *,
         time_control=None,
         clock_now=None,
+        settings: Settings | None = None,
+        level: str | None = None,
+        now_ms=None,
     ):
         self.screen = screen
         self.clock = clock
         self.ui = ui_manager
+        self.pieces = resource_manager
         self.mode = mode
         self.player_one = player_one  # humain joue les blancs
         self.player_two = player_two  # humain joue les noirs
-        self.renderer = Renderer(screen, SQ_SIZE, ui_manager, resource_manager, flip_board)
-        self.move_log_font = p.font.SysFont("Arial", 14)
+        self.settings = settings or Settings()
+        # Rappel de l'application (persistance des préférences).
+        self.on_settings_change: Callable[[Settings], None] | None = None
+        self._now_ms = now_ms or p.time.get_ticks
+
+        width, height = screen.get_size()
+        self.layout = layout_module.compute(width, height, self.settings.show_eval)
+        self.renderer = Renderer(screen, resource_manager, self.layout.board, flip_board)
+        self._apply_settings()
+        self.header = Header()
+        self.panel = SidePanel()
 
         self.game_state = engine.GameState()
         self.valid_moves = self.game_state.get_valid_moves()
@@ -802,22 +267,41 @@ class GameController:
         self._start_clock()
 
         self.square_selected: tuple[int, int] | tuple[()] = ()
-        self.player_clicks: list[tuple[int, int]] = []
+        self.drag: Drag | None = None
+        self._deselect_on_release = False
+        self.arrows: set[tuple[tuple[int, int], tuple[int, int]]] = set()
+        self.marks: set[tuple[int, int]] = set()
+        self._right_start: tuple[int, int] | None = None
+        self._right_end: tuple[int, int] | None = None
         self.move_made = False
         self.animate = False
+        # Position affichée (None = position actuelle ; sinon nombre de demi-coups).
+        self.view_ply: int | None = None
+        self._history_key = None
+        self._history_states: dict[int, engine.GameState] = {}
+        self._eval_cache: dict[tuple[object, int], int] = {}
+        self._eval_shown = 0.5
 
         self.ai_thinking = False
         self.ai_started_at = 0.0
         self.ai_overhead_ms = AI_INITIAL_OVERHEAD_MS
         self._ai_requested_ms = None
-        # Niveau de l'IA (choix dans le menu prévu en J4.6).
-        self.ai_level = levels.DEFAULT_LEVEL.name
-        self.move_finder_process = None
-        self.return_queue = None
+        self.ai_level = level or levels.DEFAULT_LEVEL.name
+        self.move_finder_process: Any = None
+        self.return_queue: Any = None
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
         self.promotion_moves: list[engine.Move] = []
+
+        self.overlay: Overlay | None = None
+        self.end_dismissed = False
+        self.notice: tuple[str, str, int] | None = None
+        # Scène suspendue (écran « Nouvelle partie » ouvert par-dessus) : rien ne tourne.
+        self.suspended = False
+        self._frozen_since: float | None = None
+        # Demandes adressées à l'application (changement de scène).
+        self.requests: list[str] = []
 
         # Fin de partie décidée hors de l'échiquier (abandon, accord, temps : J4).
         self.external_result: engine.GameResult | None = None
@@ -825,7 +309,7 @@ class GameController:
         # joués au moment de la proposition). Un coup de l'adversaire la décline.
         self.draw_offer: tuple[engine.Color, int] | None = None
 
-    # -- helpers -------------------------------------------------------
+    # -- état dérivé ---------------------------------------------------
     @property
     def result(self):
         """Fin hors échiquier (abandon, accord…) si elle existe, sinon celle du moteur."""
@@ -840,19 +324,63 @@ class GameController:
     def flip_board(self):
         return self.renderer.flip_board
 
+    @property
+    def frozen(self) -> bool:
+        """Partie suspendue : scène en arrière-plan ou fenêtre modale ouverte."""
+        return self.suspended or (self.overlay is not None and self.overlay.pauses_clock)
+
+    @property
+    def live_ply(self) -> int:
+        return len(self.game_state.move_log)
+
+    @property
+    def current_ply(self) -> int:
+        return self.live_ply if self.view_ply is None else self.view_ply
+
     def human_turn(self):
         return (self.game_state.white_to_move and self.player_one) or (
             not self.game_state.white_to_move and self.player_two
         )
 
+    # -- réglages et mise en page ------------------------------------
+    def _apply_settings(self):
+        self.renderer.palette = th.palette(self.settings.board)
+        self.renderer.show_coordinates = self.settings.show_coordinates
+        self.renderer.show_legal_moves = self.settings.show_legal_moves
+
+    def set_setting(self, name, value):
+        self.settings = replace(self.settings, **{name: value})
+        self._apply_settings()
+        if name == "show_eval":
+            self.resize(self.screen.get_size())
+        if isinstance(self.overlay, AppearanceOverlay):
+            self.overlay.settings = self.settings
+        if self.on_settings_change:
+            self.on_settings_change(self.settings)
+
+    def resize(self, size):
+        self.layout = layout_module.compute(size[0], size[1], self.settings.show_eval)
+        self.renderer.board_rect = p.Rect(self.layout.board)
+        self.renderer.animation = None
+
+    # -- helpers -------------------------------------------------------
     def _reset_selection(self):
         self.square_selected = ()
-        self.player_clicks = []
+        self.drag = None
+        self._deselect_on_release = False
+
+    def _clear_annotations(self):
+        self.arrows.clear()
+        self.marks.clear()
+        self._right_start = self._right_end = None
 
     def _stop_ai(self):
         if self.ai_thinking and self.move_finder_process:
             self.move_finder_process.terminate()
         self.ai_thinking = False
+
+    def _notify(self, text, kind="info"):
+        self.notice = (text, kind, self._now_ms() + NOTICE_MS)
 
     def _start_clock(self, saved_clock=None):
         """Nouvelle pendule (ou pendule sauvegardée) pour la partie courante."""
@@ -864,7 +392,6 @@ class GameController:
             self.chess_clock.start(self.game_state.white_to_move)
         # Coups déjà joués avant cette pendule (partie chargée sans pendule).
         self._clock_base_plies = len(self.game_state.move_log) - self.chess_clock.press_count
-        self.ui.chess_clock = self.chess_clock
 
     def _sync_clock(self):
         """Un appui par coup joué, un retour arrière par coup annulé."""
@@ -875,12 +402,6 @@ class GameController:
             if not self.chess_clock.undo_press():
                 break
 
-    @contextmanager
-    def _paused(self):
-        """Ni le chronomètre ni la pendule ne tournent pendant un menu ou une animation."""
-        with self.ui.timer_paused(), self.chess_clock.paused():
-            yield
-
     def _new_game(self, game_state, saved_clock=None):
         self.game_state = game_state
         self.external_result = None
@@ -888,167 +409,383 @@ class GameController:
         self._start_clock(saved_clock)
         self.valid_moves = self.game_state.get_valid_moves()
         self._reset_selection()
+        self._clear_annotations()
+        self.view_ply = None
         self.move_made = False
         self.animate = False
+        self.renderer.animation = None
+        self.end_dismissed = False
+        if isinstance(self.overlay, EndGameOverlay):
+            self.overlay = None
         self.ui.reset_timer()
         self._stop_ai()
 
-    # -- gestion des événements --------------------------------------
+    def apply_config(self, config: GameConfig):
+        """Nouvelle partie avec les réglages de l'écran « Nouvelle partie »."""
+        self.mode = config.mode
+        self.player_one, self.player_two = config.human_white, config.human_black
+        self.ai_level = config.level
+        self.time_control = config.time_control
+        self.renderer.flip_board = config.flip_board
+        self._new_game(engine.GameState())
+
+    # -- événements ----------------------------------------------------
     def handle_event(self, e):
         if e.type == p.QUIT:
             self._stop_ai()  # ne pas attendre la fin de la recherche (B45)
             p.quit()
             sys.exit()
-        if e.type == p.MOUSEWHEEL:
-            self.ui.handle_scroll(e, p.mouse.get_pos())
-            return
         if self.promotion_popup:
             self._handle_promotion_event(e)
             return
-        if e.type == p.MOUSEBUTTONDOWN:
-            self._handle_board_click(e.pos)
+        if self.overlay is not None:
+            action = self.overlay.handle_event(e)
+            if action is not None:
+                self._run_action(action)
+            return
+        if e.type == p.MOUSEWHEEL:
+            self.panel.scroll_by(p.mouse.get_pos(), e.y)
+        elif e.type == p.MOUSEBUTTONDOWN:
+            if e.button == 1:
+                action = self.header.hit(e.pos) or self.panel.hit(e.pos)
+                if action is not None:
+                    self._run_action(action)
+                else:
+                    self._handle_board_press(e.pos)
+            elif e.button == 3:
+                self._handle_right_press(e.pos)
+        elif e.type == p.MOUSEMOTION:
+            self._handle_motion(e.pos)
+        elif e.type == p.MOUSEBUTTONUP:
+            if e.button == 1:
+                self._handle_board_release(e.pos)
+            elif e.button == 3:
+                self._handle_right_release(e.pos)
         elif e.type == p.KEYDOWN:
             self._handle_keydown(e)
 
+    def _run_action(self, action):
+        if isinstance(action, tuple):
+            kind = action[0]
+            if kind == "nav":
+                self._navigate(action[1])
+            elif kind == "goto":
+                self._view(action[1])
+            elif kind == "setting":
+                self.set_setting(action[1], action[2])
+            return
+        simple = {
+            "new_game": lambda: self.requests.append("new_game"),
+            "save": self._save,
+            "load": self._load,
+            "export": self._export_pgn,
+            "import": self._import_pgn,
+            "flip": self._flip,
+            "appearance": lambda: self._open(AppearanceOverlay(self.settings)),
+            "shortcuts": lambda: self._open(ShortcutsOverlay()),
+            "undo": self._undo,
+            "draw": self._offer_draw,
+            "resign": self._ask_resign,
+            "rematch": self._restart,
+            "confirm_resign": self._resign,
+            "confirm_restart": self._restart,
+        }
+        if action in ("close", "review"):
+            if isinstance(self.overlay, EndGameOverlay):
+                self.end_dismissed = True
+            self.overlay = None
+            return
+        handler = simple.get(action)
+        if handler is not None:
+            if isinstance(self.overlay, (ConfirmOverlay, EndGameOverlay)):
+                self.end_dismissed = self.end_dismissed or isinstance(self.overlay, EndGameOverlay)
+                self.overlay = None
+            handler()
+
+    def _open(self, overlay):
+        self._reset_selection()
+        self.overlay = overlay
+        if overlay.pauses_clock:
+            self.freeze_clock()
+
+    def freeze_clock(self):
+        """Arrête tout de suite la pendule (fenêtre modale, scène suspendue) ; update()
+        la relance quand plus rien ne la retient."""
+        self.chess_clock.pause()
+        self.ui.skip()
+
+    # -- promotion -----------------------------------------------------
     def _close_promotion_popup(self):
         self.promotion_popup = None
         self.promotion_moves = []
 
     def _handle_promotion_event(self, e):
         assert self.promotion_popup is not None
-        if e.type == p.KEYDOWN and e.key == p.K_ESCAPE:
+        choice = self.promotion_popup.choice_for(e)
+        if choice is None:
+            return
+        if choice == "cancel":
             self._close_promotion_popup()
             return
-        if e.type != p.MOUSEBUTTONDOWN:
-            return
-        if not self.promotion_popup.rect.collidepoint(e.pos):
-            self._close_promotion_popup()
-            return
-        for btn in self.promotion_popup.buttons:
-            if btn.rect.collidepoint(e.pos):
-                # Le coup joué est celui que le moteur a généré pour cette pièce :
-                # historique, sauvegarde et plateau restent cohérents (B29).
-                move = next(m for m in self.promotion_moves if m.promotion_piece == btn.text)
-                self.game_state.make_move(move)
-                _play_move_sound(move)
-                logger.info("Coup joué : %s", move)
-                self.move_made = True
-                self.animate = True
-                self._close_promotion_popup()
-                return
+        # Le coup joué est celui que le moteur a généré pour cette pièce :
+        # historique, sauvegarde et plateau restent cohérents (B29).
+        move = next(m for m in self.promotion_moves if m.promotion_piece == choice)
+        self._close_promotion_popup()
+        self._play(move, animate=False)
 
-    def _handle_board_click(self, pos):
-        if self.game_over or not self.human_turn():
-            return
+    # -- échiquier : souris ------------------------------------------
+    def _targets(self, square):
+        return [m for m in self.valid_moves if (m.start_row, m.start_col) == square]
+
+    def _handle_board_press(self, pos):
         square = self.renderer.square_from_pixel(pos)
         if square is None:
+            self._reset_selection()
+            return
+        self._clear_annotations()
+        if self.view_ply is not None:
+            self.view_ply = None  # un clic sur l'échiquier ramène à la position actuelle
+            return
+        if self.game_over or not self.human_turn():
             return
         row, col = square
         my_color = "w" if self.game_state.white_to_move else "b"
         piece = self.game_state.board[row][col]
 
-        if not self.player_clicks:
-            if piece == "--" or piece[0] != my_color:
-                self._reset_selection()
-                return
-            self.square_selected = (row, col)
-            self.player_clicks.append(self.square_selected)
-            return
-
-        # deuxième clic : re-sélection si on clique une de ses pièces
         if piece != "--" and piece[0] == my_color:
-            self.square_selected = (row, col)
-            self.player_clicks = [self.square_selected]
+            # Ré-appuyer sur la pièce choisie la reprend : la relâcher sans la déplacer
+            # annule la sélection.
+            self._deselect_on_release = self.square_selected == square
+            self.square_selected = square
+            self.drag = Drag(square, piece, pos)
             return
+        if self.square_selected:
+            self._try_move(self.square_selected, square, animate=True)
+        self._reset_selection()
 
-        self.square_selected = (row, col)
-        self.player_clicks.append(self.square_selected)
-        if len(self.player_clicks) == 2:
-            self._try_move(self.player_clicks[0], self.player_clicks[1])
+    def _handle_motion(self, pos):
+        if self.drag is not None:
+            self.drag.pos = pos
+            ox, oy = self.renderer.square_rect(*self.drag.origin).center
+            if not self.drag.active and max(abs(pos[0] - ox), abs(pos[1] - oy)) > max(
+                DRAG_THRESHOLD_PX, self.renderer.sq_size // 2
+            ):
+                self.drag.active = True
+        if self._right_start is not None:
+            self._right_end = self.renderer.square_from_pixel(pos)
 
-    def _try_move(self, start, end):
-        move = engine.Move(start, end, self.game_state.board)
-        for valid_move in self.valid_moves:
-            if move != valid_move:
-                continue
-            if valid_move.is_pawn_promotion:
-                self.promotion_moves = [
-                    m
-                    for m in self.valid_moves
-                    if m.is_pawn_promotion
-                    and (m.start_row, m.start_col, m.end_row, m.end_col)
-                    == (start[0], start[1], end[0], end[1])
-                ]
-                self.promotion_popup = PromotionPopup(
-                    (BOARD_WIDTH // 2 - 150 + LEFT_PANEL_WIDTH, BOARD_HEIGHT // 2 - 50),
-                    (300, 100),
-                )
-            else:
-                self.game_state.make_move(valid_move)
-                self.move_made = True
-                _play_move_sound(valid_move)
-                logger.info("Coup joué : %s", valid_move)
+    def _handle_board_release(self, pos):
+        drag, self.drag = self.drag, None
+        if drag is None:
+            return
+        if drag.active:
+            target = self.renderer.square_from_pixel(pos)
+            if target is not None and target != drag.origin:
+                if self._try_move(drag.origin, target, animate=False):
+                    self._reset_selection()
+            return
+        if self._deselect_on_release:
             self._reset_selection()
-            return
 
-    def _handle_keydown(self, e):
-        if e.key == p.K_z:  # Retour en arrière
-            if self.game_state.move_log:
-                self.game_state.undo_move()
-                logger.info("Undo effectué")
-            # Contre l'IA seulement : annuler aussi le coup de l'IA pour rendre
-            # la main au joueur. En PvP/CvC, un seul undo.
-            if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
-                self.game_state.undo_move()
-            self.external_result = None  # annuler rouvre une partie abandonnée ou nulle
-            self.draw_offer = None
-            self.move_made = True
-            self.animate = False
-            self._stop_ai()
-        elif e.key == p.K_r:  # Réinitialiser
-            self._new_game(engine.GameState())
-            logger.info("Partie réinitialisée")
-        elif e.key == p.K_s:  # Sauvegarder
-            serialization.save_game(
-                self.game_state,
-                flip_board=self.flip_board,
-                filename=str(paths.save_file()),
-                mode=self.mode,
-                human_white=self.player_one,
-                human_black=self.player_two,
-                level=self.ai_level,
-                clock=self.chess_clock.to_dict(),
-                result=self.external_result,
+    def _handle_right_press(self, pos):
+        self._reset_selection()
+        self._right_start = self.renderer.square_from_pixel(pos)
+        self._right_end = self._right_start
+
+    def _handle_right_release(self, pos):
+        start, self._right_start = self._right_start, None
+        end = self.renderer.square_from_pixel(pos)
+        self._right_end = None
+        if start is None or end is None:
+            return
+        if start == end:
+            self.marks ^= {start}
+        else:
+            self.arrows ^= {(start, end)}
+
+    def _try_move(self, start, end, animate):
+        """Joue le coup start -> end s'il est légal (ou ouvre le choix de promotion) ;
+        renvoie True si le coup est accepté."""
+        candidates = [
+            m
+            for m in self.valid_moves
+            if (m.start_row, m.start_col, m.end_row, m.end_col)
+            == (start[0], start[1], end[0], end[1])
+        ]
+        if not candidates:
+            return False
+        if candidates[0].is_pawn_promotion:
+            self.promotion_moves = candidates
+            disp_row = self.renderer.display_row(end[0])
+            self.promotion_popup = PromotionPopup(
+                self.renderer.square_rect(*end),
+                downward=disp_row == 0,
+                color=candidates[0].piece_moved[0],
+                pieces=self.pieces,
             )
-        elif e.key == p.K_l:  # Charger
-            try:
-                saved = serialization.load_save(str(paths.existing_save_file()))
-            except Exception as ex:  # noqa: BLE001 - fichier absent, illisible ou illégal
-                logger.error("Erreur lors du chargement : %s", ex)
-                return
-            self.renderer.flip_board = saved.flip_board
-            if saved.mode is not None:
-                self.mode = saved.mode
-                self.player_one = bool(saved.human_white)
-                self.player_two = bool(saved.human_black)
-            if saved.level in levels.LEVELS_BY_NAME:
-                self.ai_level = saved.level
-            self._new_game(saved.game_state, saved.clock)
-            self.external_result = saved.result
-        elif e.key == p.K_e:  # Exporter en PGN
-            self._export_pgn()
-        elif e.key == p.K_i:  # Importer un PGN
-            self._import_pgn()
-        elif e.key == p.K_a:  # Abandonner
-            self._resign()
-        elif e.key == p.K_n:  # Proposer / accepter la nulle
-            self._offer_draw()
-        elif e.key == p.K_c:  # Couleurs
-            with self._paused():
-                customization_menu(self.screen, self.ui)
-        elif e.key == p.K_h:  # Raccourcis
-            with self._paused():
-                show_shortcuts_menu(self.screen)
+        else:
+            self._play(candidates[0], animate)
+        self._reset_selection()
+        return True
+
+    def _play(self, move, animate):
+        self.game_state.make_move(move)
+        if self.settings.sound:
+            _play_move_sound(move)
+        logger.info("Coup joué : %s", move)
+        self.move_made = True
+        self.animate = animate
+        self._clear_annotations()
+
+    # -- clavier -------------------------------------------------------
+    def _handle_keydown(self, e):
+        keys = {
+            p.K_z: self._undo,
+            p.K_r: self._ask_restart,
+            p.K_s: self._save,
+            p.K_l: self._load,
+            p.K_e: self._export_pgn,
+            p.K_i: self._import_pgn,
+            p.K_a: self._ask_resign,
+            p.K_n: self._offer_draw,
+            p.K_f: self._flip,
+            p.K_c: lambda: self._open(AppearanceOverlay(self.settings)),
+            p.K_h: lambda: self._open(ShortcutsOverlay()),
+            p.K_LEFT: lambda: self._navigate("prev"),
+            p.K_RIGHT: lambda: self._navigate("next"),
+            p.K_UP: lambda: self._navigate("first"),
+            p.K_HOME: lambda: self._navigate("first"),
+            p.K_DOWN: lambda: self._navigate("last"),
+            p.K_END: lambda: self._navigate("last"),
+            p.K_ESCAPE: self._escape,
+        }
+        handler = keys.get(e.key)
+        if handler is not None:
+            handler()
+
+    def _escape(self):
+        if self.square_selected:
+            self._reset_selection()
+        elif self.arrows or self.marks:
+            self._clear_annotations()
+        elif self.view_ply is not None:
+            self.view_ply = None
+
+    # -- historique (J5.5) ---------------------------------------------
+    def _view(self, ply):
+        ply = max(0, min(self.live_ply, ply))
+        self.view_ply = None if ply == self.live_ply else ply
+        self._reset_selection()
+
+    def _navigate(self, where):
+        target = {
+            "first": 0,
+            "prev": self.current_ply - 1,
+            "next": self.current_ply + 1,
+            "last": self.live_ply,
+        }[where]
+        self._view(target)
+
+    def _key(self):
+        return (id(self.game_state), tuple(m.move_id for m in self.game_state.move_log))
+
+    def state_at(self, ply):
+        """Position après ``ply`` demi-coups (copie ; la partie n'est pas modifiée)."""
+        if ply >= self.live_ply:
+            return self.game_state
+        key = self._key()
+        if key != self._history_key:
+            self._history_key, self._history_states = key, {}
+        if ply not in self._history_states:
+            state = copy.deepcopy(self.game_state)
+            for _ in range(self.live_ply - ply):
+                state.undo_move()
+            self._history_states[ply] = state
+        return self._history_states[ply]
+
+    # -- actions de partie ---------------------------------------------
+    def _undo(self):
+        if self.game_state.move_log:
+            self.game_state.undo_move()
+            logger.info("Undo effectué")
+        # Contre l'IA seulement : annuler aussi le coup de l'IA pour rendre la main au
+        # joueur. En PvP/CvC, un seul undo.
+        if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
+            self.game_state.undo_move()
+        self.external_result = None  # annuler rouvre une partie abandonnée ou nulle
+        self.draw_offer = None
+        self.end_dismissed = False
+        self.view_ply = None
+        self.move_made = True
+        self.animate = False
+        self.renderer.animation = None
+        self._reset_selection()
+        self._clear_annotations()
+        self._stop_ai()
+
+    def _in_progress(self):
+        return bool(self.game_state.move_log) and not self.game_over
+
+    def _ask_restart(self):
+        if self._in_progress():
+            self._open(
+                ConfirmOverlay(
+                    "Recommencer la partie ?",
+                    "La partie en cours sera perdue si elle n'a pas été sauvegardée.",
+                    "Recommencer",
+                    "confirm_restart",
+                )
+            )
+        else:
+            self._restart()
+
+    def _restart(self):
+        self._new_game(engine.GameState())
+        logger.info("Partie réinitialisée")
+
+    def _flip(self):
+        self.renderer.flip_board = not self.renderer.flip_board
+        self.renderer.animation = None
+
+    def _save(self):
+        saved = serialization.save_game(
+            self.game_state,
+            flip_board=self.flip_board,
+            filename=str(paths.save_file()),
+            mode=self.mode,
+            human_white=self.player_one,
+            human_black=self.player_two,
+            level=self.ai_level,
+            clock=self.chess_clock.to_dict(),
+            result=self.external_result,
+        )
+        if saved:
+            self._notify("Partie sauvegardée", "accent")
+        else:
+            self._notify("Échec de la sauvegarde (voir le journal)", "warning")
+
+    def _load(self):
+        path = Path(paths.existing_save_file())
+        if not path.exists():
+            self._notify("Aucune sauvegarde à charger", "warning")
+            return False
+        try:
+            saved = serialization.load_save(str(path))
+        except Exception as ex:  # noqa: BLE001 - fichier illisible ou illégal
+            logger.error("Erreur lors du chargement : %s", ex)
+            self._notify("Sauvegarde illisible : chargement impossible", "warning")
+            return False
+        self.renderer.flip_board = saved.flip_board
+        if saved.mode is not None:
+            self.mode = saved.mode
+            self.player_one = bool(saved.human_white)
+            self.player_two = bool(saved.human_black)
+        if saved.level in levels.LEVELS_BY_NAME:
+            self.ai_level = saved.level
+        self._new_game(saved.game_state, saved.clock)
+        self.external_result = saved.result
+        self._notify(f"Partie chargée ({len(saved.game_state.move_log)} demi-coups)", "accent")
+        return True
 
     def _player_name(self, white):
         human = self.player_one if white else self.player_two
@@ -1068,21 +805,27 @@ class GameController:
         try:
             path.write_text(text, encoding="utf-8")
             logger.info("Partie exportée en PGN dans %s", path)
+            self._notify(f"PGN exporté : {path}", "accent")
         except OSError as ex:
             logger.error("Export PGN impossible : %s", ex)
+            self._notify("Export PGN impossible (voir le journal)", "warning")
 
     def _import_pgn(self):
+        path = paths.pgn_file()
         try:
-            game = pgn.read_pgn_file(paths.pgn_file())[-1]
+            game = pgn.read_pgn_file(path)[-1]
             state = game.replay()
         except (OSError, IndexError, pgn.PgnError) as ex:
             logger.error("Import PGN impossible : %s", ex)
-            return
+            self._notify(f"Import impossible : {path.name} absent ou invalide", "warning")
+            return False
         # La partie continue avec les règles du jeu (nulles automatiques).
         state.automatic_draws = True
         state._valid_moves = None
         self._new_game(state)
         logger.info("Partie importée (%d coups)", len(state.move_log))
+        self._notify(f"PGN importé ({len(state.move_log)} demi-coups)", "accent")
+        return True
 
     def _human_color(self):
         """Camp de l'humain qui agit : celui au trait en PvP, l'unique humain en PvC."""
@@ -1092,6 +835,18 @@ class GameController:
             return engine.Color.WHITE if self.game_state.white_to_move else engine.Color.BLACK
         return None  # IA contre IA : personne n'abandonne
 
+    def _ask_resign(self):
+        if self._human_color() is None or self.game_over:
+            return
+        self._open(
+            ConfirmOverlay(
+                "Abandonner la partie ?",
+                "La victoire sera attribuée à l'adversaire.",
+                "Abandonner",
+                "confirm_resign",
+            )
+        )
+
     def _resign(self):
         color = self._human_color()
         if color is None or self.game_over:
@@ -1100,6 +855,11 @@ class GameController:
         self.external_result = engine.GameResult(engine.Termination.RESIGNATION, winner)
         self._stop_ai()
         logger.info("Abandon : %s", self.external_result.description)
+
+    def _pending_offer_for(self, color):
+        """Vrai si l'adversaire de ``color`` vient de proposer la nulle (PvP)."""
+        offer = self.draw_offer
+        return offer is not None and offer[0] is not color and offer[1] == self.live_ply - 1
 
     def _offer_draw(self):
         color = self._human_color()
@@ -1113,10 +873,11 @@ class GameController:
             if accepted:
                 self.external_result = engine.GameResult(engine.Termination.DRAW_AGREEMENT)
                 self._stop_ai()
+            else:
+                self._notify("L'IA refuse la nulle : elle estime sa position meilleure")
             return
         # PvP : l'adversaire accepte en appuyant à son tour sur N, avant de jouer.
-        offer = self.draw_offer
-        if offer is not None and offer[0] is not color and offer[1] == plies - 1:
+        if self._pending_offer_for(color):
             self.external_result = engine.GameResult(engine.Termination.DRAW_AGREEMENT)
             self.draw_offer = None
         else:
@@ -1162,11 +923,8 @@ class GameController:
                 logger.error("Coup de l'IA illégal ignoré : %s", ai_move)
             ai_move = search.find_random_move(valid_moves)
         self._measure_ai_overhead()
-        self.game_state.make_move(ai_move)
-        _play_move_sound(ai_move)
-        self.move_made = True
-        self.animate = True
         self.ai_thinking = False
+        self._play(ai_move, animate=True)
         logger.info("Coup joué par l'IA : %s", ai_move)
 
     def _ai_think_time_ms(self):
@@ -1205,79 +963,429 @@ class GameController:
             )
             return None
 
-    # -- rendu -----------------------------------------------------
-    def draw(self):
-        self.renderer.draw_board()
-        self.renderer.draw_pieces(self.game_state.board)
-        self.renderer.highlight_squares(self.game_state, self.valid_moves, self.square_selected)
-        self.ui.draw_move_log(self.screen, self.game_state, self.move_log_font)
-        if self.ai_thinking:
-            self.ui.draw_loading_indicator(self.screen)
-        if self.promotion_popup:
-            self.promotion_popup.draw(self.screen)
-        self._draw_status()
-        result = self.result
-        if result.is_over:
-            self.renderer.draw_end_game_text(result.description)
-
-    def _draw_status(self):
-        """Panneau de gauche, sous la pendule : niveau de l'IA, nulle proposée."""
-        font = self.move_log_font
-        lines = []
-        if self.mode in ("PvC", "CvC"):
-            lines.append(f"IA : {self.ai_level}")
-        if self.draw_offer is not None and not self.game_over:
-            camp = "Blancs" if self.draw_offer[0] is engine.Color.WHITE else "Noirs"
-            lines.append(f"Nulle proposée par les {camp}")
-            lines.append("(N pour accepter)")
-        for i, text in enumerate(lines):
-            self.screen.blit(font.render(text, True, p.Color("white")), (20, 125 + 20 * i))
-
-    # -- boucle principale --------------------------------------
+    # -- boucle ------------------------------------------------------
     def update(self):
         """Une étape de logique de jeu (sans dessin) : appelée à chaque image."""
-        # Rafraîchir la liste des coups légaux AVANT de lancer l'IA : sinon
-        # l'IA reçoit la liste du camp précédent (coup humain déjà joué) et
-        # renvoie un coup rejeté par make_move (« Mouvement non valide »).
+        now = self._now_ms()
         self._sync_clock()
+        frozen = self.frozen
+        if frozen and self._frozen_since is None:
+            self._frozen_since = time.monotonic()
+        elif not frozen and self._frozen_since is not None:
+            # Le temps de pause ne compte pas dans la limite de réflexion de l'IA.
+            self.ai_started_at += time.monotonic() - self._frozen_since
+            self._frozen_since = None
+
         if not self.game_over:
             flagged = self.chess_clock.flagged()
             if flagged is not None:
                 self.external_result = chess_clock_module.timeout_result(self.game_state, flagged)
                 self._stop_ai()
                 logger.info("Fin au temps : %s", self.external_result.description)
-        # Partie terminée : la pendule est figée (une annulation la relance).
-        if self.game_over:
+        # Partie terminée ou suspendue : la pendule est figée (une annulation la relance).
+        if self.game_over or frozen:
             self.chess_clock.pause()
+            self.ui.skip()
         else:
             self.chess_clock.resume()
+            self.ui.update_timer(self.game_state.white_to_move)
+
         if self.move_made:
-            if self.animate and self.game_state.move_log:
-                with self._paused():
-                    self.renderer.animate_move(
-                        self.game_state.move_log[-1], self.game_state.board, self.clock
-                    )
+            # Rafraîchir la liste des coups légaux AVANT de relancer l'IA : sinon elle
+            # recevrait la liste du camp précédent (« Mouvement non valide »).
+            if self.animate and self.game_state.move_log and self.view_ply is None:
+                self.renderer.start_animation(self.game_state.move_log[-1], now)
             self.valid_moves = self.game_state.get_valid_moves()
             self.move_made = False
             self.animate = False
+            if self.game_over and self.settings.sound and gameover_sound:
+                gameover_sound.play()
 
-        self.update_ai()
+        if not frozen:
+            self.update_ai()
+
+        if (
+            self.game_over
+            and self.overlay is None
+            and not self.end_dismissed
+            and not self.renderer.animating(now)
+        ):
+            self.overlay = self._end_game_overlay()
+        if self.notice is not None and now >= self.notice[2]:
+            self.notice = None
+
+    def _end_game_overlay(self):
+        result = self.result
+        if result.winner is None:
+            title, piece = "Partie nulle", None
+        else:
+            white = result.winner is engine.Color.WHITE
+            title = "Victoire des blancs" if white else "Victoire des noirs"
+            if self.mode == "PvC":
+                human_won = white == bool(self.player_one)
+                title = "Victoire !" if human_won else "Défaite"
+            piece = "wK" if white else "bK"
+        moves = (self.live_ply + 1) // 2
+        subtitle = f"{result.description} · {result.pgn} · {moves} coup{'s' if moves > 1 else ''}"
+        return EndGameOverlay(title, subtitle, piece, self.pieces, result.description)
+
+    # -- rendu -----------------------------------------------------
+    def draw(self):
+        t = th.theme(self.settings.theme)
+        now = self._now_ms()
+        mouse = p.mouse.get_pos()
+        self.screen.fill(t.bg)
+        logo = self.pieces.get_image("wN", 30)
+        self.header.draw(self.screen, self.layout.header, t, logo, self._info_text(), mouse, now)
+        state = self.state_at(self.current_ply)
+        if self.layout.eval_bar is not None:
+            self._draw_eval_bar(t, state)
+        self.renderer.draw(self._board_scene(state), now)
+        self.panel.draw(
+            self.screen, self.layout.panel, self._panel_model(state), t, self.pieces, mouse, now
+        )
+        if self.promotion_popup:
+            self.promotion_popup.draw(self.screen, t, mouse)
+        if self.overlay is not None:
+            self.overlay.draw(self.screen, t, mouse, now)
+
+    def _info_text(self):
+        mode = {"PvC": "Joueur vs IA", "PvP": "Joueur vs Joueur", "CvC": "IA vs IA"}[self.mode]
+        parts = [mode]
+        if self.mode != "PvP":
+            parts.append(f"Niveau {self.ai_level}")
+        tc = self.time_control
+        parts.append("Sans limite" if tc.is_unlimited else (tc.name or tc.label))
+        return " · ".join(parts)
+
+    def _board_scene(self, state):
+        ply = self.current_ply
+        last = None
+        if ply > 0:
+            m = self.game_state.move_log[ply - 1]
+            last = ((m.start_row, m.start_col), (m.end_row, m.end_col))
+        check = None
+        if state.king_in_check():
+            check = state.white_king_location if state.white_to_move else state.black_king_location
+        selected = self.square_selected or None
+        targets = []
+        if selected and self.view_ply is None:
+            targets = [
+                ((m.end_row, m.end_col), m.is_capture)
+                for m in self._targets(selected)
+                if not (m.is_pawn_promotion and m.promotion_piece != "Q")
+            ]
+        pending = None
+        if self._right_start is not None and self._right_end not in (None, self._right_start):
+            pending = (self._right_start, self._right_end)
+        return BoardScene(
+            board=state.board,
+            last_move=last,
+            selected=selected,
+            targets=targets,
+            check=check,
+            drag=self.drag,
+            arrows=self.arrows,
+            marks=self.marks,
+            pending_arrow=pending,
+        )
+
+    def _eval(self, state, ply):
+        key = (self._key(), ply)
+        if key not in self._eval_cache:
+            if len(self._eval_cache) > 512:
+                self._eval_cache.clear()
+            self._eval_cache[key] = evaluate_for_display(state)
+        return self._eval_cache[key]
+
+    def _draw_eval_bar(self, t, state):
+        rect = self.layout.eval_bar
+        assert rect is not None
+        cp = self._eval(state, self.current_ply)
+        target = eval_share(cp)
+        self._eval_shown += (target - self._eval_shown) * 0.25
+        w.rounded(self.screen, th.EVAL_BLACK, rect, 6)
+        white_h = round(rect.height * self._eval_shown)
+        white = p.Rect(rect.x, 0, rect.width, white_h)
+        if self.flip_board:
+            white.top = rect.top
+        else:
+            white.bottom = rect.bottom
+        if white_h > 0:
+            p.draw.rect(self.screen, th.EVAL_WHITE, white, border_radius=6)
+        p.draw.line(self.screen, t.accent, (rect.x, rect.centery), (rect.right - 1, rect.centery))
+
+    def _captures(self, ply):
+        taken: dict[str, list[str]] = {"w": [], "b": []}
+        for move in self.game_state.move_log[:ply]:
+            if move.piece_captured != "--":
+                taken[move.piece_moved[0]].append(move.piece_captured)
+        for pieces in taken.values():
+            pieces.sort(key=lambda pc: -PIECE_VALUES[pc[1]])
+        return taken
+
+    @staticmethod
+    def _material(board):
+        score = 0
+        for row in board:
+            for piece in row:
+                if piece != "--":
+                    value = PIECE_VALUES[piece[1]]
+                    score += value if piece[0] == "w" else -value
+        return score
+
+    def _player_card(self, white, state, taken, material):
+        color = engine.Color.WHITE if white else engine.Color.BLACK
+        human = self.player_one if white else self.player_two
+        side = "Blancs" if white else "Noirs"
+        if self.mode == "PvC":
+            name = "Vous" if human else f"IA · {self.ai_level}"
+        elif self.mode == "PvP":
+            name = "Joueur blanc" if white else "Joueur noir"
+        else:
+            name = f"IA · {self.ai_level}"
+        to_move = self.game_state.white_to_move == white and not self.game_over
+        if self.chess_clock.is_unlimited:
+            clock_text = format_elapsed(self.ui.white_time if white else self.ui.black_time)
+            remaining = None
+        else:
+            remaining = self.chess_clock.remaining_ms(color)
+            clock_text = chess_clock_module.format_ms(remaining)
+        state_name = "idle"
+        if to_move:
+            state_name = "active"
+            if remaining is not None and remaining < LOW_TIME_MS:
+                state_name = "low"
+            if self.frozen:
+                state_name = "paused"
+        advantage = material if white else -material
+        return PlayerCard(
+            name=name,
+            subtitle=side,
+            white=white,
+            is_ai=not human,
+            clock=clock_text,
+            clock_state=state_name,
+            captured=taken["w" if white else "b"],
+            advantage=max(0, advantage),
+            thinking=self.ai_thinking and to_move and not human,
+            highlighted=to_move,
+        )
+
+    def _move_rows(self):
+        sans = self._sans()
+        rows: list[MoveRow] = []
+        start_white = self.game_state.white_to_move == (len(sans) % 2 == 0)
+        number = self.game_state.start_fullmove
+        ply = 1
+        index = 0
+        if not start_white and sans:
+            rows.append(MoveRow(number, None, (sans[0], 1)))
+            number, ply, index = number + 1, 2, 1
+        while index < len(sans):
+            white = (sans[index], ply)
+            black = (sans[index + 1], ply + 1) if index + 1 < len(sans) else None
+            rows.append(MoveRow(number, white, black))
+            number, ply, index = number + 1, ply + 2, index + 2
+        return rows
+
+    def _sans(self):
+        key = self._key()
+        if getattr(self, "_san_key", None) != key:
+            self._san_key, self._san_cache = key, notation.san_history(self.game_state)
+        return self._san_cache
+
+    def _status(self):
+        if self.view_ply is not None:
+            sans = self._sans()
+            ply = self.view_ply
+            if ply == 0:
+                where = "position de départ"
+            else:
+                where = f"après {sans[ply - 1]}"
+            return f"Revue : {where} · Fin pour revenir à la partie", "accent"
+        if self.notice is not None:
+            return self.notice[0], self.notice[1]
+        if self.game_over:
+            return self.result.description, "accent"
+        side = "blancs" if self.game_state.white_to_move else "noirs"
+        mover = engine.Color.WHITE if self.game_state.white_to_move else engine.Color.BLACK
+        if self.mode == "PvP" and self._pending_offer_for(mover):
+            proposer = "Noirs" if self.game_state.white_to_move else "Blancs"
+            return f"Les {proposer} proposent la nulle · N pour accepter", "accent"
+        if self.ai_thinking:
+            return "L'IA réfléchit…", "info"
+        prefix = "Échec ! " if self.game_state.king_in_check() else ""
+        if self.mode == "PvC" and self.human_turn():
+            return prefix + "À vous de jouer", "warning" if prefix else "accent"
+        return prefix + f"Aux {side} de jouer", "warning" if prefix else "info"
+
+    def _panel_model(self, state):
+        ply = self.current_ply
+        taken = self._captures(ply)
+        material = self._material(state.board)
+        white_card = self._player_card(True, state, taken, material)
+        black_card = self._player_card(False, state, taken, material)
+        top, bottom = (white_card, black_card) if self.flip_board else (black_card, white_card)
+        status, kind = self._status()
+        human = self._human_color()
+        can_act = human is not None and not self.game_over
+        draw_label = (
+            "Accepter"
+            if (self.mode == "PvP" and human is not None and self._pending_offer_for(human))
+            else "Nulle"
+        )
+        eval_label = None
+        if self.layout.eval_bar is not None:
+            eval_label = eval_text(self._eval(state, ply))
+        return PanelModel(
+            top=top,
+            bottom=bottom,
+            rows=self._move_rows(),
+            current_ply=ply,
+            live_ply=self.live_ply,
+            status=status,
+            status_kind=kind,
+            eval_text=eval_label,
+            can_undo=bool(self.game_state.move_log),
+            can_draw=can_act,
+            can_resign=can_act,
+            draw_label=draw_label,
+        )
+
+
+# --------------------------------------------------
+# Application : machine à états des scènes (J5.1)
+# --------------------------------------------------
+class App:
+    """Scène courante (écran « Nouvelle partie » ou partie) et boucle principale."""
+
+    def __init__(self, screen, settings: Settings, pieces=None, clock=None):
+        self.screen = screen
+        self.settings = settings
+        self.pieces = pieces or PieceSet()
+        self.clock = clock or p.time.Clock()
+        self.game: GameController | None = None
+        self.scene: NewGameMenu | GameController = NewGameMenu(
+            settings, can_cancel=False, pieces=self.pieces
+        )
+
+    # -- transitions -----------------------------------------------------
+    def _persist(self, settings: Settings):
+        self.settings = settings
+        settings_module.save(settings)
+
+    def _ensure_game(self, config: GameConfig) -> GameController:
+        if self.game is None:
+            self.game = GameController(
+                self.screen,
+                self.clock,
+                UIManager(),
+                self.pieces,
+                config.mode,
+                config.human_white,
+                config.human_black,
+                config.flip_board,
+                time_control=config.time_control,
+                settings=self.settings,
+                level=config.level,
+            )
+            self.game.on_settings_change = self._persist
+        else:
+            self.game.settings = self.settings
+            self.game._apply_settings()
+            self.game.resize(self.screen.get_size())
+            self.game.apply_config(config)
+        return self.game
+
+    def open_new_game(self):
+        if self.game is not None:
+            self.game.suspended = True
+            self.game.freeze_clock()
+        self.scene = NewGameMenu(
+            self.settings, can_cancel=self.game is not None, pieces=self.pieces
+        )
+
+    def _resume_game(self):
+        assert self.game is not None
+        self.game.suspended = False
+        self.game.resize(self.screen.get_size())
+        self.scene = self.game
+
+    def _menu_action(self, action):
+        menu = self.scene
+        assert isinstance(menu, NewGameMenu)
+        if action == "cancel" and self.game is not None:
+            self._resume_game()
+            return
+        if action not in ("load", "import") and not (
+            isinstance(action, tuple) and action[0] == "start"
+        ):
+            return
+        self._persist(
+            replace(
+                self.settings,
+                mode=menu.settings.mode,
+                color=menu.settings.color,
+                level=menu.settings.level,
+                time_control=menu.settings.time_control,
+            )
+        )
+        config = action[1] if isinstance(action, tuple) else config_from(self.settings)
+        game = self._ensure_game(config)
+        game.suspended = False
+        self.scene = game
+        if action == "load":
+            game._load()
+        elif action == "import":
+            game._import_pgn()
+
+    # -- boucle ----------------------------------------------------------
+    def handle_event(self, e):
+        if e.type == p.QUIT:
+            if self.game is not None:
+                self.game._stop_ai()  # ne pas attendre la fin de la recherche (B45)
+            p.quit()
+            sys.exit()
+        if e.type == p.VIDEORESIZE:
+            size = layout_module.clamp_window_size(e.w, e.h)
+            if size != (e.w, e.h):
+                self.screen = p.display.set_mode(size, p.RESIZABLE)
+            if self.game is not None:
+                self.game.screen = self.screen
+                self.game.renderer.screen = self.screen
+                self.game.resize(self.screen.get_size())
+            return
+        if isinstance(self.scene, NewGameMenu):
+            action = self.scene.handle_event(e)
+            if action is not None:
+                self._menu_action(action)
+        else:
+            self.scene.handle_event(e)
+            if self.scene.requests:
+                request = self.scene.requests.pop(0)
+                if request == "new_game":
+                    self.open_new_game()
+
+    def step(self):
+        """Une image : logique puis dessin de la scène courante."""
+        if isinstance(self.scene, NewGameMenu):
+            if self.game is not None:
+                self.game.update()  # suspendue : seule la pendule est tenue à l'arrêt
+            self.scene.draw(
+                self.screen, th.theme(self.settings.theme), p.mouse.get_pos(), p.time.get_ticks()
+            )
+        else:
+            self.scene.update()
+            self.scene.draw()
 
     def run(self):
         while True:
-            if not self.game_over:
-                self.ui.update_timer(self.game_state.white_to_move)
-            else:
-                self.ui.is_running = False
-
             for e in p.event.get():
                 self.handle_event(e)
-
-            self.update()
-
-            self.draw()
-            self.clock.tick(MAX_FPS)
+            self.step()
             p.display.flip()
+            self.clock.tick(MAX_FPS)
 
 
 # --------------------------------------------------
@@ -1287,33 +1395,15 @@ def main():
     _configure_logging()
     p.init()
     _load_sounds()
-    screen = p.display.set_mode(
-        (BOARD_WIDTH + MOVE_LOG_PANEL_WIDTH + LEFT_PANEL_WIDTH, BOARD_HEIGHT), p.RESIZABLE
-    )
-    clock = p.time.Clock()
-    ui_manager = UIManager(BOARD_WIDTH, BOARD_HEIGHT, MOVE_LOG_PANEL_WIDTH, MOVE_LOG_PANEL_HEIGHT)
-    resource_manager = ResourceManager(SQ_SIZE)
-
-    mode, player_one, player_two = game_mode_menu(screen)
-    # En PvC, si le joueur humain a les noirs, on retourne le plateau.
-    flip_board = mode == "PvC" and not player_one
-
-    level = level_menu(screen) if mode in ("PvC", "CvC") else levels.DEFAULT_LEVEL.name
-    time_control = time_control_menu(screen)
-
-    controller = GameController(
-        screen,
-        clock,
-        ui_manager,
-        resource_manager,
-        mode,
-        player_one,
-        player_two,
-        flip_board,
-        time_control=time_control,
-    )
-    controller.ai_level = level
-    controller.run()
+    info = p.display.Info()
+    size = layout_module.initial_window_size(info.current_w, info.current_h)
+    screen = p.display.set_mode(size, p.RESIZABLE)
+    p.display.set_caption("ChessProject")
+    pieces = PieceSet()
+    with contextlib.suppress(OSError, p.error):  # icône facultative
+        p.display.set_icon(pieces.get_image("wN", 64))
+    p.key.set_repeat(350, 60)
+    App(screen, settings_module.load(), pieces).run()
 
 
 if __name__ == "__main__":

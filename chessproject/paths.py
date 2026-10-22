@@ -1,7 +1,7 @@
 """
 Chemins du jeu
 --------------
-Ressources livrées avec le code (images, sons) et données de l'utilisateur
+Ressources livrées avec le code (pièces, polices, sons) et données de l'utilisateur
 (sauvegarde, journal). Rien ne dépend du dossier de lancement (cf. B42).
 
 Le dossier de données est celui de la plateforme (``platformdirs``), ou
@@ -18,10 +18,13 @@ APP_NAME = "ChessProject"
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 IMAGES_DIR = ASSETS_DIR / "images"
 SOUNDS_DIR = ASSETS_DIR / "sounds"
+PIECES_DIR = ASSETS_DIR / "pieces"  # jeu vectoriel « Chessnut » (Apache 2.0)
+FONTS_DIR = ASSETS_DIR / "fonts"  # IBM Plex Sans / Mono (SIL OFL 1.1)
 
 SAVE_FILE_NAME = "saved_game.json"
 LOG_FILE_NAME = "chess.log"
 PGN_FILE_NAME = "partie.pgn"
+SETTINGS_FILE_NAME = "settings.json"
 
 
 def user_data_dir() -> Path:
@@ -54,3 +57,8 @@ def log_file() -> Path:
 def pgn_file() -> Path:
     """Fichier PGN d'export / d'import de la partie (touches E et I)."""
     return user_data_dir() / PGN_FILE_NAME
+
+
+def settings_file() -> Path:
+    """Préférences de l'interface (thème, plateau, dernière partie configurée)."""
+    return user_data_dir() / SETTINGS_FILE_NAME
