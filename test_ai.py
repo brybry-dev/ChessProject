@@ -4,6 +4,8 @@ Tests de l'IA (ChessAI)
 Verrouille les corrections des tâches J1.4 et J1.5 :
   - B27 : le pat (et toute nulle) n'est plus pris pour une victoire ; mat au plus court ;
   - B31 : la racine renvoie toujours un coup légal, même quand tous les coups perdent ;
+  - B30 : évaluation en centipions entiers, nulle sur la position initiale, antisymétrique
+    par miroir des couleurs.
 """
 
 import unittest
@@ -151,6 +153,59 @@ class TestMateSearch(unittest.TestCase):
                 assert move is not None
                 mate, _ = outcome(gs, move)
                 self.assertTrue(mate, f"{move} n'est pas un mat en 1")
+
+
+class TestEvaluation(unittest.TestCase):
+    """B30 : centipions entiers, symétrie."""
+
+    POSITIONS = (
+        "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+        "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+        "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+        "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+        "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+        "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+        "7k/8/6K1/8/8/8/8/5Q2 w - - 0 1",
+        "k7/1p6/1K6/2Q5/8/8/8/7n w - - 0 1",
+        "4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1",
+        "2kr3r/ppp2ppp/2n5/3qp3/1b1P4/2N1BN2/PPP2PPP/R2QK2R b KQ - 3 9",
+        "8/8/4k3/3n4/3K4/8/5P2/8 b - - 0 50",
+    )
+
+    def test_initial_position_is_zero(self):
+        score = ChessAI.scoreBoard(ChessEngine.GameState())
+        self.assertIsInstance(score, int)
+        self.assertEqual(score, 0)
+
+    def test_mirror_symmetry(self):
+        for fen in self.POSITIONS:
+            with self.subTest(fen=fen):
+                score = ChessAI.scoreBoard(load_fen(fen))
+                mirrored = ChessAI.scoreBoard(load_fen(mirror_fen(fen)))
+                self.assertIsInstance(score, int)
+                self.assertEqual(score, -mirrored)
+
+    def test_centipawn_scale(self):
+        # Un pion e2 (bonus de table nul) d'avance : exactement 100 centipions.
+        self.assertEqual(ChessAI.scoreBoard(load_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")), 100)
+        self.assertEqual(ChessAI.scoreBoard(load_fen("4k3/4p3/8/8/8/8/8/4K3 w - - 0 1")), -100)
+
+    def test_positional_bonus_not_truncated(self):
+        # 1. e4 : table du pion e2 → e4 (0 → 0,2 pion) + bonus de centre (0,5) = 70 centipions,
+        # qui disparaissaient avec l'ancienne troncature en unités de pion.
+        gs = ChessEngine.GameState()
+        gs.makeMove(ChessEngine.Move((6, 4), (4, 4), gs.board))
+        self.assertEqual(ChessAI.scoreBoard(gs), 70)
+
+    def test_static_eval_does_not_depend_on_side_to_move(self):
+        # Pas de terme calculé pour le seul camp au trait (mobilité, sécurité du roi d'un camp).
+        for fen in self.POSITIONS:
+            with self.subTest(fen=fen):
+                gs = load_fen(fen)
+                other = load_fen(fen)
+                other.white_to_move = not other.white_to_move
+                self.assertEqual(ChessAI.scoreBoard(gs), ChessAI.scoreBoard(other))
 
 
 class TestSearchSideEffects(unittest.TestCase):

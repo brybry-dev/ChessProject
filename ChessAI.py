@@ -8,7 +8,7 @@ Conventions de score :
   - ``negamax`` renvoie un score du point de vue du camp **au trait** (positif = bon pour
     lui) ;
   - ``scoreBoard`` renvoie un score du point de vue des **Blancs** (positif = avantage
-    blanc) ;
+    blanc), en centipions entiers ;
   - un mat se note ``MATE - ply`` (``ply`` = distance à la racine, en demi-coups) : plus le
     mat est proche, plus le score est grand, ce qui fait préférer le mat le plus court ;
   - les bornes de recherche ``±INF`` sont strictement au-delà de tout score de mat.
@@ -26,7 +26,32 @@ MAX_PLY: int = 128  # Profondeur maximale envisageable : sert de seuil pour reco
 MATE_THRESHOLD: int = MATE - MAX_PLY  # |score| >= MATE_THRESHOLD <=> score de mat
 DEPTH: int = 3  # Profondeur maximale
 
-CHECKMATE: int = 1000  # Échelle de l'évaluation actuelle (unités de pion)
+# Valeurs des pièces en centipions
+PIECE_VALUES: dict[str, int] = {"K": 0, "Q": 900, "R": 500, "B": 330, "N": 320, "p": 100}
+# Valeur de l'attaquant pour MVV-LVA : le roi est l'attaquant le moins souhaitable
+_ATTACKER_VALUES: dict[str, int] = {**PIECE_VALUES, "K": 1000}
+
+CENTER_BONUS: int = 50  # Bonus pour une pièce sur une case centrale (les deux camps)
+CENTER_SQUARES: frozenset[tuple[int, int]] = frozenset({(3, 3), (3, 4), (4, 3), (4, 4)})
+KING_SAFETY_PENALTY: int = 50  # Par pièce ennemie adjacente au roi (les deux camps)
+_KING_OFFSETS: tuple[tuple[int, int], ...] = (
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+)
+
+# Tables positionnelles du moteur converties en centipions entiers (arrondi, pas troncature).
+# Les tables noires du moteur sont les tables blanches aux rangées inversées : l'évaluation
+# est donc exactement antisymétrique par miroir des couleurs.
+PIECE_POSITION_SCORES: dict[str, list[list[int]]] = {
+    piece: [[round(float(value) * 100) for value in row] for row in table]
+    for piece, table in ChessEngine.piece_position_scores.items()
+}
 
 # Table de transposition : seuls les scores EXACTS (ni coupure bêta, ni échec bas) et hors
 # mat y sont stockés, ce qui la rend sûre sans gérer les bornes (prévu en J3.3).
@@ -139,95 +164,60 @@ def negamax(
 
 def moveOrderingHeuristic(game_state: ChessEngine.GameState, move: ChessEngine.Move) -> int:
     """
-    Calcule un score pour ordonner les coups.
-    Si le coup mène à une position déjà vue, on applique une pénalité.
+    Score d'ordonnancement, sans jouer le coup : MVV-LVA pour les captures
+    (``10 × victime - attaquant``) et bonus pour les promotions. Plus grand = essayé avant.
     """
     score = 0
     if move.is_capture:
-        score += 10 + ChessEngine.piece_score.get(move.piece_captured[1], 0)
+        victim = PIECE_VALUES.get(move.piece_captured[1], 0)
+        attacker = _ATTACKER_VALUES.get(move.piece_moved[1], 0)
+        score += 10_000 + 10 * victim - attacker
     if move.is_pawn_promotion:
-        score += 15
-    # Simulation pour détecter la répétition
-    game_state.makeMove(move, validate=False)
-    pos_hash = game_state.get_board_hash_str()
-    game_state.undoMove()
-    if pos_hash in game_state.position_history:
-        score -= 20  # Pénalité pour position répétée
+        score += 10 * PIECE_VALUES.get(move.promotion_piece or "Q", 0)
     return score
 
 
 def scoreBoard(game_state: ChessEngine.GameState) -> int:
     """
-    Évalue le plateau en prenant en compte plusieurs critères :
-      - Valeur matérielle et positionnelle
-      - Contrôle du centre (bonus pour les pièces sur les cases centrales)
-      - Sécurité du roi (pénalité si des pièces ennemies se trouvent autour du roi)
-      - Mobilité (bonus pour un grand nombre de coups possibles)
+    Évaluation statique en centipions entiers, du point de vue des Blancs.
+
+    Critères, tous calculés pour les deux camps (l'évaluation est antisymétrique par miroir
+    des couleurs) :
+      - valeur matérielle et tables positionnelles ;
+      - contrôle du centre ;
+      - sécurité du roi (pièces ennemies adjacentes).
+    Les fins de partie (mat, nulles) sont traitées par la recherche, pas ici.
     """
-    if game_state.checkmate:
-        return -CHECKMATE if game_state.white_to_move else CHECKMATE
-    elif game_state.stalemate:
-        return 0
-
-    total_score: float = 0
-    center_bonus: float = 0.5
-    center_squares: list[tuple[int, int]] = [(3, 3), (3, 4), (4, 3), (4, 4)]
-
-    # Valeur matériel et positionnelle
+    board = game_state.board
+    total = 0
     for r in range(ChessEngine.DIMENSION):
         for c in range(ChessEngine.DIMENSION):
-            piece = game_state.board[r][c]
-            if piece != "--":
-                piece_value = ChessEngine.piece_score.get(piece[1], 0)
-                position_score: float = 0
-                if piece[1] != "K":
-                    position_score = ChessEngine.piece_position_scores.get(
-                        piece, [[0] * ChessEngine.DIMENSION] * ChessEngine.DIMENSION
-                    )[r][c]
-                # Bonus pour le contrôle du centre
-                if (r, c) in center_squares:
-                    position_score += center_bonus
-                if piece[0] == "w":
-                    total_score += piece_value + position_score
-                else:
-                    total_score -= piece_value + position_score
+            piece = board[r][c]
+            if piece == "--":
+                continue
+            value = PIECE_VALUES.get(piece[1], 0)
+            table = PIECE_POSITION_SCORES.get(piece)
+            if table is not None:
+                value += table[r][c]
+            if (r, c) in CENTER_SQUARES:
+                value += CENTER_BONUS
+            total += value if piece[0] == "w" else -value
 
-    # Sécurité du roi : pénalité si des pièces ennemies sont adjacentes
-    king_safety_penalty: float = 0
-    adjacent_offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
-    if game_state.white_to_move:
-        king_row, king_col = game_state.white_king_location
-        enemy_color = "b"
-    else:
-        king_row, king_col = game_state.black_king_location
-        enemy_color = "w"
-    for dr, dc in adjacent_offsets:
+    total -= _king_danger(board, game_state.white_king_location, "b")
+    total += _king_danger(board, game_state.black_king_location, "w")
+    return total
+
+
+def _king_danger(board: list[list[str]], king: tuple[int, int], enemy_color: str) -> int:
+    """Pénalité pour les pièces de ``enemy_color`` adjacentes au roi situé en ``king``."""
+    king_row, king_col = king
+    penalty = 0
+    for dr, dc in _KING_OFFSETS:
         nr, nc = king_row + dr, king_col + dc
         if 0 <= nr < ChessEngine.DIMENSION and 0 <= nc < ChessEngine.DIMENSION:
-            adj_piece = game_state.board[nr][nc]
-            if adj_piece != "--" and adj_piece[0] == enemy_color:
-                king_safety_penalty += 0.5
-    if game_state.white_to_move:
-        total_score -= king_safety_penalty
-    else:
-        total_score += king_safety_penalty
-
-    # Mobilité : bonus proportionnel au nombre de coups disponibles
-    mobility_bonus = 0.1 * len(game_state.getValidMoves())
-    if game_state.white_to_move:
-        total_score += mobility_bonus
-    else:
-        total_score -= mobility_bonus
-
-    return int(total_score)
-
-
-def get_board_hash(board: list[list[str]], white_to_move: bool) -> int:
-    """
-    Génère un hash pour l'état du plateau.
-    """
-    board_tuple = tuple(tuple(row) for row in board)
-    return hash((board_tuple, white_to_move))
+            if board[nr][nc][0] == enemy_color:
+                penalty += KING_SAFETY_PENALTY
+    return penalty
 
 
 def findRandomMove(valid_moves: list[ChessEngine.Move]) -> ChessEngine.Move:
