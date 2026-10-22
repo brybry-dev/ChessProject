@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from chessproject.ai import evaluate
 from chessproject.core import engine
 
 INF: int = 10**6  # Borne de la fenêtre alpha-bêta, strictement supérieure à MATE
@@ -28,83 +29,10 @@ MATE_THRESHOLD: int = MATE - MAX_PLY  # |score| >= MATE_THRESHOLD <=> score de m
 DEPTH: int = 3  # Profondeur maximale
 
 # Valeurs des pièces en centipions
-PIECE_VALUES: dict[str, int] = {"K": 0, "Q": 900, "R": 500, "B": 330, "N": 320, "p": 100}
+PIECE_VALUES: dict[str, int] = evaluate.PIECE_VALUES
 # Valeur de l'attaquant pour MVV-LVA : le roi est l'attaquant le moins souhaitable
 _ATTACKER_VALUES: dict[str, int] = {**PIECE_VALUES, "K": 1000}
 
-CENTER_BONUS: int = 50  # Bonus pour une pièce sur une case centrale (les deux camps)
-CENTER_SQUARES: frozenset[tuple[int, int]] = frozenset({(3, 3), (3, 4), (4, 3), (4, 4)})
-KING_SAFETY_PENALTY: int = 50  # Par pièce ennemie adjacente au roi (les deux camps)
-_KING_OFFSETS: tuple[tuple[int, int], ...] = (
-    (-1, -1),
-    (-1, 0),
-    (-1, 1),
-    (0, -1),
-    (0, 1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-)
-
-# Tables positionnelles en centipions, du point de vue des Blancs (rangée 0 = 8e rangée).
-# Les tables noires sont les mêmes, rangées inversées : l'évaluation est donc exactement
-# antisymétrique par miroir des couleurs.
-_WHITE_POSITION_SCORES: dict[str, tuple[tuple[int, ...], ...]] = {
-    "N": (
-        (0, 10, 20, 20, 20, 20, 10, 0),
-        (10, 30, 50, 50, 50, 50, 30, 10),
-        (20, 50, 60, 65, 65, 60, 50, 20),
-        (20, 55, 65, 70, 70, 65, 55, 20),
-        (20, 50, 65, 70, 70, 65, 50, 20),
-        (20, 55, 60, 65, 65, 60, 55, 20),
-        (10, 30, 50, 55, 55, 50, 30, 10),
-        (0, 10, 20, 20, 20, 20, 10, 0),
-    ),
-    "B": (
-        (0, 20, 20, 20, 20, 20, 20, 0),
-        (20, 40, 40, 40, 40, 40, 40, 20),
-        (20, 40, 50, 60, 60, 50, 40, 20),
-        (20, 50, 50, 60, 60, 50, 50, 20),
-        (20, 40, 60, 60, 60, 60, 40, 20),
-        (20, 60, 60, 60, 60, 60, 60, 20),
-        (20, 50, 40, 40, 40, 40, 50, 20),
-        (0, 20, 20, 20, 20, 20, 20, 0),
-    ),
-    "R": (
-        (25, 25, 25, 25, 25, 25, 25, 25),
-        (50, 75, 75, 75, 75, 75, 75, 50),
-        (0, 25, 25, 25, 25, 25, 25, 0),
-        (0, 25, 25, 25, 25, 25, 25, 0),
-        (0, 25, 25, 25, 25, 25, 25, 0),
-        (0, 25, 25, 25, 25, 25, 25, 0),
-        (0, 25, 25, 25, 25, 25, 25, 0),
-        (25, 25, 25, 50, 50, 25, 25, 25),
-    ),
-    "Q": (
-        (0, 20, 20, 30, 30, 20, 20, 0),
-        (20, 40, 40, 40, 40, 40, 40, 20),
-        (20, 40, 50, 50, 50, 50, 40, 20),
-        (30, 40, 50, 50, 50, 50, 40, 30),
-        (40, 40, 50, 50, 50, 50, 40, 30),
-        (20, 50, 50, 50, 50, 50, 40, 20),
-        (20, 40, 50, 40, 40, 40, 40, 20),
-        (0, 20, 20, 30, 30, 20, 20, 0),
-    ),
-    "p": (
-        (80, 80, 80, 80, 80, 80, 80, 80),
-        (70, 70, 70, 70, 70, 70, 70, 70),
-        (30, 30, 40, 50, 50, 40, 30, 30),
-        (25, 25, 30, 45, 45, 30, 25, 25),
-        (20, 20, 20, 20, 20, 20, 20, 20),
-        (25, 15, 10, 20, 20, 10, 15, 25),
-        (25, 30, 30, 0, 0, 30, 30, 25),
-        (20, 20, 20, 20, 20, 20, 20, 20),
-    ),
-}
-PIECE_POSITION_SCORES: dict[str, tuple[tuple[int, ...], ...]] = {
-    **{"w" + kind: table for kind, table in _WHITE_POSITION_SCORES.items()},
-    **{"b" + kind: table[::-1] for kind, table in _WHITE_POSITION_SCORES.items()},
-}
 
 # --------------------------------------------------------------------------
 # Recherche (J3.2 – J3.5)
@@ -450,46 +378,8 @@ def move_ordering_heuristic(move: engine.Move) -> int:
 
 
 def score_board(game_state: engine.GameState) -> int:
-    """
-    Évaluation statique en centipions entiers, du point de vue des Blancs.
-
-    Critères, tous calculés pour les deux camps (l'évaluation est antisymétrique par miroir
-    des couleurs) :
-      - valeur matérielle et tables positionnelles ;
-      - contrôle du centre ;
-      - sécurité du roi (pièces ennemies adjacentes).
-    Les fins de partie (mat, nulles) sont traitées par la recherche, pas ici.
-    """
-    board = game_state.board
-    total = 0
-    for r in range(engine.DIMENSION):
-        for c in range(engine.DIMENSION):
-            piece = board[r][c]
-            if piece == "--":
-                continue
-            value = PIECE_VALUES.get(piece[1], 0)
-            table = PIECE_POSITION_SCORES.get(piece)
-            if table is not None:
-                value += table[r][c]
-            if (r, c) in CENTER_SQUARES:
-                value += CENTER_BONUS
-            total += value if piece[0] == "w" else -value
-
-    total -= _king_danger(board, game_state.white_king_location, "b")
-    total += _king_danger(board, game_state.black_king_location, "w")
-    return total
-
-
-def _king_danger(board: list[list[str]], king: tuple[int, int], enemy_color: str) -> int:
-    """Pénalité pour les pièces de ``enemy_color`` adjacentes au roi situé en ``king``."""
-    king_row, king_col = king
-    penalty = 0
-    for dr, dc in _KING_OFFSETS:
-        nr, nc = king_row + dr, king_col + dc
-        if 0 <= nr < engine.DIMENSION and 0 <= nc < engine.DIMENSION:
-            if board[nr][nc][0] == enemy_color:
-                penalty += KING_SAFETY_PENALTY
-    return penalty
+    """Évaluation statique en centipions, du point de vue des Blancs (cf. ``evaluate``)."""
+    return evaluate.evaluate(game_state)
 
 
 def find_random_move(valid_moves: list[engine.Move]) -> engine.Move:

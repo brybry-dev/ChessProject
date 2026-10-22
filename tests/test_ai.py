@@ -189,16 +189,21 @@ class TestEvaluation(unittest.TestCase):
                 self.assertEqual(score, -mirrored)
 
     def test_centipawn_scale(self):
-        # Un pion e2 (bonus de table nul) d'avance : exactement 100 centipions.
-        self.assertEqual(search.score_board(load_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")), 100)
-        self.assertEqual(search.score_board(load_fen("4k3/4p3/8/8/8/8/8/4K3 w - - 0 1")), -100)
+        # Un pion d'avance en finale de rois : de l'ordre de 100 centipions, et symétrique.
+        white = search.score_board(load_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"))
+        black = search.score_board(load_fen("4k3/4p3/8/8/8/8/8/4K3 w - - 0 1"))
+        self.assertTrue(50 <= white <= 150, white)
+        self.assertEqual(black, -white)
+        # Une dame d'avance : de l'ordre de 900.
+        queen = search.score_board(load_fen("4k3/8/8/8/8/8/8/3QK3 w - - 0 1"))
+        self.assertTrue(800 <= queen <= 1000, queen)
 
     def test_positional_bonus_not_truncated(self):
-        # 1. e4 : table du pion e2 → e4 (0 → 0,2 pion) + bonus de centre (0,5) = 70 centipions,
-        # qui disparaissaient avec l'ancienne troncature en unités de pion.
+        # 1. e4 : avantage positionnel de quelques dizaines de centipions, ni nul ni arrondi
+        # au pion (ancienne troncature en unités de pion, B30).
         gs = engine.GameState()
         gs.make_move(engine.Move((6, 4), (4, 4), gs.board))
-        self.assertEqual(search.score_board(gs), 70)
+        self.assertTrue(0 < search.score_board(gs) < 100)
 
     def test_static_eval_does_not_depend_on_side_to_move(self):
         # Pas de terme calculé pour le seul camp au trait (mobilité, sécurité du roi d'un camp).
