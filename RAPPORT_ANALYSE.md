@@ -668,7 +668,7 @@ corrigés, chacun verrouillé par un test. C'est un bon moment pour un premier t
 >   **+545 Elo** (45 V / 2 N / 1 D) aussi bien à profondeur égale qu'à temps égal
 >   (300 ms/coup) ; IC 95 % ≥ +400.
 > - J3.6 ✅ : évaluation par phase. **+112 Elo à temps égal** [+18, +226], **+280 Elo à
->   profondeur égale** [+186, +428]. La critère de +100 Elo est atteint en estimation
+>   profondeur égale** [+186, +428]. Le critère de +100 Elo est atteint en estimation
 >   ponctuelle, mais sur 48 parties et non 200 comme prévu.
 > - Suite tactique : **44/44 à profondeur 5**, **39/44 (89 %) en 1 s** (cible J3.5 : 80 %).
 > - J3.7 : 5 niveaux en place. Leur classement en mini-ligue est en cours de mesure.
