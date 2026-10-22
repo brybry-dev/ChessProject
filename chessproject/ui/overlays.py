@@ -262,7 +262,11 @@ class EndGameOverlay(Overlay):
         return "review" if action == "close" else action
 
     def draw(self, surface, t, mouse, now_ms):
-        card = self._frame(surface, t, (360, 330))
+        width = 380
+        lines = w.wrap(self.subtitle, th.font(14), width - 48)
+        # Hauteur suivant le texte : pièce, titre, motif sur une ou plusieurs lignes, boutons.
+        height = 28 + 66 + 34 + 20 * len(lines) + 18 + 3 * 44 + 2 * 8 + 24
+        card = self._frame(surface, t, (width, height))
         y = card.y + 28
         if self.piece:
             image = self.pieces.get_image(self.piece, 56)
@@ -270,7 +274,7 @@ class EndGameOverlay(Overlay):
         y += 66
         w.text(surface, self.title, th.font(22, "semibold"), t.text, (card.centerx, y), "midtop")
         y += 34
-        for line in w.wrap(self.subtitle, th.font(14), card.width - 48):
+        for line in lines:
             w.text(surface, line, th.font(14), t.muted, (card.centerx, y), "midtop")
             y += 20
         inner = card.width - 48

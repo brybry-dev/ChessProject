@@ -378,6 +378,24 @@ class OverlayTests(unittest.TestCase):
         self.assertFalse(gc.game_over)
         self.assertEqual(gc.game_state.board, engine.GameState().board)
 
+    def test_end_card_grows_with_a_long_reason(self):
+        # Motif sur deux lignes : les boutons restent dans la carte, sous le texte.
+        short = app.EndGameOverlay("Partie nulle", "Pat", None, PIECES)
+        long = app.EndGameOverlay(
+            "Victoire des blancs",
+            "Les Blancs gagnent par échec et mat · 1-0 · 17 coups, après une très longue partie",
+            "wK",
+            PIECES,
+        )
+        surface = p.display.get_surface()
+        heights = []
+        for overlay in (short, long):
+            overlay.draw(surface, app.th.theme("sombre"), (0, 0), 0)
+            for button in overlay.buttons:
+                self.assertTrue(overlay.card.contains(button.rect), button.label)
+            heights.append(overlay.card.height)
+        self.assertGreater(heights[1], heights[0])
+
     def test_human_defeat_against_the_ai(self):
         gc = _controller("PvC", True, False)
         gc._resign()
