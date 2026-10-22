@@ -343,12 +343,14 @@ def find_best_move(
     valid_moves: list[engine.Move],
     return_queue: Any,
     level_name: str | None = None,
+    movetime_ms: int | None = None,
 ) -> None:
     """Point d'entrée du processus de l'IA (UI, UCI) : dépose le coup choisi dans
     ``return_queue`` — toujours un coup légal s'il en existe un, ``None`` sinon.
 
     Sans ``level_name``, recherche à profondeur fixe ``DEPTH`` ; sinon, jeu au niveau de
-    difficulté nommé (cf. ``chessproject.ai.levels``). ``valid_moves`` est conservé pour
+    difficulté nommé (cf. ``chessproject.ai.levels``), avec un temps de réflexion plafonné
+    à ``movetime_ms`` s'il est donné (cadence). ``valid_moves`` est conservé pour
     compatibilité : la recherche part de la position.
     """
     if not valid_moves:
@@ -359,7 +361,8 @@ def find_best_move(
         return
     from chessproject.ai import levels  # import local : levels importe ce module
 
-    return_queue.put(levels.choose_move(game_state, levels.LEVELS_BY_NAME[level_name]))
+    level = levels.LEVELS_BY_NAME[level_name]
+    return_queue.put(levels.choose_move(game_state, level, movetime_ms=movetime_ms))
 
 
 def move_ordering_heuristic(move: engine.Move) -> int:

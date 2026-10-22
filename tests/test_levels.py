@@ -1,6 +1,7 @@
 """Tests des niveaux de difficulté (J3.7)."""
 
 import random
+import time
 import unittest
 
 from chessproject.ai import levels, search
@@ -40,6 +41,14 @@ class ChooseMoveTests(unittest.TestCase):
         level = levels.Level("Pressé", 1, 5, 50, 0.0, 1)
         gs = engine.GameState()
         self.assertIn(levels.choose_move(gs, level, random.Random(0)), gs.get_valid_moves())
+
+    def test_movetime_cap_shortens_the_search(self):
+        # Expert réfléchit 3 s ; plafonné à 50 ms par la cadence, il répond vite.
+        gs = load_fen("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")
+        start = time.monotonic()
+        move = levels.choose_move(gs, levels.LEVELS_BY_NAME["Expert"], movetime_ms=50)
+        self.assertIn(move, gs.get_valid_moves())
+        self.assertLess(time.monotonic() - start, 1.0)
 
     def test_choice_is_reproducible_with_a_seed(self):
         gs = engine.GameState()

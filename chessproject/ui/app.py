@@ -15,6 +15,7 @@ import pygame as p
 
 from chessproject import paths, serialization
 from chessproject.ai import levels, search
+from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation
 
 # --------------------------------------------------
@@ -114,6 +115,8 @@ class UIManager:
         self.black_time: float = 0
         self.last_time = self.now()
         self.is_running = True
+        # Pendule à cadence affichée à la place du chronomètre (fournie par le contrôleur).
+        self.chess_clock: chess_clock_module.ChessClock | None = None
 
     def reset_timer(self):
         """Remet les pendules à zéro et resynchronise l'horloge de référence.
@@ -150,6 +153,22 @@ class UIManager:
 
         # Police pour le chronomètre
         font = p.font.SysFont("Arial", 24, bold=True)
+
+        # Avec une cadence : temps restant de la pendule ; sans limite : temps écoulé.
+        chess_clock = self.chess_clock
+        if chess_clock is not None and not chess_clock.is_unlimited:
+            for i, (label, color) in enumerate(
+                (("Blancs", engine.Color.WHITE), ("Noirs", engine.Color.BLACK))
+            ):
+                remaining = chess_clock.remaining_ms(color)
+                active = (color is engine.Color.WHITE) == white_to_move
+                low = remaining is not None and remaining < 10_000
+                tint = "orangered" if low and active else ("white" if active else "gray")
+                text = font.render(
+                    f"{label}: {chess_clock_module.format_ms(remaining)}", True, p.Color(tint)
+                )
+                screen.blit(text, (20, 20 + 40 * i))
+            return
 
         # Formatage du temps
         def format_time(seconds):
@@ -554,6 +573,12 @@ def level_menu(screen):
     )
 
 
+def time_control_menu(screen):
+    return choice_menu(
+        screen, "Cadence", [(control.name, control) for control in chess_clock_module.PRESETS]
+    )
+
+
 def open_color_selection(screen, mode):
     buttons = []
     button_width = 200
@@ -739,7 +764,18 @@ class GameController:
     ``main()`` monolithique (cf. rapport d'analyse : découpage de main())."""
 
     def __init__(
-        self, screen, clock, ui_manager, resource_manager, mode, player_one, player_two, flip_board
+        self,
+        screen,
+        clock,
+        ui_manager,
+        resource_manager,
+        mode,
+        player_one,
+        player_two,
+        flip_board,
+        *,
+        time_control=None,
+        clock_now=None,
     ):
         self.screen = screen
         self.clock = clock
@@ -753,6 +789,11 @@ class GameController:
         self.game_state = engine.GameState()
         self.valid_moves = self.game_state.get_valid_moves()
         self.ui.reset_timer()
+
+        # Pendule à cadence (J4.1) : un appui par coup joué, synchronisé dans update().
+        self.time_control = time_control or chess_clock_module.DEFAULT
+        self._clock_now = clock_now or time.monotonic
+        self._start_clock()
 
         self.square_selected: tuple[int, int] | tuple[()] = ()
         self.player_clicks: list[tuple[int, int]] = []
@@ -805,10 +846,38 @@ class GameController:
             self.move_finder_process.terminate()
         self.ai_thinking = False
 
-    def _new_game(self, game_state):
+    def _start_clock(self, saved_clock=None):
+        """Nouvelle pendule (ou pendule sauvegardée) pour la partie courante."""
+        if saved_clock is not None:
+            self.chess_clock = chess_clock_module.ChessClock.from_dict(saved_clock, self._clock_now)
+            self.time_control = self.chess_clock.control
+        else:
+            self.chess_clock = chess_clock_module.ChessClock(self.time_control, self._clock_now)
+            self.chess_clock.start(self.game_state.white_to_move)
+        # Coups déjà joués avant cette pendule (partie chargée sans pendule).
+        self._clock_base_plies = len(self.game_state.move_log) - self.chess_clock.press_count
+        self.ui.chess_clock = self.chess_clock
+
+    def _sync_clock(self):
+        """Un appui par coup joué, un retour arrière par coup annulé."""
+        target = len(self.game_state.move_log) - self._clock_base_plies
+        while self.chess_clock.press_count < target:
+            self.chess_clock.press()
+        while self.chess_clock.press_count > max(target, 0):
+            if not self.chess_clock.undo_press():
+                break
+
+    @contextmanager
+    def _paused(self):
+        """Ni le chronomètre ni la pendule ne tournent pendant un menu ou une animation."""
+        with self.ui.timer_paused(), self.chess_clock.paused():
+            yield
+
+    def _new_game(self, game_state, saved_clock=None):
         self.game_state = game_state
         self.external_result = None
         self.draw_offer = None
+        self._start_clock(saved_clock)
         self.valid_moves = self.game_state.get_valid_moves()
         self._reset_selection()
         self.move_made = False
@@ -940,6 +1009,7 @@ class GameController:
                 human_white=self.player_one,
                 human_black=self.player_two,
                 level=self.ai_level,
+                clock=self.chess_clock.to_dict(),
                 result=self.external_result,
             )
         elif e.key == p.K_l:  # Charger
@@ -955,17 +1025,17 @@ class GameController:
                 self.player_two = bool(saved.human_black)
             if saved.level in levels.LEVELS_BY_NAME:
                 self.ai_level = saved.level
-            self._new_game(saved.game_state)
+            self._new_game(saved.game_state, saved.clock)
             self.external_result = saved.result
         elif e.key == p.K_a:  # Abandonner
             self._resign()
         elif e.key == p.K_n:  # Proposer / accepter la nulle
             self._offer_draw()
         elif e.key == p.K_c:  # Couleurs
-            with self.ui.timer_paused():
+            with self._paused():
                 customization_menu(self.screen, self.ui)
         elif e.key == p.K_h:  # Raccourcis
-            with self.ui.timer_paused():
+            with self._paused():
                 show_shortcuts_menu(self.screen)
 
     def _human_color(self):
@@ -1020,7 +1090,13 @@ class GameController:
             # daemon : le processus est tué avec l'application au lieu d'être attendu.
             self.move_finder_process = Process(
                 target=search.find_best_move,
-                args=(self.game_state, valid_moves, self.return_queue, self.ai_level),
+                args=(
+                    self.game_state,
+                    valid_moves,
+                    self.return_queue,
+                    self.ai_level,
+                    self._ai_think_time_ms(),
+                ),
                 daemon=True,
             )
             self.move_finder_process.start()
@@ -1044,6 +1120,19 @@ class GameController:
         self.animate = True
         self.ai_thinking = False
         logger.info("Coup joué par l'IA : %s", ai_move)
+
+    def _ai_think_time_ms(self):
+        """Plafond de réflexion de l'IA selon sa pendule (None sans cadence, J4.2)."""
+        if self.chess_clock.is_unlimited:
+            return None
+        color = engine.Color.WHITE if self.game_state.white_to_move else engine.Color.BLACK
+        remaining = self.chess_clock.remaining_ms(color) or 0
+        return chess_clock_module.allocate_think_time_ms(
+            remaining,
+            self.time_control.increment_ms,
+            len(self.game_state.move_log),
+            max_ms=levels.LEVELS_BY_NAME[self.ai_level].movetime_ms,
+        )
 
     def _collect_ai_move(self):
         """Récupère le coup d'un processus d'IA terminé, ou None s'il n'en a pas rendu."""
@@ -1092,9 +1181,21 @@ class GameController:
         # Rafraîchir la liste des coups légaux AVANT de lancer l'IA : sinon
         # l'IA reçoit la liste du camp précédent (coup humain déjà joué) et
         # renvoie un coup rejeté par make_move (« Mouvement non valide »).
+        self._sync_clock()
+        if not self.game_over:
+            flagged = self.chess_clock.flagged()
+            if flagged is not None:
+                self.external_result = chess_clock_module.timeout_result(self.game_state, flagged)
+                self._stop_ai()
+                logger.info("Fin au temps : %s", self.external_result.description)
+        # Partie terminée : la pendule est figée (une annulation la relance).
+        if self.game_over:
+            self.chess_clock.pause()
+        else:
+            self.chess_clock.resume()
         if self.move_made:
             if self.animate and self.game_state.move_log:
-                with self.ui.timer_paused():
+                with self._paused():
                     self.renderer.animate_move(
                         self.game_state.move_log[-1], self.game_state.board, self.clock
                     )
@@ -1140,9 +1241,18 @@ def main():
     flip_board = mode == "PvC" and not player_one
 
     level = level_menu(screen) if mode in ("PvC", "CvC") else levels.DEFAULT_LEVEL.name
+    time_control = time_control_menu(screen)
 
     controller = GameController(
-        screen, clock, ui_manager, resource_manager, mode, player_one, player_two, flip_board
+        screen,
+        clock,
+        ui_manager,
+        resource_manager,
+        mode,
+        player_one,
+        player_two,
+        flip_board,
+        time_control=time_control,
     )
     controller.ai_level = level
     controller.run()

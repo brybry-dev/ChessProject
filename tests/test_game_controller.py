@@ -25,7 +25,8 @@ except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
 from chessproject import serialization
-from chessproject.core import engine
+from chessproject.ai import levels
+from chessproject.core import clock, engine, notation
 from chessproject.core.fen import load_fen
 from chessproject.ui import app
 
@@ -536,6 +537,126 @@ class SaveRestoresTheGameContext(unittest.TestCase):
             self.assertEqual(other.ai_level, "Facile")
             self.assertTrue(other.flip_board)
             self.assertEqual(other.result.termination, engine.Termination.RESIGNATION)
+        finally:
+            os.remove(path)
+
+
+class _Seconds:
+    """Source de temps en secondes (comme time.monotonic), avancée à la main."""
+
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class ClockInTheGame(unittest.TestCase):
+    """J4.1 / J4.2 / J4.6 : pendule à cadence dans la partie."""
+
+    def _controller(self, control, mode="PvP", white=True, black=True):
+        self.now = _Seconds()
+        return app.GameController(
+            p.display.get_surface(),
+            p.time.Clock(),
+            app.UIManager(512, 512, 250, 512),
+            app.ResourceManager(64),
+            mode,
+            white,
+            black,
+            False,
+            time_control=control,
+            clock_now=self.now,
+        )
+
+    def _play(self, gc, san):
+        gc.game_state.make_move(notation.parse_san(gc.game_state, san))
+        gc.move_made = True
+        gc.animate = False
+        gc.update()
+
+    def test_moves_press_the_clock_and_credit_the_increment(self):
+        gc = self._controller(clock.TimeControl.from_minutes(3, 2))
+        self.now.t += 10
+        self._play(gc, "e4")
+        self.assertEqual(gc.chess_clock.remaining_ms(engine.Color.WHITE), 180_000 - 10_000 + 2_000)
+        self.now.t += 5
+        self.assertEqual(gc.chess_clock.remaining_ms(engine.Color.BLACK), 175_000)
+
+    def test_flag_fall_ends_the_game(self):
+        gc = self._controller(clock.TimeControl.from_minutes(1))
+        self.now.t += 61
+        gc.update()
+        self.assertEqual(
+            gc.result, engine.GameResult(engine.Termination.TIME_FORFEIT, engine.Color.BLACK)
+        )
+
+    def test_undo_restores_the_clock(self):
+        gc = self._controller(clock.TimeControl.from_minutes(3, 2))
+        self.now.t += 10
+        self._play(gc, "e4")
+        gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_z}))
+        gc.update()
+        self.assertEqual(gc.chess_clock.remaining_ms(engine.Color.WHITE), 180_000)
+        self.assertEqual(gc.chess_clock.turn, engine.Color.WHITE)
+
+    def test_clock_is_paused_in_menus(self):
+        gc = self._controller(clock.TimeControl.from_minutes(3))
+
+        def ten_minutes(*args):
+            self.now.t += 600
+
+        with mock.patch.object(app, "show_shortcuts_menu", ten_minutes):
+            gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_h}))
+        gc.update()
+        self.assertEqual(gc.chess_clock.remaining_ms(engine.Color.WHITE), 180_000)
+        self.assertFalse(gc.game_over)
+
+    def test_ai_think_time_is_capped_by_its_clock(self):
+        gc = self._controller(clock.TimeControl.from_minutes(1), "PvC", True, False)
+        captured = {}
+
+        class Recorder(_InlineProcess):
+            def __init__(self, target, args=(), **kwargs):
+                captured["args"] = args
+                super().__init__(target, args, **kwargs)
+
+        with (
+            mock.patch.object(app, "Process", Recorder),
+            mock.patch.object(app, "Queue", _SyncQueue),
+        ):
+            self._play(gc, "e4")  # update() lance l'IA, qui a le trait
+        movetime = captured["args"][4]
+        level = levels.LEVELS_BY_NAME[gc.ai_level]
+        self.assertLessEqual(movetime, level.movetime_ms)
+        self.assertLessEqual(movetime, 60_000 // 3)
+
+    def test_unlimited_games_never_flag(self):
+        gc = self._controller(clock.UNLIMITED)
+        self.now.t += 10_000
+        gc.update()
+        self.assertFalse(gc.game_over)
+        self.assertIsNone(gc.chess_clock.remaining_ms(engine.Color.WHITE))
+
+    def test_clock_is_saved_and_restored(self):
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        try:
+            gc = self._controller(clock.TimeControl.from_minutes(3, 2))
+            self.now.t += 10
+            self._play(gc, "e4")
+            with mock.patch.object(app.paths, "save_file", return_value=path):
+                gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_s}))
+            other = self._controller(clock.UNLIMITED)
+            with mock.patch.object(app.paths, "existing_save_file", return_value=path):
+                other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_l}))
+            self.assertEqual(other.chess_clock.remaining_ms(engine.Color.WHITE), 172_000)
+            self.assertEqual(other.time_control, clock.TimeControl.from_minutes(3, 2))
+            # Un coup après le chargement est bien décompté (pendule synchronisée).
+            self.now.t += 3
+            self._play(other, "e5")
+            self.assertEqual(other.chess_clock.remaining_ms(engine.Color.BLACK), 177_000 + 2_000)
         finally:
             os.remove(path)
 

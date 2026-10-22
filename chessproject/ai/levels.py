@@ -78,16 +78,26 @@ DEFAULT_LEVEL: Level = LEVELS_BY_NAME["Moyen"]
 
 
 def choose_move(
-    game_state: engine.GameState, level: Level, rng: random.Random | None = None
+    game_state: engine.GameState,
+    level: Level,
+    rng: random.Random | None = None,
+    movetime_ms: int | None = None,
 ) -> engine.Move | None:
-    """Coup joué par l'IA au niveau ``level`` (None s'il n'existe aucun coup légal)."""
+    """Coup joué par l'IA au niveau ``level`` (None s'il n'existe aucun coup légal).
+
+    ``movetime_ms`` plafonne le temps de réflexion du niveau (cadence, J4.2).
+    """
     rng = rng or random.Random()
     moves = game_state.get_valid_moves()
     if not moves:
         return None
     searcher = Searcher()
     result = searcher.think(
-        game_state, SearchLimits(depth=level.max_depth, movetime_ms=level.movetime_ms)
+        game_state,
+        SearchLimits(
+            depth=level.max_depth,
+            movetime_ms=min(level.movetime_ms, movetime_ms or level.movetime_ms),
+        ),
     )
     if level.eval_noise_cp == 0 and level.mistake_probability == 0.0:
         return result.move
