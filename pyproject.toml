@@ -26,6 +26,7 @@ dev = [
 
 [project.scripts]
 chessproject = "chessproject.ui.app:main"
+chessproject-uci = "chessproject.uci:main"
 
 [tool.setuptools.packages.find]
 include = ["chessproject*"]
