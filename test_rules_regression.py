@@ -156,5 +156,30 @@ class TestPositionKeyIsDeterministic(unittest.TestCase):
         self.assertEqual(len({base, no_castle, no_ep, black}), 4)
 
 
+class TestPinnedPawnTowardsItsKing(unittest.TestCase):
+    """B46 (trouvé par les tests différentiels) : un pion cloué peut avancer ou prendre
+    le long de la ligne de clouage dans les deux sens, y compris vers son propre roi."""
+
+    def _ucis(self, fen):
+        gs = load_fen(fen)
+        files = "abcdefgh"
+        return {
+            f"{files[m.start_col]}{8 - m.start_row}{files[m.end_col]}{8 - m.end_row}"
+            for m in gs.getValidMoves()
+        }
+
+    def test_black_pawn_pinned_on_file_advances_towards_its_king(self):
+        self.assertIn("d6d5", self._ucis("3R4/1K6/3p4/8/2rk4/1p6/7n/8 b - - 11 44"))
+
+    def test_white_pawn_pinned_on_file_advances_towards_its_king(self):
+        self.assertIn("d3d4", self._ucis("8/8/3K4/8/8/3P4/8/3r2k1 w - - 0 1"))
+
+    def test_pinned_pawn_still_captures_its_pinner(self):
+        # Un pion prend vers l'avant : le long d'une diagonale de clouage, il ne peut
+        # prendre que le cloueur, en s'éloignant de son roi. Non-régression du correctif.
+        self.assertIn("d4e5", self._ucis("8/8/8/4b3/3P4/2K5/8/7k w - - 0 1"))
+        self.assertIn("d5c4", self._ucis("7K/8/4k3/3p4/2B5/8/8/8 b - - 0 1"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -514,7 +514,9 @@ class GameState:
 
         # Avance d'une case (et de deux depuis la rangée de départ)
         if is_valid_index(row + move_amount) and self.board[row + move_amount][col] == "--":
-            if not piece_pinned or pin_direction == (move_amount, 0):
+            # Un pion cloué peut se déplacer le long de la ligne de clouage, dans un sens
+            # comme dans l'autre (vers son roi ou vers le cloueur) : B46.
+            if not piece_pinned or pin_direction in ((move_amount, 0), (-move_amount, 0)):
                 self._add_pawn_move(moves, (row, col), (row + move_amount, col))
                 if row == start_row and self.board[row + 2 * move_amount][col] == "--":
                     moves.append(Move((row, col), (row + 2 * move_amount, col), self.board))
@@ -522,7 +524,7 @@ class GameState:
         for dc in (-1, 1):
             new_col = col + dc
             if is_valid_index(new_col) and is_valid_index(row + move_amount):
-                if not piece_pinned or pin_direction == (move_amount, dc):
+                if not piece_pinned or pin_direction in ((move_amount, dc), (-move_amount, -dc)):
                     target = self.board[row + move_amount][new_col]
                     if target[0] == enemy_color:
                         self._add_pawn_move(moves, (row, col), (row + move_amount, new_col))
