@@ -9,7 +9,7 @@ python -m pip install -e ".[dev]"
 ## Lancer les tests
 
 ```bash
-# Suite rapide (~17 s) — les tests marqués `slow` sont exclus par défaut
+# Suite rapide (~30 s) — les tests marqués `slow` sont exclus par défaut
 python -m pytest -q
 ```
 
@@ -25,7 +25,8 @@ Les tests sont dans `tests/`.
 | `test_serialization.py` | Sauvegarde / chargement JSON des parties (`serialization.py`) : génération de FEN, aller-retour position + historique, conservation de l'orientation et du choix de sous-promotion, rejet d'une version inconnue, recalcul des drapeaux de fin de partie au chargement. |
 | `test_orientation.py` | Plateau retourné (B26) : rotation de la vue à 180° (aller-retour pixel/case sur les 64 cases, libellés), position standard en jouant les Noirs, échec détecté, roque par le roi. |
 | `test_ai.py` | IA : mat préféré au pat, mat le plus court, coup toujours rendu, mat en 2, évaluation en centipions nulle au départ et antisymétrique par miroir, capture gratuite. |
-| `test_game_controller.py` | Contrôleur sans écran (doublures de `Process` / `Queue`) : coup de l'IA après l'humain, reprise après R / L, sous-promotion via le popup, robustesse du processus d'IA, pendule hors menus et animations. |
+| `test_game_controller.py` | Contrôleur sans écran (doublures de `Process` / `Queue`) : coup de l'IA après l'humain, reprise après R / L (avec confirmation), sous-promotion via le popup, robustesse du processus d'IA, pendule arrêtée pendant les fenêtres modales, animation non bloquante. |
+| `test_ui.py` | Interface J5 : mise en page sur 6 tailles de fenêtre, préférences (aller-retour, champs invalides), écran « Nouvelle partie », glisser-déposer, clic-clic, flèches et marques, promotion au clavier, navigation dans l'historique sans modifier la partie, matériel et évaluation, fenêtres superposées, transitions de scènes, redimensionnement, dessin de chaque écran dans les deux thèmes. |
 | `test_paths.py` | Lancement depuis un autre dossier, journal et sauvegarde dans le dossier de données utilisateur (sous-processus). |
 | `test_differential.py` | Parties aléatoires comparées coup par coup à python-chess : coups légaux, échec, mat, pat, nulles (50 rapides, 1 000 en `slow`). |
 | `test_fen.py` | Validation des FEN (31 FEN invalides, une par règle), aller-retour exact, compteurs. |

@@ -24,8 +24,12 @@ technique : l'accent est mis sur la justesse des règles, les tests et la qualit
   **Sauvegarde** JSON versionnée, avec mode, niveau et pendules.
 - **Protocole UCI** (`chessproject-uci`) : le moteur se branche dans une interface
   d'échecs ou joue contre d'autres moteurs.
-- **Interface** : plateau retourné quand on joue les Noirs, historique en notation SAN,
-  3 thèmes de plateau, sons, animation des coups.
+- **Interface** : écran « Nouvelle partie » unique (mode, couleur, niveau, cadence),
+  thèmes sombre et clair, 4 échiquiers, pièces vectorielles nettes à toutes les tailles,
+  fenêtre redimensionnable. Glisser-déposer ou clic-clic, coups possibles affichés,
+  flèches et marques au clic droit, historique SAN cliquable pour revoir la partie,
+  matériel pris, barre d'évaluation (désactivable), pendule du camp au trait mise en
+  avant, carte de fin de partie. Les préférences sont mémorisées.
 
 L'état du projet, les bugs suivis et la feuille de route sont dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
@@ -52,23 +56,37 @@ chessproject            # commande installée par pip
 python -m chessproject  # équivalent
 ```
 
-Le jeu peut être lancé depuis n'importe quel dossier. La sauvegarde (`saved_game.json`)
-et le journal (`chess.log`, tournant) sont écrits dans le dossier de données de
+Le jeu peut être lancé depuis n'importe quel dossier. La sauvegarde (`saved_game.json`),
+les préférences (`settings.json`) et le journal (`chess.log`, tournant) sont écrits dans le dossier de données de
 l'utilisateur (par exemple `~/.local/share/ChessProject` sous Linux), modifiable avec la
 variable d'environnement `CHESSPROJECT_DATA_DIR`.
+
+### Souris
+
+- **Jouer un coup** : glisser la pièce, ou cliquer la pièce puis la case d'arrivée.
+- **Clic droit** : glisser pour tracer une flèche, cliquer pour marquer une case. Un clic
+  gauche sur l'échiquier les efface.
+- **Historique** : cliquer un coup pour revoir la position. L'échiquier est alors en
+  lecture seule ; un clic dessus ramène à la partie.
 
 ### Raccourcis clavier
 
 | Touche | Action |
 |---|---|
 | `Z` | Annuler le dernier coup (contre l'IA, annule aussi la réponse de l'IA) |
-| `R` | Réinitialiser la partie |
+| `R` | Rejouer avec les mêmes réglages (confirmation si une partie est en cours) |
 | `S` / `L` | Sauvegarder / charger la partie |
 | `E` / `I` | Exporter / importer la partie en PGN |
-| `A` | Abandonner |
+| `A` | Abandonner (avec confirmation) |
 | `N` | Proposer la nulle (en Joueur contre Joueur, l'adversaire accepte avec `N`) |
-| `C` | Changer les couleurs du plateau |
-| `H` | Afficher / masquer les raccourcis |
+| `F` | Retourner l'échiquier |
+| `C` | Apparence : thème, échiquier, aides visuelles, sons |
+| `H` | Afficher les raccourcis |
+| `←` / `→` | Coup précédent / suivant dans l'historique |
+| `Origine` / `Fin` | Position de départ / position actuelle |
+| `Échap` | Annuler la sélection, effacer les flèches, fermer une fenêtre |
+
+Pendant une promotion : `D`, `T`, `F`, `C` (ou `Q`, `R`, `B`, `N`) choisissent la pièce.
 
 ## Qualité
 
@@ -98,8 +116,16 @@ Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de p
 | `chessproject/ai/search.py` | IA : NegaMax alpha-bêta, table de transposition, évaluation en centipions |
 | `chessproject/serialization.py` | Sauvegarde / chargement JSON versionné, export FEN |
 | `chessproject/paths.py` | Chemins des ressources et des données utilisateur |
-| `chessproject/ui/app.py` | Interface pygame : menus, rendu, contrôleur de partie, point d'entrée |
-| `chessproject/assets/` | Images des pièces et effets sonores |
+| `chessproject/settings.py` | Préférences de l'interface, lues et écrites de façon tolérante |
+| `chessproject/ui/app.py` | Scènes (`App`), contrôleur de partie, point d'entrée |
+| `chessproject/ui/layout.py` | Mise en page adaptative (fonction pure de la taille de fenêtre) |
+| `chessproject/ui/theme.py` | Couleurs des thèmes et des échiquiers, polices |
+| `chessproject/ui/board_view.py` | Rendu de l'échiquier, pièces SVG, animation, flèches |
+| `chessproject/ui/panel.py` | En-tête et panneau latéral (joueurs, pendules, historique) |
+| `chessproject/ui/overlays.py` | Fenêtres superposées : raccourcis, apparence, confirmation, fin de partie, promotion |
+| `chessproject/ui/new_game.py` | Écran « Nouvelle partie » |
+| `chessproject/ui/widgets.py` | Texte, formes, icônes vectorielles, boutons |
+| `chessproject/assets/` | Pièces, polices et effets sonores |
 | `tests/` | Tests : perft, différentiels contre python-chess, règles, IA, notation, FEN, UI |
 | `pyproject.toml` | Métadonnées, dépendances, configuration de ruff, mypy et pytest |
 | `RAPPORT_ANALYSE.md` | Audit du projet, suivi des bugs et feuille de route |
@@ -111,7 +137,8 @@ Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de p
 - **J2 — Socle moteur** ✅ : types, modèle de résultat de partie, notation SAN, FEN validée.
 - **J3 — IA** ✅ : adversaire solide, borné en temps, avec niveaux de difficulté.
 - **J4 — Fonctionnalités** ✅ : import/export PGN, cadence (temps + incrément), sauvegarde v2.
-- **J5 — Interface** : refonte visuelle, mise en page adaptative, interactions soignées.
+- **J5 — Interface** ✅ : scènes, thèmes, mise en page adaptative, glisser-déposer,
+  historique navigable.
 - **J6 — Packaging et vitrine** : exécutables, README illustré, version publiée.
 
 Le détail des tâches et des critères d'acceptation est dans
@@ -119,8 +146,17 @@ Le détail des tâches et des critères d'acceptation est dans
 
 ## Captures d'écran
 
-À venir (J6).
+![Partie en cours, thème sombre](docs/images/partie-sombre.png)
 
-## Licence
+![Écran « Nouvelle partie »](docs/images/nouvelle-partie.png)
 
-[MIT](LICENSE).
+![Partie en cours, thème clair](docs/images/partie-clair.png)
+
+## Licence et crédits
+
+Code sous licence [MIT](LICENSE). Ressources tierces livrées avec le jeu :
+
+- Pièces **Chessnut**, par Alexis Luengas, sous licence Apache 2.0
+  ([texte](chessproject/assets/pieces/LICENSE.txt)).
+- Polices **IBM Plex Sans** et **IBM Plex Mono**, par IBM, sous licence SIL Open Font
+  License 1.1 ([texte](chessproject/assets/fonts/OFL.txt)).

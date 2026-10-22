@@ -734,6 +734,43 @@ N parties contre la version précédente, avec un script `tools/match.py`.
 
 #### J5 — Interface « pro »
 
+> ✅ **Réalisé le 2026-10-22**, d'après la maquette validée (écran de jeu sombre et clair,
+> écran « Nouvelle partie », états de fin de partie, promotion, nulle et pendule).
+> - J5.1 : `App` tient la scène courante (« Nouvelle partie » ou partie) et la **seule**
+>   boucle `while True` du programme. Les menus bloquants ont disparu ; raccourcis,
+>   apparence, confirmations, fin de partie et promotion sont des fenêtres superposées qui
+>   reçoivent les événements et rendent une action. L'animation est calculée à chaque image
+>   (**B45** définitif, plus de boucle d'animation). Une fenêtre modale ou la scène
+>   « Nouvelle partie » arrête la pendule et l'IA ; le temps de pause n'est pas compté dans
+>   la limite de réflexion de l'IA. Écart : à l'intérieur de la partie, l'état reste dérivé
+>   d'attributs (`overlay`, `promotion_popup`, `ai_thinking`, `view_ply`) plutôt que d'une
+>   énumération d'états ; chaque transition est néanmoins testée.
+> - J5.2 : `theme.py` (2 thèmes, 4 échiquiers, couleurs des surlignages), polices IBM Plex
+>   embarquées et mises en cache (**B38**). Aucune couleur en dur hors de `theme.py`.
+>   Pièces vectorielles « Chessnut » (Apache 2.0) rastérisées à la taille exacte des cases.
+>   Image en régime établi : **5,5 ms** (1280×800, mesuré dans l'environnement de
+>   développement), bien sous les 16,7 ms d'une image à 60 images/s. Un pic de 30 à 60 ms survient une fois par nouvelle
+>   position quand la barre d'évaluation est active (recherche de 25 ms sur une copie).
+> - J5.3 : `layout.py`, fonction pure de la taille de fenêtre, testée sur 6 tailles de
+>   960×640 à 2560×1440. Écart : la taille minimale est **960×640**, pas 800×600 ; en
+>   dessous, la fenêtre est ramenée au minimum au lieu de replier le panneau.
+> - J5.4 : glisser-déposer et clic-clic, points et anneaux de capture, flèches et marques
+>   au clic droit, dernier coup, roi en échec, pendule au trait en couleur d'accent (rouge
+>   sous 20 s), sons désactivables. Cibles cliquables de 34 à 52 px. La revue WCAG AA n'a
+>   pas été faite avec un outil : les contrastes texte/fond ont été choisis au-dessus de
+>   4,5:1 pour le texte courant.
+> - J5.5 : historique SAN cliquable, flèches et `Origine`/`Fin`, échiquier en lecture
+>   seule pendant la revue, partie inchangée (testé). Matériel pris et avance matérielle,
+>   barre d'évaluation désactivable. Non fait : l'affichage de la variante principale de
+>   l'IA en mode analyse.
+> - En plus : préférences mémorisées (`settings.py`, lecture tolérante champ par champ),
+>   notifications dans la ligne d'état (sauvegarde, chargement, PGN, nulle refusée),
+>   confirmation avant d'abandonner ou de recommencer, retournement de l'échiquier (`F`).
+> - Tests : 41 nouveaux tests d'interface (`tests/test_ui.py`) ; suite rapide à 503 tests.
+>   Les tests qui lancent un processus ou un sous-processus ont désormais un délai d'attente
+>   (deux jobs macOS de la CI s'étaient arrêtés sur le délai de 15 min sans journal
+>   disponible) et pytest affiche la pile d'appels d'un test bloqué plus de 5 min.
+
 Elle vient **après** J1–J4, pour habiller une logique stable et ne pas avoir à redessiner
 deux fois.
 
