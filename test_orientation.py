@@ -62,7 +62,7 @@ class RendererRotationTests(unittest.TestCase):
 
 
 class _InlineProcess:
-    def __init__(self, target, args=()):
+    def __init__(self, target, args=(), **kwargs):
         self._target, self._args, self._ran = target, args, False
 
     def start(self):

@@ -10,6 +10,7 @@ import os
 import queue
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -32,13 +33,16 @@ from fen_utils import load_fen
 class _InlineProcess:
     """Faux multiprocessing.Process : exécute la cible immédiatement."""
 
-    def __init__(self, target, args=()):
+    def __init__(self, target, args=(), **kwargs):
         self._target, self._args = target, args
+        self.kwargs = kwargs
         self._ran = False
+        self.exitcode = None
 
     def start(self):
         self._target(*self._args)
         self._ran = True
+        self.exitcode = 0
 
     def is_alive(self):
         return not self._ran
@@ -54,7 +58,8 @@ class _SyncQueue:
     def put(self, x):
         self._q.put(x)
 
-    def get(self):
+    def get(self, block=True, timeout=None):
+        # Ne bloque jamais : un appel bloquant ferait pendre le test au lieu d'échouer.
         return self._q.get_nowait()
 
 
@@ -216,6 +221,99 @@ class PromotionThroughTheUI(unittest.TestCase):
         self._click_pos((5, 5))  # panneau de gauche, hors du popup
         self.assertIsNone(self.gc.promotion_popup)
         self.assertEqual(self.gc.game_state.move_log, [])
+
+
+class _CrashingProcess(_InlineProcess):
+    """Processus d'IA mort sans rien écrire dans la file (exception dans l'enfant)."""
+
+    def start(self):
+        self._ran = True
+        self.exitcode = 1
+
+
+class _HangingProcess(_InlineProcess):
+    """Processus d'IA qui ne rend jamais la main."""
+
+    instances: list["_HangingProcess"] = []
+
+    def start(self):
+        _HangingProcess.instances.append(self)
+        self.terminated = False
+
+    def is_alive(self):
+        return not self.terminated
+
+    def terminate(self):
+        self.terminated = True
+
+
+class _IllegalMoveProcess(_InlineProcess):
+    def start(self):
+        # Coup légal dans la position initiale mais pas pour les Noirs : e2-e4.
+        self._args[2].put(ChessEngine.Move((6, 4), (4, 4), ChessEngine.GameState().board))
+        self._ran = True
+        self.exitcode = 0
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class AIProcessRobustness(unittest.TestCase):
+    """B33 / B45 : un processus d'IA défaillant ne doit ni figer ni bloquer l'UI."""
+
+    def setUp(self):
+        self._orig = (ChessMain.Process, ChessMain.Queue)
+        ChessMain.Queue = _SyncQueue  # type: ignore[misc, assignment]
+        ui = ChessMain.UIManager(512, 512, 250, 512)
+        rm = ChessMain.ResourceManager(64)
+        # Humain = blancs ; on joue e4 pour donner le trait à l'IA.
+        self.gc = ChessMain.GameController(
+            p.display.get_surface(), p.time.Clock(), ui, rm, "PvC", True, False, False
+        )
+        gs = self.gc.game_state
+        gs.makeMove([m for m in gs.getValidMoves() if str(m) == "e4"][0])
+        self.gc.valid_moves = gs.getValidMoves()
+
+    def tearDown(self):
+        ChessMain.Process, ChessMain.Queue = self._orig  # type: ignore[misc]
+
+    def _use(self, process_cls):
+        ChessMain.Process = process_cls  # type: ignore[misc]
+
+    def _assert_black_played_a_legal_move(self):
+        gs = self.gc.game_state
+        self.assertEqual(len(gs.move_log), 2)
+        self.assertEqual(gs.move_log[-1].piece_moved[0], "b")
+        self.assertFalse(self.gc.ai_thinking)
+
+    def test_crashed_ai_process_falls_back_to_a_legal_move(self):
+        self._use(_CrashingProcess)
+        self.gc.update_ai()
+        self._assert_black_played_a_legal_move()
+
+    def test_illegal_ai_move_is_replaced_by_a_legal_one(self):
+        self._use(_IllegalMoveProcess)
+        self.gc.update_ai()
+        self._assert_black_played_a_legal_move()
+
+    def test_ai_process_is_a_daemon(self):
+        self._use(_HangingProcess)
+        self.gc.update_ai()
+        self.assertTrue(_HangingProcess.instances[-1].kwargs.get("daemon"))
+
+    def test_ai_exceeding_its_time_limit_is_stopped(self):
+        self._use(_HangingProcess)
+        self.gc.update_ai()
+        self.assertTrue(self.gc.ai_thinking)
+        self.gc.ai_started_at -= ChessMain.AI_MAX_THINK_SECONDS + 1
+        self.gc.update_ai()
+        self.assertTrue(_HangingProcess.instances[-1].terminated)
+        self._assert_black_played_a_legal_move()
+
+    def test_quitting_while_the_ai_thinks_stops_it(self):
+        self._use(_HangingProcess)
+        self.gc.update_ai()
+        with mock.patch.object(ChessMain.p, "quit"), self.assertRaises(SystemExit):
+            self.gc.handle_event(p.event.Event(p.QUIT, {}))
+        self.assertTrue(_HangingProcess.instances[-1].terminated)
 
 
 if __name__ == "__main__":

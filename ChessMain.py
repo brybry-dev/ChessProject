@@ -4,7 +4,9 @@ Fichier Principal, gérant les entrées/sorties, la personnalisation et les sauv
 
 import logging
 import os
+import queue
 import sys
+import time
 from multiprocessing import Process, Queue
 
 import pygame as p
@@ -22,6 +24,10 @@ MOVE_LOG_PANEL_WIDTH = 250
 LEFT_PANEL_WIDTH = 250
 MOVE_LOG_PANEL_HEIGHT = BOARD_HEIGHT
 MAX_FPS = 30
+# Garde-fous du processus d'IA (B33) : au-delà, il est arrêté et un coup de
+# repli est joué. La limite de réflexion pilotée par niveau viendra en J3.
+AI_MAX_THINK_SECONDS = 30.0
+AI_RESULT_TIMEOUT_SECONDS = 1.0
 SQ_SIZE = BOARD_HEIGHT // DIMENSION
 
 
@@ -657,6 +663,7 @@ class GameController:
         self.game_over = False
 
         self.ai_thinking = False
+        self.ai_started_at = 0.0
         self.move_finder_process = None
         self.return_queue = None
 
@@ -696,6 +703,7 @@ class GameController:
     # -- gestion des événements --------------------------------------
     def handle_event(self, e):
         if e.type == p.QUIT:
+            self._stop_ai()  # ne pas attendre la fin de la recherche (B45)
             p.quit()
             sys.exit()
         if e.type == p.MOUSEWHEEL:
@@ -829,22 +837,48 @@ class GameController:
         valid_moves = self.game_state.getValidMoves()
         if not self.ai_thinking:
             self.ai_thinking = True
+            self.ai_started_at = time.monotonic()
             self.return_queue = Queue()
+            # daemon : le processus est tué avec l'application au lieu d'être attendu.
             self.move_finder_process = Process(
-                target=ChessAI.findBestMove, args=(self.game_state, valid_moves, self.return_queue)
+                target=ChessAI.findBestMove,
+                args=(self.game_state, valid_moves, self.return_queue),
+                daemon=True,
             )
             self.move_finder_process.start()
-        if self.move_finder_process and not self.move_finder_process.is_alive():
-            assert self.return_queue is not None
-            ai_move = self.return_queue.get()
-            if ai_move is None:
-                ai_move = ChessAI.findRandomMove(valid_moves)
-            self.game_state.makeMove(ai_move)
-            _play_move_sound(ai_move)
-            self.move_made = True
-            self.animate = True
-            self.ai_thinking = False
-            logging.info(f"Coup joué par l'IA : {ai_move}")
+        if self.move_finder_process is None:
+            return
+        if self.move_finder_process.is_alive():
+            if time.monotonic() - self.ai_started_at < AI_MAX_THINK_SECONDS:
+                return
+            logging.error("IA arrêtée : plus de %.0f s de réflexion", AI_MAX_THINK_SECONDS)
+            self.move_finder_process.terminate()
+            ai_move = None
+        else:
+            ai_move = self._collect_ai_move()
+        if ai_move not in valid_moves:
+            if ai_move is not None:
+                logging.error("Coup de l'IA illégal ignoré : %s", ai_move)
+            ai_move = ChessAI.findRandomMove(valid_moves)
+        self.game_state.makeMove(ai_move)
+        _play_move_sound(ai_move)
+        self.move_made = True
+        self.animate = True
+        self.ai_thinking = False
+        logging.info(f"Coup joué par l'IA : {ai_move}")
+
+    def _collect_ai_move(self):
+        """Récupère le coup d'un processus d'IA terminé, ou None s'il n'en a pas rendu."""
+        assert self.return_queue is not None and self.move_finder_process is not None
+        try:
+            # Délai court : le processus est terminé, son résultat est déjà en route.
+            return self.return_queue.get(timeout=AI_RESULT_TIMEOUT_SECONDS)
+        except queue.Empty:
+            logging.error(
+                "Le processus d'IA s'est terminé sans coup (code %s)",
+                self.move_finder_process.exitcode,
+            )
+            return None
 
     # -- rendu -----------------------------------------------------
     def draw(self):
