@@ -98,7 +98,7 @@ Architecture en couches : `core` ← `ai` ← `ui` (le cœur ne dépend pas de p
 - **J0 — Outillage** ✅ : `pyproject.toml`, ruff, mypy, CI multi-OS, README.
 - **J1 — Correction** ✅ : plus aucun bug bloquant connu (règles, IA, contrôleur).
 - **J2 — Socle moteur** ✅ : types, modèle de résultat de partie, notation SAN, FEN validée.
-- **J3 — IA** : adversaire solide, borné en temps, avec niveaux de difficulté.
+- **J3 — IA** ✅ : adversaire solide, borné en temps, avec niveaux de difficulté.
 - **J4 — Fonctionnalités** : import/export PGN, cadence (temps + incrément), sauvegarde v2.
 - **J5 — Interface** : refonte visuelle, mise en page adaptative, interactions soignées.
 - **J6 — Packaging et vitrine** : exécutables, README illustré, version publiée.

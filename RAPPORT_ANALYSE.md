@@ -559,7 +559,7 @@ Prochaine étape : Phase 4 — Feuille de route (§4).
 | **J0** Outillage ✅ | Rendre la qualité mesurable et automatique | Court terme | ~1,5 j |
 | **J1** Correction ✅ | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
 | **J2** Socle moteur ✅ | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
-| **J3** IA | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
+| **J3** IA ✅ | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
 | **J4** Fonctionnalités | PGN, cadence, niveaux dans l'UI, sauvegarde v2 | Moyen terme | ~5–6 j |
 | **J5** Interface pro | Scènes, thème, mise en page adaptative, finition visuelle | Fin de parcours | ~5–7 j |
 | **J6** Packaging et vitrine | Exécutables, README illustré, version publiée, UCI minimal (optionnel) | Fin de parcours | ~3–4 j |
@@ -671,7 +671,19 @@ corrigés, chacun verrouillé par un test. C'est un bon moment pour un premier t
 >   profondeur égale** [+186, +428]. Le critère de +100 Elo est atteint en estimation
 >   ponctuelle, mais sur 48 parties et non 200 comme prévu.
 > - Suite tactique : **44/44 à profondeur 5**, **39/44 (89 %) en 1 s** (cible J3.5 : 80 %).
-> - J3.7 : 5 niveaux en place. Leur classement en mini-ligue est en cours de mesure.
+> - J3.7 ✅ : 5 niveaux, **strictement ordonnés** en mini-ligue (critère : au moins 70 % des
+>   points contre le niveau inférieur) :
+>
+>   | Match | Résultat (V / N / D) | Score | Elo [IC 95 %] |
+>   |---|---|---|---|
+>   | Facile – Débutant | 45 / 2 / 1 | 95,8 % | +545 [+401, …] |
+>   | Moyen – Facile | 47 / 1 / 0 | 99,0 % | +791 [+600, …] |
+>   | Difficile – Moyen | 45 / 0 / 3 | 93,8 % | +470 [+329, …] |
+>   | Expert – Difficile (24 parties) | 20 / 3 / 1 | 89,6 % | +374 [+237, +938] |
+>
+>   Les marches sont très hautes (400 à 800 Elo). À affiner avec des retours de joueurs
+>   humains (bruit et temps des niveaux intermédiaires), par exemple au moment du menu de
+>   choix (J4.6).
 > - **Limite connue** : environ 10 k nœuds/s en Python pur. À 1 s par coup, l'IA atteint la
 >   profondeur 3–4 en ouverture et 1–2 dans les positions très tactiques. Le passage des
 >   pièces en entiers (reporté de J2.3) reste la principale piste de vitesse.
