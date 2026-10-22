@@ -22,7 +22,7 @@ import copy
 import re
 from collections.abc import Iterable
 
-from ChessEngine import GameState, Move
+from ChessEngine import GameState, Move, Termination
 
 
 class NotationError(ValueError):
@@ -59,41 +59,21 @@ def _find_legal(game_state: GameState, move: Move) -> Move:
     raise NotationError(f"Coup illégal dans la position : {to_uci(move)}")
 
 
-def _has_any_legal_move(game_state: GameState) -> bool:
-    """Le camp au trait a-t-il un coup légal, nulles automatiques mises à part ?
-
-    ``getValidMoves`` renvoie une liste vide quand la position est nulle par la règle
-    des 50 coups ou la triple répétition. Un mat donné au 100ᵉ demi-coup reste un mat
-    en SAN (« # », comme python-chess et la FIDE) : on neutralise donc temporairement
-    ces deux compteurs. Le matériel insuffisant n'a pas à l'être : une position morte
-    ne peut pas être mat.
-    """
-    if game_state.getValidMoves():
-        return True
-    saved_counter = game_state.fifty_move_counter
-    saved_history = game_state.position_history
-    try:
-        game_state.fifty_move_counter = 0
-        game_state.position_history = {}
-        game_state._valid_moves = None
-        return bool(game_state.getValidMoves())
-    finally:
-        game_state.fifty_move_counter = saved_counter
-        game_state.position_history = saved_history
-        game_state._valid_moves = None
-
-
 def _check_suffix(game_state: GameState, move: Move) -> str:
     """``"+"``, ``"#"`` ou ``""`` : joue le coup, observe, puis l'annule.
 
-    ``undoMove`` remet à zéro ``checkmate`` / ``stalemate`` et vide le cache des coups :
-    ces attributs, ainsi que ``in_check`` / ``pins`` / ``checks``, sont restaurés à
+    Le mat prime sur les nulles automatiques dans le moteur (FIDE 9.3) : un mat donné
+    au 100ᵉ demi-coup est donc bien noté « # ».
+
+    ``undoMove`` remet à zéro le statut de fin et vide le cache des coups : ces
+    attributs, ainsi que ``in_check`` / ``pins`` / ``checks``, sont restaurés à
     l'identique pour que l'appelant retrouve exactement sa position.
     """
     saved = (
         game_state._valid_moves,
         game_state.checkmate,
         game_state.stalemate,
+        game_state.termination,
         game_state.in_check,
         game_state.pins,
         game_state.checks,
@@ -102,13 +82,15 @@ def _check_suffix(game_state: GameState, move: Move) -> str:
     try:
         if not game_state.inCheck():
             return ""
-        return "+" if _has_any_legal_move(game_state) else "#"
+        game_state.getValidMoves()
+        return "#" if game_state.termination is Termination.CHECKMATE else "+"
     finally:
         game_state.undoMove()
         (
             game_state._valid_moves,
             game_state.checkmate,
             game_state.stalemate,
+            game_state.termination,
             game_state.in_check,
             game_state.pins,
             game_state.checks,
@@ -300,9 +282,38 @@ def move_list_to_san(start_state: GameState, moves: Iterable[Move]) -> list[str]
     return result
 
 
+def san_history(game_state: GameState) -> list[str]:
+    """SAN de tous les coups joués dans ``game_state`` (laissé intact).
+
+    Une copie est ramenée à la position de départ par annulations successives,
+    puis la partie y est rejouée : fonctionne aussi pour une partie chargée.
+    """
+    start = copy.deepcopy(game_state)
+    for _ in range(len(start.move_log)):
+        start.undoMove()
+    return move_list_to_san(start, game_state.move_log)
+
+
+def format_move_lines(sans: list[str], start_fullmove: int, white_starts: bool) -> list[str]:
+    """Lignes numérotées de l'historique : ``"1. e4 e5"``, ``"12... Nf6"`` si les Noirs
+    commencent."""
+    lines: list[str] = []
+    number = start_fullmove
+    index = 0
+    if not white_starts and sans:
+        lines.append(f"{number}... {sans[0]}")
+        number, index = number + 1, 1
+    while index < len(sans):
+        lines.append(" ".join([f"{number}.", *sans[index : index + 2]]))
+        number, index = number + 1, index + 2
+    return lines
+
+
 __all__ = [
     "NotationError",
+    "format_move_lines",
     "move_list_to_san",
+    "san_history",
     "parse_san",
     "parse_square",
     "parse_uci",

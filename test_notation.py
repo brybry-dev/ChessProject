@@ -18,10 +18,12 @@ import ChessEngine
 from fen_utils import load_fen
 from notation import (
     NotationError,
+    format_move_lines,
     move_list_to_san,
     parse_san,
     parse_square,
     parse_uci,
+    san_history,
     square_name,
     to_san,
     to_uci,
@@ -54,13 +56,12 @@ def _snapshot(gs):
         gs.white_king_location,
         gs.black_king_location,
         gs.enpassant_possible,
-        list(gs.enpassant_possible_log),
         (cr.wks, cr.bks, cr.wqs, cr.bqs),
-        len(gs.castle_rights_log),
         gs.fifty_move_counter,
-        list(gs.fifty_move_counter_log),
+        len(gs.undo_stack),
+        list(gs.position_keys),
         dict(gs.position_history),
-        len(gs.position_history_log),
+        gs.termination,
         gs.checkmate,
         gs.stalemate,
         gs.in_check,
@@ -190,7 +191,7 @@ class SanTests(unittest.TestCase):
             parse_san(gs, "c3")  # c2-c3 bloqué, d2xc3 exige la colonne
 
     def test_capture_promotion_and_underpromotion(self):
-        fen = "3r1k2/4P3/8/8/8/8/8/4K3 w - - 0 1"
+        fen = "3r2k1/4P3/8/8/8/8/8/4K3 w - - 0 1"
         self.assertEqual(_san(fen, "e7d8q"), "exd8=Q+")
         self.assertEqual(_san(fen, "e7d8n"), "exd8=N")
         self.assertEqual(_san(fen, "e7d8r"), "exd8=R+")
@@ -224,10 +225,8 @@ class SanTests(unittest.TestCase):
         self.assertEqual(move_list_to_san(ChessEngine.GameState(), moves), sans)
 
     def test_mate_on_hundredth_half_move_is_still_mate(self):
-        # Le moteur déclare nulle (50 coups) au 100ᵉ demi-coup ; la SAN note le mat.
+        # Le mat prime sur la règle des 50 coups (FIDE 9.3), en SAN comme dans le moteur.
         gs = load_fen("6k1/5ppp/8/8/8/8/8/R5K1 w - - 99 1")
-        gs.fifty_move_counter = 99
-        gs.fifty_move_counter_log = [99]
         self.assertEqual(to_san(gs, _move(gs, "a1a8")), "Ra8#")
 
     def test_stalemate_has_no_suffix(self):
@@ -327,11 +326,8 @@ class PythonChessReferenceTests(unittest.TestCase):
                 with self.subTest(fen=fen, move=to_uci(move)):
                     self.assertEqual(to_san(gs, move), board.san(chess.Move.from_uci(to_uci(move))))
 
-    # Bug moteur trouvé par la comparaison (cf. compte rendu J2.5) : un pion cloué sur
-    # sa colonne ne peut pas avancer VERS son roi (getPawnMoves n'accepte que
-    # pin_direction == (move_amount, 0), pas l'opposé). À retirer quand le moteur est
-    # corrigé : le test passera alors (« unexpected success »).
-    @unittest.expectedFailure
+    # Positions trouvées par cette comparaison avant la correction de B46 (pion cloué
+    # qui avance vers son roi), gardées en non-régression.
     def test_pinned_pawn_pushing_towards_its_king(self):
         for fen in (
             # Dame f7, pion f6, roi noir f3 : f6-f5 est légal.
@@ -348,6 +344,23 @@ class PythonChessReferenceTests(unittest.TestCase):
     def test_random_games_match_python_chess_long(self):
         # 2 × 1 000 parties (~160 000 demi-coups), ~1 min 30.
         _differential(self, n_games=1000, seed=1, full_every=20)
+
+
+class HistoryTests(unittest.TestCase):
+    def test_san_history_replays_the_whole_game_and_leaves_it_intact(self):
+        gs = ChessEngine.GameState()
+        for san in ("e4", "e5", "Nf3", "Nc6", "Bb5", "a6"):
+            gs.makeMove(parse_san(gs, san))
+        before = _snapshot(gs)
+        self.assertEqual(san_history(gs), ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"])
+        self.assertEqual(_snapshot(gs), before)
+
+    def test_move_lines_are_numbered_from_the_fen(self):
+        self.assertEqual(format_move_lines(["e4", "e5", "Nf3"], 1, True), ["1. e4 e5", "2. Nf3"])
+        self.assertEqual(
+            format_move_lines(["Nf6", "d4", "d5"], 12, False), ["12... Nf6", "13. d4 d5"]
+        )
+        self.assertEqual(format_move_lines([], 5, False), [])
 
 
 if __name__ == "__main__":

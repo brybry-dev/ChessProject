@@ -15,6 +15,7 @@ import pygame as p
 
 import ChessAI
 import ChessEngine
+import notation
 import paths
 import serialization
 
@@ -105,6 +106,8 @@ class UIManager:
         self.move_log_offset = 0
         self.max_scroll = 0
         self.SCROLL_SPEED = 20
+        self._move_lines_key = None
+        self._move_lines_cache = []
         # Couleurs par défaut du plateau
         self.board_color1 = p.Color("white")
         self.board_color2 = p.Color("gray")
@@ -190,12 +193,7 @@ class UIManager:
         p.draw.rect(screen, p.Color("black"), move_log_rect)
 
         # Affichage des coups
-        move_texts = []
-        for i in range(0, len(game_state.move_log), 2):
-            move_str = f"{i // 2 + 1}. {game_state.move_log[i]} "
-            if i + 1 < len(game_state.move_log):
-                move_str += f"{game_state.move_log[i + 1]}"
-            move_texts.append(move_str)
+        move_texts = self._move_lines(game_state)
 
         # Zone de défilement pour l'historique des coups
         line_height = font.get_height() + 2
@@ -212,6 +210,18 @@ class UIManager:
             scroll_area.blit(text_surf, (5, y))
             y += font.get_height() + 2
         screen.blit(scroll_area, (self.board_width + LEFT_PANEL_WIDTH, 0))
+
+    def _move_lines(self, game_state):
+        """Historique en SAN, recalculé seulement quand la liste des coups change."""
+        key = (id(game_state), tuple(m.moveID for m in game_state.move_log))
+        if key != self._move_lines_key:
+            sans = notation.san_history(game_state)
+            white_starts = game_state.white_to_move == (len(sans) % 2 == 0)
+            self._move_lines_cache = notation.format_move_lines(
+                sans, game_state.start_fullmove, white_starts
+            )
+            self._move_lines_key = key
+        return self._move_lines_cache
 
     def handle_scroll(self, event, mouse_pos):
         move_log_rect = p.Rect(
