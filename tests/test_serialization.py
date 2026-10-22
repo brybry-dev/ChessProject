@@ -106,10 +106,10 @@ class SaveLoadTests(unittest.TestCase):
         self.assertFalse(flip)
         self.assertEqual(loaded.board[4][4], "wp")
 
-    def test_saves_are_written_in_version_2(self):
+    def test_saves_are_written_in_the_current_version(self):
         serialization.save_game(engine.GameState(), filename=self.path)
         with open(self.path, encoding="utf-8") as f:
-            self.assertEqual(json.load(f)["version"], 2)
+            self.assertEqual(json.load(f)["version"], serialization.SAVE_VERSION)
 
     def test_roundtrip_preserves_promotion_choice(self):
         # Position où les blancs peuvent promouvoir en b8.
