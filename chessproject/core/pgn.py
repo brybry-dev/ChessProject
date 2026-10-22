@@ -16,7 +16,7 @@ pygame.
   Noirs commencent), terminés par le résultat, en lignes d'au plus 80 caractères coupées
   entre deux jetons (un jeton n'est jamais coupé).
 
-**Import** (J4.4, commit suivant) — :func:`parse_pgn` lit un texte contenant une ou plusieurs parties.
+**Import** — :func:`parse_pgn` lit un texte contenant une ou plusieurs parties.
 Commentaires ``{...}`` et ``;`` (jusqu'à la fin de la ligne), lignes d'échappement ``%``,
 variantes ``(...)`` (imbriquées), NAG ``$n``, suffixes ``!``/``?`` et numéros de coup
 sont ignorés ; seule la ligne principale est conservée. Chaque coup est **validé** par
@@ -39,12 +39,14 @@ avec un message en français indiquant le numéro de la partie et le coup fautif
 from __future__ import annotations
 
 import copy
+import os
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 from chessproject.core.engine import GameResult, GameState, Termination
 from chessproject.core.fen import FenError, load_fen
-from chessproject.core.notation import NotationError, parse_san, san_history
+from chessproject.core.notation import NotationError, parse_san, san_history, to_san
 from chessproject.serialization import fullmove_number, to_fen
 
 
@@ -85,6 +87,10 @@ TERMINATION_TAGS: dict[Termination, str] = {
 
 RESULTS: tuple[str, ...] = ("1-0", "0-1", "1/2-1/2", "*")
 MAX_LINE_LENGTH = 80
+DEFAULT_MAX_BYTES = 5_000_000
+DEFAULT_MAX_GAMES = 10_000
+#: Nombre maximal de demi-coups de la ligne principale d'une partie.
+DEFAULT_MAX_MOVES = 2_000
 
 _TAG_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 _DATE_RE = re.compile(r"^[0-9?]{4}\.[0-9?]{2}\.[0-9?]{2}$")
@@ -242,14 +248,330 @@ def export_pgn(
     return "\n".join([*lines, "", *wrap_tokens(tokens)]) + "\n"
 
 
+# --------------------------------------------------------------------------
+# Import (J4.4) : analyse lexicale
+# --------------------------------------------------------------------------
+# Jetons produits par _tokenize (genre ``kind``) :
+#   "tag"            : en-tête, ``value`` = nom, ``tag_value`` = valeur déséchappée ;
+#   "open" / "close" : parenthèses de variante ;
+#   "word"           : coup, numéro de coup, résultat ou suffixe d'annotation.
+# Commentaires, NAG et lignes d'échappement ne produisent aucun jeton.
+_DELIMITERS = frozenset(' \t\r\n\f\v{}()[];"$%')
+_MOVE_NUMBER_RE = re.compile(r"^\d+\.*")
+_ANNOTATION_ONLY_RE = re.compile(r"^[!?]+$")
+
+
+@dataclass(frozen=True)
+class _Token:
+    kind: str
+    value: str
+    line: int
+    tag_value: str = ""
+
+
+def _tokenize(text: str) -> Iterator[_Token]:
+    pos = 0
+    line = 1
+    length = len(text)
+    at_line_start = True
+    while pos < length:
+        ch = text[pos]
+        if ch == "\n":
+            line += 1
+            pos += 1
+            at_line_start = True
+            continue
+        if ch in " \t\r\f\v﻿":
+            pos += 1
+            continue
+        if ch == "%" and at_line_start:
+            # Ligne d'échappement (§6) : ignorée jusqu'à la fin de la ligne.
+            end = text.find("\n", pos)
+            pos = length if end < 0 else end
+            continue
+        at_line_start = False
+        if ch == ";":
+            end = text.find("\n", pos)
+            pos = length if end < 0 else end
+        elif ch == "{":
+            end = text.find("}", pos + 1)
+            if end < 0:
+                raise PgnError(f"Ligne {line} : commentaire « {{ » jamais refermé")
+            line += text.count("\n", pos, end)
+            pos = end + 1
+        elif ch == "}":
+            raise PgnError(f"Ligne {line} : « }} » sans « {{ » correspondant")
+        elif ch == "(":
+            yield _Token("open", ch, line)
+            pos += 1
+        elif ch == ")":
+            yield _Token("close", ch, line)
+            pos += 1
+        elif ch == "[":
+            pos, tag = _read_tag(text, pos, line)
+            yield tag
+        elif ch == "$":
+            end = pos + 1
+            while end < length and text[end].isdigit():
+                end += 1
+            if end == pos + 1:
+                raise PgnError(f"Ligne {line} : NAG « $ » sans numéro")
+            pos = end
+        elif ch == '"' or ch == "]" or ch == "%":
+            raise PgnError(f"Ligne {line} : caractère inattendu {ch!r}")
+        else:
+            end = pos
+            while end < length and text[end] not in _DELIMITERS:
+                end += 1
+            yield _Token("word", text[pos:end], line)
+            pos = end
+
+
+_TAG_START_RE = re.compile(r'\[[ \t]*([A-Za-z0-9_]+)[ \t]*"')
+_TAG_END_RE = re.compile(r"[ \t]*\]")
+
+
+def _read_tag(text: str, pos: int, line: int) -> tuple[int, _Token]:
+    """Lit ``[Nom "valeur"]`` à partir de ``pos`` (sur le ``[``), sur une seule ligne.
+
+    ``\\"`` et ``\\\\`` sont déséchappés. Tolérance : un ``"`` non échappé qui n'est pas
+    suivi de ``]`` alors qu'un autre ``"`` suit sur la ligne est pris littéralement
+    (certains logiciels, dont python-chess 1.11, n'échappent pas les guillemets).
+    """
+    match = _TAG_START_RE.match(text, pos)
+    if match is None:
+        raise PgnError(f'Ligne {line} : en-tête mal formé (attendu [Nom "valeur"])')
+    name = match.group(1)
+    index = match.end()
+    line_end = text.find("\n", index)
+    if line_end < 0:
+        line_end = len(text)
+    chars: list[str] = []
+    while True:
+        if index >= line_end:
+            raise PgnError(f"Ligne {line} : valeur de l'en-tête {name} non terminée")
+        ch = text[index]
+        if ch == "\\" and index + 1 < line_end and text[index + 1] in '\\"':
+            chars.append(text[index + 1])
+            index += 2
+            continue
+        if ch == '"':
+            close = _TAG_END_RE.match(text, index + 1)
+            if close is not None:
+                return close.end(), _Token("tag", name, line, "".join(chars))
+            if text.find('"', index + 1, line_end) < 0:
+                raise PgnError(f"Ligne {line} : « ] » manquant après l'en-tête {name}")
+        chars.append(ch)
+        index += 1
+
+
+# --------------------------------------------------------------------------
+# Import : construction des parties
+# --------------------------------------------------------------------------
+class _GameBuilder:
+    """Partie en cours de lecture : en-têtes, puis coups validés un à un."""
+
+    def __init__(self, number: int, max_moves: int) -> None:
+        self.number = number
+        self.max_moves = max_moves
+        self.raw_headers: dict[str, str] = {}
+        self.moves: list[str] = []
+        self.result: str | None = None
+        self.state: GameState | None = None
+        self.start_fen: str | None = None
+        self.depth = 0  # profondeur de variante courante
+
+    def error(self, message: str) -> PgnError:
+        white = self.raw_headers.get("White", "?")
+        black = self.raw_headers.get("Black", "?")
+        return PgnError(f"Partie n° {self.number} ({white} – {black}) : {message}")
+
+    @property
+    def started(self) -> bool:
+        return self.state is not None or self.result is not None
+
+    def add_tag(self, name: str, value: str) -> None:
+        self.raw_headers[name] = value
+
+    def _start(self) -> GameState:
+        if self.state is not None:
+            return self.state
+        variant = self.raw_headers.get("Variant", "Standard").strip().lower()
+        if variant not in ("standard", "chess", ""):
+            raise self.error(f"variante non prise en charge : {self.raw_headers['Variant']!r}")
+        fen = self.raw_headers.get("FEN")
+        setup = self.raw_headers.get("SetUp")
+        if setup == "1" and fen is None:
+            raise self.error('[SetUp "1"] sans en-tête [FEN]')
+        if fen is not None:
+            try:
+                self.state = load_fen(fen.strip())
+            except FenError as exc:
+                raise self.error(f"en-tête [FEN] invalide : {exc}") from exc
+            normalized = to_fen(self.state)
+            self.start_fen = None if normalized == STANDARD_START_FEN else normalized
+        else:
+            self.state = GameState()
+        return self.state
+
+    def add_move(self, word: str, line: int) -> None:
+        state = self._start()
+        label = _move_label(state)
+        if len(self.moves) >= self.max_moves:
+            raise self.error(
+                f"plus de {self.max_moves} demi-coups : coup {label} {word!r} (ligne {line}) refusé"
+            )
+        result = state.result()
+        if result.is_over:
+            raise self.error(
+                f"coup {label} {word!r} (ligne {line}) joué après la fin de la partie "
+                f"({result.description})"
+            )
+        try:
+            move = parse_san(state, word)
+            san = to_san(state, move)
+        except NotationError as exc:
+            raise self.error(f"coup {label} {word!r} (ligne {line}) refusé : {exc}") from exc
+        state.make_move(move, validate=False)
+        self.moves.append(san)
+
+    def build(self) -> PgnGame:
+        self._start()
+        result = self.result
+        if result is None:
+            header_result = self.raw_headers.get("Result", "*").strip()
+            result = header_result if header_result in RESULTS else "*"
+        headers: dict[str, str] = {}
+        for name in SEVEN_TAG_ROSTER:
+            headers[name] = self.raw_headers.get(name, _ROSTER_DEFAULTS[name])
+        headers["Result"] = result
+        for name, value in self.raw_headers.items():
+            headers.setdefault(name, value)
+        return PgnGame(headers=headers, start_fen=self.start_fen, moves=self.moves, result=result)
+
+
+def parse_pgn(
+    text: str,
+    max_games: int = DEFAULT_MAX_GAMES,
+    max_moves: int = DEFAULT_MAX_MOVES,
+) -> list[PgnGame]:
+    """Lit toutes les parties du texte PGN ``text`` (ligne principale de chacune).
+
+    Lève :class:`PgnError` pour un texte mal formé, un coup illégal ou ambigu, une FEN
+    invalide, plus de ``max_games`` parties ou plus de ``max_moves`` demi-coups dans une
+    partie. Une partie sans jeton de résultat se termine au premier en-tête suivant ou à
+    la fin du texte ; son résultat est alors celui de l'en-tête Result (« * » à défaut).
+    """
+    games: list[PgnGame] = []
+    builder = _GameBuilder(1, max_moves)
+    has_content = False
+
+    def finish() -> None:
+        nonlocal builder, has_content
+        if builder.depth:
+            raise builder.error("variante « ( » jamais refermée")
+        games.append(builder.build())
+        builder = _GameBuilder(len(games) + 1, max_moves)
+        has_content = False
+
+    for token in _tokenize(text):
+        if token.kind == "tag":
+            if builder.depth:
+                raise builder.error(
+                    f"en-tête [{token.value}] dans une variante (ligne {token.line})"
+                )
+            if builder.started:
+                finish()  # partie précédente sans jeton de résultat
+            if len(games) >= max_games:
+                raise PgnError(f"Plus de {max_games} parties dans le fichier")
+            builder.add_tag(token.value, token.tag_value)
+            has_content = True
+            continue
+        if len(games) >= max_games:
+            raise PgnError(f"Plus de {max_games} parties dans le fichier")
+        has_content = True
+        if token.kind == "open":
+            builder.depth += 1
+            continue
+        if token.kind == "close":
+            if builder.depth == 0:
+                raise builder.error(f"« ) » sans « ( » correspondant (ligne {token.line})")
+            builder.depth -= 1
+            continue
+        word = token.value
+        if builder.depth:
+            continue  # coups, numéros et résultats des variantes : ignorés
+        if word in RESULTS:
+            builder.result = word
+            finish()
+            continue
+        rest = _MOVE_NUMBER_RE.sub("", word) if word[0].isdigit() and "." in word else word
+        if not rest or rest.isdigit() or set(rest) == {"."} or _ANNOTATION_ONLY_RE.match(rest):
+            continue  # numéro de coup (« 12. », « 12... », « 12 »), suffixe isolé
+        if rest == "--" or rest.upper() in ("Z0", "0000", "NULL"):
+            raise builder.error(f"coup nul {rest!r} non pris en charge (ligne {token.line})")
+        builder.add_move(rest, token.line)
+    if has_content:
+        finish()
+    return games
+
+
+def _decode(data: bytes) -> str:
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("latin-1")  # encodage du standard PGN
+
+
+def read_pgn_file(
+    path: str | os.PathLike[str],
+    max_bytes: int = DEFAULT_MAX_BYTES,
+    max_games: int = DEFAULT_MAX_GAMES,
+    max_moves: int = DEFAULT_MAX_MOVES,
+) -> list[PgnGame]:
+    """Lit un fichier PGN (UTF-8, ou Latin-1 à défaut) d'au plus ``max_bytes`` octets.
+
+    Lève :class:`PgnError` si le fichier est trop gros ou invalide (cf.
+    :func:`parse_pgn`), ``OSError`` s'il est illisible.
+    """
+    with open(path, "rb") as handle:
+        data = handle.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise PgnError(f"Fichier PGN trop volumineux (plus de {max_bytes} octets) : {path}")
+    return parse_pgn(_decode(data), max_games=max_games, max_moves=max_moves)
+
+
+def load_pgn_game(text_or_path: str | os.PathLike[str], index: int = 0) -> GameState:
+    """Position finale de la partie n° ``index`` (à partir de 0) d'un texte ou fichier PGN.
+
+    Un ``os.PathLike``, ou une chaîne d'une ligne qui désigne un fichier existant, est lu
+    comme un fichier (:func:`read_pgn_file`) ; toute autre chaîne est un texte PGN.
+    """
+    if isinstance(text_or_path, os.PathLike) or (
+        "\n" not in text_or_path and "[" not in text_or_path and os.path.isfile(text_or_path)
+    ):
+        games = read_pgn_file(text_or_path)
+    else:
+        games = parse_pgn(text_or_path)
+    if not 0 <= index < len(games):
+        raise PgnError(f"Partie n° {index + 1} introuvable : le PGN en contient {len(games)}")
+    return games[index].replay()
+
+
 __all__ = [
+    "DEFAULT_MAX_BYTES",
+    "DEFAULT_MAX_GAMES",
+    "DEFAULT_MAX_MOVES",
     "PgnError",
     "PgnGame",
     "SEVEN_TAG_ROSTER",
     "STANDARD_START_FEN",
     "TERMINATION_TAGS",
     "export_pgn",
+    "load_pgn_game",
     "movetext_tokens",
+    "parse_pgn",
+    "read_pgn_file",
     "start_position",
     "wrap_tokens",
 ]

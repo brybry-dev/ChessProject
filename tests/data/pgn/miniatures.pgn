@@ -1,0 +1,62 @@
+[Event "Mat du berger"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "1-0"]
+
+1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0
+
+[Event "Mat du lion"]
+[Site "?"]
+[Date "????.??.??"]
+[Round "?"]
+[White "?"]
+[Black "?"]
+[Result "0-1"]
+
+1. f3 e5 2. g4 Qh4# 0-1
+
+[Event "Paris"]
+[Site "Paris FRA"]
+[Date "1750.??.??"]
+[Round "?"]
+[White "Legall de Kermeur, François"]
+[Black "Saint Brie"]
+[Result "1-0"]
+
+1. e4 e5 2. Nf3 d6 3. Bc4 Bg4 4. Nc3 g6 5. Nxe5 Bxd1 6. Bxf7+ Ke7 7. Nd5# 1-0
+
+[Event "Vienna"]
+[Site "Vienna AUT"]
+[Date "1910.??.??"]
+[Round "?"]
+[White "Reti, Richard"]
+[Black "Tartakower, Savielly"]
+[Result "1-0"]
+
+1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nf6 5. Qd3 e5 6. dxe5 Qa5+ 7. Bd2 Qxe5
+8. O-O-O Nxe4 9. Qd8+ Kxd8 10. Bg5+ Kc7 11. Bd8# 1-0
+
+[Event "London"]
+[Site "London ENG"]
+[Date "1912.10.29"]
+[Round "?"]
+[White "Lasker, Edward"]
+[Black "Thomas, George Alan"]
+[Result "1-0"]
+
+1. d4 e6 2. Nf3 f5 3. Nc3 Nf6 4. Bg5 Be7 5. Bxf6 Bxf6 6. e4 fxe4 7. Nxe4 b6
+8. Ne5 O-O 9. Bd3 Bb7 10. Qh5 Qe7 11. Qxh7+ Kxh7 12. Nxf6+ Kh6 13. Neg4+ Kg5
+14. h4+ Kf4 15. g3+ Kf3 16. Be2+ Kg2 17. Rh2+ Kg1 18. Kd2# 1-0
+
+[Event "Partie en cours"]
+[Site "?"]
+[Date "2026.10.22"]
+[Round "?"]
+[White "Joueur \"humain\""]
+[Black "ChessProject \\ IA"]
+[Result "*"]
+
+1. d4 d5 2. c4 *

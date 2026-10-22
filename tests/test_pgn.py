@@ -10,9 +10,13 @@
 
 import importlib.util
 import io
+import os
 import random
+import tempfile
 import unittest
 from pathlib import Path
+
+import pytest
 
 from chessproject.core.engine import Color, GameResult, GameState, Termination
 from chessproject.core.fen import load_fen
@@ -21,7 +25,12 @@ from chessproject.core.pgn import (
     SEVEN_TAG_ROSTER,
     STANDARD_START_FEN,
     TERMINATION_TAGS,
+    PgnError,
+    PgnGame,
     export_pgn,
+    load_pgn_game,
+    parse_pgn,
+    read_pgn_file,
     wrap_tokens,
 )
 from chessproject.serialization import to_fen
@@ -205,12 +214,49 @@ class TestExport(unittest.TestCase):
         text = export_pgn(GameState(), headers={"White": value, "Black": "a\nb"})
         self.assertIn('[White "Joueur \\"fou\\" \\\\ C:\\\\chemin"]', text)
         self.assertIn('[Black "a b"]', text)
+        game = parse_pgn(text)[0]
+        self.assertEqual(game.headers["White"], value)
 
     def test_game_state_left_untouched(self):
         gs = _play(load_fen(KIWIPETE), "O-O", "O-O-O", "a3")
         before = (to_fen(gs), len(gs.move_log), list(gs.position_keys))
         export_pgn(gs)
         self.assertEqual(before, (to_fen(gs), len(gs.move_log), list(gs.position_keys)))
+
+
+# --------------------------------------------------------------------------
+# Aller-retour
+# --------------------------------------------------------------------------
+class TestRoundTrip(unittest.TestCase):
+    def _check(self, games: list[GameState]) -> None:
+        for index, gs in enumerate(games):
+            with self.subTest(game=index):
+                text = export_pgn(gs, headers={"Round": str(index)})
+                parsed = parse_pgn(text)
+                self.assertEqual(len(parsed), 1)
+                game = parsed[0]
+                self.assertEqual(game.moves, san_history(gs))
+                self.assertEqual(game.result, gs.result().pgn)
+                self.assertEqual(game.headers["Round"], str(index))
+                replayed = game.replay()
+                self.assertEqual(to_fen(replayed), to_fen(gs))
+                self.assertEqual(replayed.result(), gs.result())
+                # Réexport identique (point fixe).
+                self.assertEqual(export_pgn(replayed, headers={"Round": str(index)}), text)
+
+    def test_random_games(self):
+        self._check(_random_games(30, seed=2026))
+
+    def test_several_games_in_one_text(self):
+        games = _random_games(5, seed=11, max_plies=30)
+        text = "\n".join(export_pgn(gs) for gs in games)
+        parsed = parse_pgn(text)
+        self.assertEqual([g.moves for g in parsed], [san_history(gs) for gs in games])
+        self.assertEqual([to_fen(g.replay()) for g in parsed], [to_fen(gs) for gs in games])
+
+    @pytest.mark.slow
+    def test_random_games_long(self):
+        self._check(_random_games(300, seed=1858, max_plies=300))
 
 
 # --------------------------------------------------------------------------
@@ -234,6 +280,271 @@ class TestPythonChessReference(unittest.TestCase):
                 self.assertEqual(game.headers["Result"], gs.result().pgn)
                 self.assertEqual(game.headers["TimeControl"], "180+2")
                 self.assertEqual(list(game.headers)[:7], list(SEVEN_TAG_ROSTER))
+
+    def _annotated_game(self, rng: random.Random, start_fen: str | None) -> tuple[str, list[str]]:
+        """PGN écrit par python-chess avec commentaires, variantes imbriquées et NAG."""
+        board = chess.Board() if start_fen is None else chess.Board(start_fen)
+        game = chess.pgn.Game()
+        if start_fen is not None:
+            game.setup(board)
+        game.headers["White"] = 'Réf "python-chess"'
+        node: chess.pgn.GameNode = game
+        mainline: list[str] = []
+        for ply in range(rng.randint(5, 60)):
+            moves = list(board.legal_moves)
+            if not moves or board.is_game_over(claim_draw=True):
+                break
+            move = rng.choice(moves)
+            alternatives = [m for m in moves if m != move]
+            mainline.append(board.san(move))
+            next_node = node.add_main_variation(move)
+            if ply % 3 == 0:
+                next_node.comment = f"commentaire {ply} (avec parenthèses) ; et point-virgule"
+            if ply % 4 == 1:
+                next_node.nags.add(rng.choice([1, 2, 3, 4, 5, 6, 14]))
+            if alternatives and ply % 5 == 2:
+                variation = node.add_variation(rng.choice(alternatives))
+                variation.comment = "variante"
+                variation.nags.add(chess.pgn.NAG_DUBIOUS_MOVE)
+                vboard = variation.board()
+                sub = list(vboard.legal_moves)
+                if len(sub) >= 2:
+                    # Variante imbriquée : deux suites possibles à l'intérieur de la variante.
+                    variation.add_main_variation(sub[0]).comment = "suite"
+                    variation.add_variation(sub[1]).comment = "sous-variante"
+            board.push(move)
+            node = next_node
+        game.headers["Result"] = board.result(claim_draw=False)
+        return str(game), mainline
+
+    def test_we_read_python_chess_output(self):
+        rng = random.Random(1851)
+        fens = [None, START_FENS[1], START_FENS[2], START_FENS[3]]
+        for index in range(20):
+            start_fen = fens[index % len(fens)]
+            text, mainline = self._annotated_game(rng, start_fen)
+            with self.subTest(game=index):
+                self.assertIn("{", text)
+                self.assertIn("(", text)
+                self.assertIn("$", text)
+                # La ligne s'arrête dès qu'une nulle est réclamable (claim_draw) : nos
+                # nulles automatiques ne peuvent donc pas finir la partie plus tôt.
+                game = parse_pgn(text)[0]
+                self.assertEqual(game.moves, mainline)
+                # python-chess 1.11 n'échappe pas les guillemets : lecture tolérante.
+                self.assertEqual(game.headers["White"], 'Réf "python-chess"')
+                ref = _read_reference(io.StringIO(text))
+                end = ref.end().board()
+                self.assertEqual(to_fen(game.replay()), end.fen(en_passant="fen"))
+                self.assertEqual(game.result, ref.headers["Result"])
+
+
+# --------------------------------------------------------------------------
+# Corpus
+# --------------------------------------------------------------------------
+VALID_CORPUS = {
+    # fichier : [(Blancs, nombre de demi-coups, résultat), ...]
+    "morphy_opera_1858.pgn": [("Morphy, Paul", 33, "1-0")],
+    "anderssen_kieseritzky_1851.pgn": [("Anderssen, Adolf", 45, "1-0")],
+    "anderssen_dufresne_1852_annotee.pgn": [("Anderssen, Adolf", 47, "1-0")],
+    "morphy_opera_depuis_fen.pgn": [("Morphy, Paul", 10, "1-0")],
+    "berger_formats_varies.pgn": [("Blancs", 7, "1-0")],
+    "miniatures.pgn": [
+        ("?", 7, "1-0"),
+        ("?", 4, "0-1"),
+        ("Legall de Kermeur, François", 13, "1-0"),
+        ("Reti, Richard", 21, "1-0"),
+        ("Lasker, Edward", 35, "1-0"),
+        ('Joueur "humain"', 3, "*"),
+    ],
+}
+
+
+class TestCorpus(unittest.TestCase):
+    def test_valid_files(self):
+        for name, expected in VALID_CORPUS.items():
+            with self.subTest(file=name):
+                games = read_pgn_file(DATA_DIR / name)
+                self.assertEqual(
+                    [(g.headers["White"], len(g.moves), g.result) for g in games], expected
+                )
+                for game in games:
+                    final = game.replay()
+                    if game.result != "*":
+                        # Toutes les parties décisives du corpus finissent par un mat.
+                        self.assertEqual(final.result().termination, Termination.CHECKMATE)
+                        self.assertEqual(final.result().pgn, game.result)
+                    self.assertEqual(list(game.headers)[:7], list(SEVEN_TAG_ROSTER))
+
+    @unittest.skipUnless(HAS_PYTHON_CHESS, "python-chess (paquet chess) non installé")
+    def test_valid_files_match_python_chess(self):
+        for name in VALID_CORPUS:
+            with self.subTest(file=name):
+                handle = io.StringIO((DATA_DIR / name).read_text(encoding="utf-8"))
+                for game in read_pgn_file(DATA_DIR / name):
+                    ref = _read_reference(handle)
+                    self.assertEqual(ref.errors, [])
+                    board = ref.board()
+                    sans = []
+                    for move in ref.mainline_moves():
+                        sans.append(board.san(move))
+                        board.push(move)
+                    self.assertEqual(game.moves, sans)
+                    self.assertEqual(to_fen(game.replay()), board.fen(en_passant="fen"))
+
+    def test_opera_from_fen(self):
+        game = read_pgn_file(DATA_DIR / "morphy_opera_depuis_fen.pgn")[0]
+        self.assertEqual(
+            game.start_fen, "r3kb1r/p2nqppp/5n2/1B2p1B1/4P3/1Q6/PPP2PPP/2KR3R b kq - 2 12"
+        )
+        full = read_pgn_file(DATA_DIR / "morphy_opera_1858.pgn")[0]
+        self.assertEqual(to_fen(game.replay()), to_fen(full.replay()))
+        self.assertIn("12... Rd8", export_pgn(game.replay()))
+
+    def test_annotated_file_keeps_only_mainline(self):
+        game = read_pgn_file(DATA_DIR / "anderssen_dufresne_1852_annotee.pgn")[0]
+        self.assertEqual(game.moves[12:15], ["O-O", "d3", "Qb3"])
+        self.assertEqual(game.moves[-1], "Bxe7#")
+        self.assertNotIn("Ng3", game.moves)
+
+    def test_time_control_header_read(self):
+        game = read_pgn_file(DATA_DIR / "berger_formats_varies.pgn")[0]
+        self.assertEqual(game.headers["TimeControl"], "300+2")
+
+    def test_illegal_move_file(self):
+        with self.assertRaises(PgnError) as ctx:
+            read_pgn_file(DATA_DIR / "coup_illegal.pgn")
+        message = str(ctx.exception)
+        self.assertIn("Partie n° 1", message)
+        self.assertIn("13.", message)
+        self.assertIn("Rxd7", message)
+
+    def test_invalid_fen_file(self):
+        with self.assertRaises(PgnError) as ctx:
+            read_pgn_file(DATA_DIR / "fen_invalide.pgn")
+        self.assertIn("FEN", str(ctx.exception))
+        self.assertIn("roi", str(ctx.exception))
+
+    def test_load_pgn_game(self):
+        path = DATA_DIR / "miniatures.pgn"
+        final = load_pgn_game(path, index=3)
+        self.assertEqual(final.result().termination, Termination.CHECKMATE)
+        self.assertEqual(to_fen(load_pgn_game(str(path), index=3)), to_fen(final))
+        text = path.read_text(encoding="utf-8")
+        self.assertEqual(to_fen(load_pgn_game(text, index=3)), to_fen(final))
+        with self.assertRaises(PgnError):
+            load_pgn_game(path, index=6)
+
+
+# --------------------------------------------------------------------------
+# Robustesse et limites
+# --------------------------------------------------------------------------
+class TestRobustness(unittest.TestCase):
+    def test_comments_variations_nags(self):
+        text = (
+            '[Event "x"]\n\n'
+            "1. e4 {un { commentaire ; sur\ndeux lignes} ; jusqu'à la fin e6 (e5)\n"
+            "1... e5 $1 (1... c5 2. Nf3 (2. c3 d5 (2... Nf6)) 2... d6) 2. Nf3!? Nc6?! "
+            "3.Bb5 a6 4. Ba4 $14 1/2-1/2"
+        )
+        game = parse_pgn(text)[0]
+        self.assertEqual(game.moves, ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "Ba4"])
+        self.assertEqual(game.result, "1/2-1/2")
+        self.assertEqual(game.headers["Result"], "1/2-1/2")
+        self.assertEqual(game.headers["White"], "?")
+
+    def test_movetext_without_headers_and_without_result(self):
+        games = parse_pgn("1. d4 d5 2. c4")
+        self.assertEqual(len(games), 1)
+        self.assertEqual(games[0].moves, ["d4", "d5", "c4"])
+        self.assertEqual(games[0].result, "*")
+
+    def test_game_without_result_token_ends_at_next_header(self):
+        text = '[Result "1-0"]\n\n1. e4 e5\n\n[Event "b"]\n\n1. d4 *\n'
+        games = parse_pgn(text)
+        self.assertEqual([g.moves for g in games], [["e4", "e5"], ["d4"]])
+        self.assertEqual([g.result for g in games], ["1-0", "*"])
+
+    def test_empty_text(self):
+        self.assertEqual(parse_pgn(""), [])
+        self.assertEqual(parse_pgn("  \n% rien\n"), [])
+
+    def test_malformed_inputs(self):
+        cases = [
+            "1. e4 { jamais fermé",
+            "1. e4 (1. d4 d5",
+            "1. e4 ) e5",
+            "1. e4 -- 2. d4",
+            "1. e4 e4",
+            "1. Nd2",
+            '[Event "x\n',
+            "[Event x]\n1. e4",
+            "1. e4 $ e5",
+            '[SetUp "1"]\n\n1. e4 *',
+            '[Variant "Chess960"]\n\n1. e4 *',
+            '[FEN "pas une fen"]\n\n*',
+        ]
+        for text in cases:
+            with self.subTest(text=text), self.assertRaises(PgnError):
+                parse_pgn(text)
+
+    def test_ambiguous_move(self):
+        fen = "4k3/8/8/8/8/8/8/N1N1K3 w - - 0 1"
+        with self.assertRaises(PgnError) as ctx:
+            parse_pgn(f'[SetUp "1"]\n[FEN "{fen}"]\n\n1. Nb3 *')
+        self.assertIn("ambigu", str(ctx.exception))
+
+    def test_move_after_game_end(self):
+        with self.assertRaises(PgnError) as ctx:
+            parse_pgn("1. f3 e5 2. g4 Qh4# 3. a3 0-1")
+        self.assertIn("après la fin de la partie", str(ctx.exception))
+
+    def test_fen_header_never_trusted(self):
+        # En passant impossible, roque incohérent : refusés par load_fen.
+        for fen in (
+            "4k3/8/8/8/8/8/8/4K3 w - e6 0 1",
+            "4k3/8/8/8/8/8/8/4K3 w K - 0 1",
+        ):
+            with self.subTest(fen=fen), self.assertRaises(PgnError):
+                parse_pgn(f'[SetUp "1"]\n[FEN "{fen}"]\n\n*')
+
+    def test_standard_fen_header_means_initial_position(self):
+        game = parse_pgn(f'[SetUp "1"]\n[FEN "{STANDARD_START_FEN}"]\n\n1. e4 *')[0]
+        self.assertIsNone(game.start_fen)
+
+    def test_too_many_moves(self):
+        self.assertEqual(len(parse_pgn("1. e4 e5 2. Nf3 Nc6", max_moves=4)[0].moves), 4)
+        with self.assertRaises(PgnError) as ctx:
+            parse_pgn("1. e4 e5 2. Nf3 Nc6 3. Bb5 a6", max_moves=4)
+        self.assertIn("4 demi-coups", str(ctx.exception))
+        self.assertIn("3. 'Bb5'", str(ctx.exception))
+
+    def test_too_many_games(self):
+        text = "\n".join(["1. e4 *"] * 3)
+        self.assertEqual(len(parse_pgn(text, max_games=3)), 3)
+        with self.assertRaises(PgnError):
+            parse_pgn(text, max_games=2)
+
+    def test_file_too_big(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "gros.pgn")
+            Path(path).write_text("1. e4 e5 *\n" * 100, encoding="utf-8")
+            self.assertEqual(len(read_pgn_file(path)), 100)
+            with self.assertRaises(PgnError) as ctx:
+                read_pgn_file(path, max_bytes=500)
+            self.assertIn("trop volumineux", str(ctx.exception))
+
+    def test_latin1_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "latin1.pgn"
+            path.write_bytes('[White "François"]\n\n1. e4 *\n'.encode("latin-1"))
+            self.assertEqual(read_pgn_file(path)[0].headers["White"], "François")
+
+    def test_replay_rejects_bad_moves(self):
+        with self.assertRaises(PgnError):
+            PgnGame(moves=["e4", "e4"]).replay()
+        with self.assertRaises(PgnError):
+            PgnGame(start_fen="nimporte quoi").replay()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+% Ligne d'échappement : ignorée par les lecteurs PGN.
+[Event "Mat du berger, écriture relâchée"]
+[Site "?"]
+[Date "2026.10.22"]
+[Round "1"]
+[White "Blancs"]
+[Black "Noirs"]
+[Result "1-0"]
+[TimeControl "300+2"]
+
+; numéros collés aux coups, suffixes d'annotation et NAG
+1.e4 e5 2.Bc4 $1 Nc6 3.Qh5!? Nf6?? $4 4.Qxf7# {Mat.} 1-0
