@@ -12,6 +12,9 @@ Verrouille les bugs corrigés lors de l'étape « règles justes » :
   - prise en passant interdite si elle expose le roi (échec à la découverte).
 """
 
+import os
+import subprocess
+import sys
 import unittest
 
 import ChessEngine
@@ -113,6 +116,44 @@ class TestEnPassantDiscoveredCheck(unittest.TestCase):
         gs = load_fen("8/8/8/K1pP4/7r/8/8/7k w - c6 0 1")
         ep = [m for m in gs.getValidMoves() if m.is_enpassant_move]
         self.assertEqual(len(ep), 1)
+
+
+class TestPositionKeyIsDeterministic(unittest.TestCase):
+    """B32 : la clé de position ne doit pas dépendre de PYTHONHASHSEED.
+
+    Avec multiprocessing en mode spawn / forkserver (Windows, macOS, Linux à
+    partir de Python 3.14), l'IA calcule ses clés dans un autre processus :
+    elles doivent coïncider avec celles de l'historique de l'UI.
+    """
+
+    SCRIPT = (
+        "import ChessEngine;"
+        "g = ChessEngine.GameState();"
+        "g.makeMove([m for m in g.getValidMoves() if str(m) == 'e4'][0]);"
+        "print(g.get_board_hash_str())"
+    )
+
+    def _key_with_seed(self, seed):
+        env = dict(os.environ, PYTHONHASHSEED=str(seed))
+        out = subprocess.run(
+            [sys.executable, "-c", self.SCRIPT],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        return out.stdout.strip()
+
+    def test_same_key_across_processes(self):
+        self.assertEqual(self._key_with_seed(1), self._key_with_seed(2))
+
+    def test_key_distinguishes_castling_rights_and_en_passant(self):
+        base = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R w KQkq d6 0 1").get_board_hash_str()
+        no_castle = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R w - d6 0 1").get_board_hash_str()
+        no_ep = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R w KQkq - 0 1").get_board_hash_str()
+        black = load_fen("r3k2r/8/8/3pP3/8/8/8/R3K2R b KQkq d6 0 1").get_board_hash_str()
+        self.assertEqual(len({base, no_castle, no_ep, black}), 4)
 
 
 if __name__ == "__main__":

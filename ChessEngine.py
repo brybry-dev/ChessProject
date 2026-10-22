@@ -177,12 +177,15 @@ class GameState:
         c'est nécessaire pour que la triple répétition (règle FIDE) et la table de
         transposition ne confondent pas deux positions réellement différentes.
         """
-        board_tuple = tuple(tuple(row) for row in self.board)
+        # Chaîne explicite et non ``hash()`` : le hachage des str est randomisé par
+        # processus (PYTHONHASHSEED), or l'IA calcule ses clés dans un autre
+        # processus que l'UI (cf. B32). Zobrist remplacera cette clé en J3.1.
         cr = self.current_castling_rights
-        castle = (cr.wks, cr.wqs, cr.bks, cr.bqs)
-        # `or ()` : la clé reste identique à l'ancienne représentation (absence == ()).
-        ep = self.enpassant_possible or ()
-        return str(hash((board_tuple, self.white_to_move, castle, ep)))
+        castle = "".join("1" if right else "0" for right in (cr.wks, cr.wqs, cr.bks, cr.bqs))
+        ep = self.enpassant_possible
+        ep_str = f"{ep[0]}{ep[1]}" if ep else "-"
+        turn = "w" if self.white_to_move else "b"
+        return "".join("".join(row) for row in self.board) + turn + castle + ep_str
 
     def insufficient_material(self) -> bool:
         """
