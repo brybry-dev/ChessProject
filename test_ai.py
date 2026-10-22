@@ -27,20 +27,20 @@ class FakeQueue:
 
 
 def ai_move(game_state: ChessEngine.GameState, depth: int) -> ChessEngine.Move | None:
-    """Coup choisi par ``findBestMove`` à la profondeur ``depth``."""
+    """Coup choisi par ``find_best_move`` à la profondeur ``depth``."""
     queue = FakeQueue()
     with mock.patch.object(ChessAI, "DEPTH", depth):
-        ChessAI.findBestMove(game_state, game_state.getValidMoves(), queue)
+        ChessAI.find_best_move(game_state, game_state.get_valid_moves(), queue)
     assert len(queue.items) == 1
     return queue.items[0]
 
 
 def outcome(game_state: ChessEngine.GameState, move: ChessEngine.Move) -> tuple[bool, bool]:
     """(mat, nulle) dans la position obtenue après ``move`` ; la position est restaurée."""
-    game_state.makeMove(move, validate=False)
-    game_state.getValidMoves()
+    game_state.make_move(move, validate=False)
+    game_state.get_valid_moves()
     result = (game_state.checkmate, game_state.stalemate)
-    game_state.undoMove()
+    game_state.undo_move()
     return result
 
 
@@ -76,8 +76,8 @@ class TestStalemateIsNotAWin(unittest.TestCase):
                 move = ai_move(gs, depth)
                 self.assertIsNotNone(move)
                 assert move is not None
-                gs.makeMove(move)
-                gs.getValidMoves()
+                gs.make_move(move)
+                gs.get_valid_moves()
                 self.assertTrue(gs.checkmate, f"profondeur {depth} : {move} ne mate pas")
                 self.assertFalse(gs.stalemate)
 
@@ -101,7 +101,7 @@ class TestRootAlwaysReturnsAMove(unittest.TestCase):
 
     def test_losing_root_returns_a_move(self):
         gs = load_fen("k7/8/1K6/8/8/8/8/7R b - - 0 1")
-        legal = list(gs.getValidMoves())
+        legal = list(gs.get_valid_moves())
         move = ai_move(gs, 2)
         self.assertIsNotNone(move)
         self.assertIn(move, legal)
@@ -111,7 +111,7 @@ class TestRootAlwaysReturnsAMove(unittest.TestCase):
         tt: ChessAI.TranspositionTable = {}
         for depth in (1, 2, 3):
             score, move = ChessAI.negamax(
-                gs, gs.getValidMoves(), depth, -ChessAI.INF, ChessAI.INF, 0, tt
+                gs, gs.get_valid_moves(), depth, -ChessAI.INF, ChessAI.INF, 0, tt
             )
             self.assertIsNotNone(move)
         # Rh8# suit Kb8 : mat en 2 demi-coups depuis la racine.
@@ -123,7 +123,7 @@ class TestMateSearch(unittest.TestCase):
 
     def test_mate_in_two_found(self):
         gs = load_fen(self.MATE_IN_2)
-        score, move = ChessAI.negamax(gs, gs.getValidMoves(), 3, -ChessAI.INF, ChessAI.INF, 0, {})
+        score, move = ChessAI.negamax(gs, gs.get_valid_moves(), 3, -ChessAI.INF, ChessAI.INF, 0, {})
         self.assertEqual(score, ChessAI.MATE - 3)
         self.assertEqual(str(move), "Ra6")
 
@@ -131,15 +131,15 @@ class TestMateSearch(unittest.TestCase):
         gs = load_fen(self.MATE_IN_2)
         move = ai_move(gs, 3)
         assert move is not None
-        gs.makeMove(move)
-        for reply in list(gs.getValidMoves()):
+        gs.make_move(move)
+        for reply in list(gs.get_valid_moves()):
             with self.subTest(reply=str(reply)):
-                gs.makeMove(reply)
+                gs.make_move(reply)
                 finisher = ai_move(gs, 1)
                 assert finisher is not None
                 mate, _ = outcome(gs, finisher)
                 self.assertTrue(mate, f"après {reply}, {finisher} ne mate pas")
-                gs.undoMove()
+                gs.undo_move()
 
     def test_prefers_shortest_mate(self):
         # Des mats en 1 (Dc8#, Df8#) coexistent avec des mats en 2 : l'IA prend le plus court.
@@ -174,29 +174,29 @@ class TestEvaluation(unittest.TestCase):
     )
 
     def test_initial_position_is_zero(self):
-        score = ChessAI.scoreBoard(ChessEngine.GameState())
+        score = ChessAI.score_board(ChessEngine.GameState())
         self.assertIsInstance(score, int)
         self.assertEqual(score, 0)
 
     def test_mirror_symmetry(self):
         for fen in self.POSITIONS:
             with self.subTest(fen=fen):
-                score = ChessAI.scoreBoard(load_fen(fen))
-                mirrored = ChessAI.scoreBoard(load_fen(mirror_fen(fen)))
+                score = ChessAI.score_board(load_fen(fen))
+                mirrored = ChessAI.score_board(load_fen(mirror_fen(fen)))
                 self.assertIsInstance(score, int)
                 self.assertEqual(score, -mirrored)
 
     def test_centipawn_scale(self):
         # Un pion e2 (bonus de table nul) d'avance : exactement 100 centipions.
-        self.assertEqual(ChessAI.scoreBoard(load_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")), 100)
-        self.assertEqual(ChessAI.scoreBoard(load_fen("4k3/4p3/8/8/8/8/8/4K3 w - - 0 1")), -100)
+        self.assertEqual(ChessAI.score_board(load_fen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")), 100)
+        self.assertEqual(ChessAI.score_board(load_fen("4k3/4p3/8/8/8/8/8/4K3 w - - 0 1")), -100)
 
     def test_positional_bonus_not_truncated(self):
         # 1. e4 : table du pion e2 → e4 (0 → 0,2 pion) + bonus de centre (0,5) = 70 centipions,
         # qui disparaissaient avec l'ancienne troncature en unités de pion.
         gs = ChessEngine.GameState()
-        gs.makeMove(ChessEngine.Move((6, 4), (4, 4), gs.board))
-        self.assertEqual(ChessAI.scoreBoard(gs), 70)
+        gs.make_move(ChessEngine.Move((6, 4), (4, 4), gs.board))
+        self.assertEqual(ChessAI.score_board(gs), 70)
 
     def test_static_eval_does_not_depend_on_side_to_move(self):
         # Pas de terme calculé pour le seul camp au trait (mobilité, sécurité du roi d'un camp).
@@ -205,17 +205,17 @@ class TestEvaluation(unittest.TestCase):
                 gs = load_fen(fen)
                 other = load_fen(fen)
                 other.white_to_move = not other.white_to_move
-                self.assertEqual(ChessAI.scoreBoard(gs), ChessAI.scoreBoard(other))
+                self.assertEqual(ChessAI.score_board(gs), ChessAI.score_board(other))
 
 
 class TestSearchSideEffects(unittest.TestCase):
     def test_search_does_not_modify_valid_moves_list(self):
         # B39 : la liste reçue (cache du moteur) n'est pas triée en place.
         gs = load_fen("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1")
-        moves = gs.getValidMoves()
-        before = [m.moveID for m in moves]
+        moves = gs.get_valid_moves()
+        before = [m.move_id for m in moves]
         ai_move(gs, 2)
-        self.assertEqual([m.moveID for m in moves], before)
+        self.assertEqual([m.move_id for m in moves], before)
 
 
 class TestTactics(unittest.TestCase):
@@ -230,7 +230,7 @@ class TestTactics(unittest.TestCase):
 
     def test_find_best_move_puts_a_legal_move(self):
         gs = ChessEngine.GameState()
-        legal = list(gs.getValidMoves())
+        legal = list(gs.get_valid_moves())
         move = ai_move(gs, 2)
         self.assertIn(move, legal)
 

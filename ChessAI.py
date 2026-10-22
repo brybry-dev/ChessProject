@@ -7,7 +7,7 @@ transposition simple.
 Conventions de score :
   - ``negamax`` renvoie un score du point de vue du camp **au trait** (positif = bon pour
     lui) ;
-  - ``scoreBoard`` renvoie un score du point de vue des **Blancs** (positif = avantage
+  - ``score_board`` renvoie un score du point de vue des **Blancs** (positif = avantage
     blanc), en centipions entiers ;
   - un mat se note ``MATE - ply`` (``ply`` = distance à la racine, en demi-coups) : plus le
     mat est proche, plus le score est grand, ce qui fait préférer le mat le plus court ;
@@ -121,7 +121,7 @@ class TTEntry:
 TranspositionTable = dict[str, TTEntry]
 
 
-def findBestMove(
+def find_best_move(
     game_state: ChessEngine.GameState, valid_moves: list[ChessEngine.Move], return_queue: Any
 ) -> None:
     """
@@ -158,7 +158,7 @@ def negamax(
     """
     NegaMax avec élagage alpha-bêta.
 
-    ``valid_moves`` doit être le résultat de ``game_state.getValidMoves()`` pour la position
+    ``valid_moves`` doit être le résultat de ``game_state.get_valid_moves()`` pour la position
     courante : cet appel positionne ``checkmate`` / ``stalemate`` (nulles automatiques
     comprises), lus ici quand la liste est vide. Le score renvoyé est du point de vue du
     camp au trait. À la racine (``ply == 0``), le coup renvoyé n'est jamais ``None`` s'il
@@ -170,7 +170,7 @@ def negamax(
         return (-MATE + ply if game_state.checkmate else 0), None
     if depth <= 0:
         color = 1 if game_state.white_to_move else -1
-        return color * scoreBoard(game_state), None
+        return color * score_board(game_state), None
 
     board_hash = game_state.get_board_hash_str()
     entry = transposition_table.get(board_hash)
@@ -184,19 +184,19 @@ def negamax(
     alpha_orig = alpha
     ordered = sorted(
         valid_moves,
-        key=lambda m: (m == tt_move, moveOrderingHeuristic(game_state, m)),
+        key=lambda m: (m == tt_move, move_ordering_heuristic(game_state, m)),
         reverse=True,
     )
     max_score = -INF
     best_move: ChessEngine.Move = ordered[0]
     for move in ordered:
-        game_state.makeMove(move, validate=False)
-        next_moves = game_state.getValidMoves()
+        game_state.make_move(move, validate=False)
+        next_moves = game_state.get_valid_moves()
         score, _ = negamax(
             game_state, next_moves, depth - 1, -beta, -alpha, ply + 1, transposition_table
         )
         score = -score
-        game_state.undoMove()
+        game_state.undo_move()
         if score > max_score:
             max_score = score
             best_move = move
@@ -214,7 +214,7 @@ def negamax(
     return max_score, best_move
 
 
-def moveOrderingHeuristic(game_state: ChessEngine.GameState, move: ChessEngine.Move) -> int:
+def move_ordering_heuristic(game_state: ChessEngine.GameState, move: ChessEngine.Move) -> int:
     """
     Score d'ordonnancement, sans jouer le coup : MVV-LVA pour les captures
     (``10 × victime - attaquant``) et bonus pour les promotions. Plus grand = essayé avant.
@@ -229,7 +229,7 @@ def moveOrderingHeuristic(game_state: ChessEngine.GameState, move: ChessEngine.M
     return score
 
 
-def scoreBoard(game_state: ChessEngine.GameState) -> int:
+def score_board(game_state: ChessEngine.GameState) -> int:
     """
     Évaluation statique en centipions entiers, du point de vue des Blancs.
 
@@ -272,7 +272,7 @@ def _king_danger(board: list[list[str]], king: tuple[int, int], enemy_color: str
     return penalty
 
 
-def findRandomMove(valid_moves: list[ChessEngine.Move]) -> ChessEngine.Move:
+def find_random_move(valid_moves: list[ChessEngine.Move]) -> ChessEngine.Move:
     """
     Retourne un coup aléatoire parmi ceux valides.
     """

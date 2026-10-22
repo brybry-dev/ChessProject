@@ -125,18 +125,18 @@ class PlayingBlackTests(unittest.TestCase):
         # Dégager f1/g1, puis vérifier que le roque est un coup du roi.
         gs.board[7][5] = gs.board[7][6] = "--"
         gs._valid_moves = None
-        castles = [m for m in gs.getValidMoves() if m.is_castle_move]
+        castles = [m for m in gs.get_valid_moves() if m.is_castle_move]
         self.assertEqual([m.piece_moved for m in castles], ["wK"])
         # Tour noire sur la colonne e, pion e2 retiré : le roi blanc est en échec.
         gs.board[6][4] = "--"
         gs.board[3][4] = "bR"
         gs._valid_moves = None
-        gs.getValidMoves()
+        gs.get_valid_moves()
         self.assertTrue(gs.in_check)
 
     def test_human_black_can_play_after_the_ai(self):
         self.gc.update_ai()  # l'IA (Blancs) joue le premier coup
-        self.gc.valid_moves = self.gc.game_state.getValidMoves()
+        self.gc.valid_moves = self.gc.game_state.get_valid_moves()
         self.gc.move_made = False
         self.assertEqual(len(self.gc.game_state.move_log), 1)
         self._click(1, 4)  # e7

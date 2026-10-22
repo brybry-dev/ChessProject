@@ -14,7 +14,7 @@ def _play(game_state, coords):
     """Joue une suite de coords (start_row, start_col, end_row, end_col)."""
     for sr, sc, er, ec in coords:
         move = serialization._find_move(game_state, sr, sc, er, ec, None)
-        game_state.makeMove(move, validate=False)
+        game_state.make_move(move, validate=False)
 
 
 class ToFenTests(unittest.TestCase):
@@ -116,7 +116,7 @@ class SaveLoadTests(unittest.TestCase):
         gs = load_fen("1n6/P6k/8/8/8/8/7K/8 w - - 0 1")
         start_fen = serialization.to_fen(gs)
         move = serialization._find_move(gs, 1, 0, 0, 1, "N")  # promotion cavalier, capture
-        gs.makeMove(move, validate=False)
+        gs.make_move(move, validate=False)
         self.assertEqual(gs.board[0][1], "wN")
 
         serialization.save_game(gs, filename=self.path, start_fen=start_fen)
@@ -144,7 +144,7 @@ class SaveLoadTests(unittest.TestCase):
                 (3, 7, 1, 5),
             ],
         )
-        gs.getValidMoves()  # calcule les drapeaux de fin de partie
+        gs.get_valid_moves()  # calcule les drapeaux de fin de partie
         self.assertTrue(gs.checkmate)
         serialization.save_game(gs, filename=self.path)
         loaded, _ = serialization.load_game(self.path)

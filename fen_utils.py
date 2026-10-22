@@ -169,9 +169,9 @@ def load_fen(fen: str) -> ChessEngine.GameState:
     gs.black_king_location = black_king
 
     # Le camp qui n'a pas le trait ne peut pas être en échec (son roi serait pris) :
-    # on inverse temporairement le trait pour réutiliser inCheck().
+    # on inverse temporairement le trait pour réutiliser king_in_check().
     gs.white_to_move = not white_to_move
-    if gs.inCheck():
+    if gs.king_in_check():
         side = "noir" if white_to_move else "blanc"
         raise FenError(f"Position illégale : le roi {side} est en échec sans avoir le trait")
     gs.white_to_move = white_to_move
@@ -189,18 +189,18 @@ def perft(game_state: ChessEngine.GameState, depth: int) -> int:
     if depth == 0:
         return 1
     total = 0
-    for move in list(game_state.getValidMoves()):
-        game_state.makeMove(move, validate=False)
+    for move in list(game_state.get_valid_moves()):
+        game_state.make_move(move, validate=False)
         total += perft(game_state, depth - 1)
-        game_state.undoMove()
+        game_state.undo_move()
     return total
 
 
 def perft_divide(game_state: ChessEngine.GameState, depth: int) -> "dict[str, int]":
     """perft détaillé par coup racine (utile au diagnostic)."""
     result: dict[str, int] = {}
-    for move in list(game_state.getValidMoves()):
-        game_state.makeMove(move, validate=False)
-        result[move.getChessNotation()] = perft(game_state, depth - 1)
-        game_state.undoMove()
+    for move in list(game_state.get_valid_moves()):
+        game_state.make_move(move, validate=False)
+        result[move.get_chess_notation()] = perft(game_state, depth - 1)
+        game_state.undo_move()
     return result

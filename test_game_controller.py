@@ -156,7 +156,7 @@ class NewGameWhenAIToMove(unittest.TestCase):
         gc = self._controller("PvC", True, False)
         # Partie chargée où les noirs (IA) ont le trait.
         loaded = ChessEngine.GameState()
-        loaded.makeMove([m for m in loaded.getValidMoves() if str(m) == "e4"][0])
+        loaded.make_move([m for m in loaded.get_valid_moves() if str(m) == "e4"][0])
         gc._new_game(loaded)
         self._frames(gc)
         self.assertEqual(len(gc.game_state.move_log), 2, "l'IA doit jouer après L")
@@ -269,8 +269,8 @@ class AIProcessRobustness(unittest.TestCase):
             p.display.get_surface(), p.time.Clock(), ui, rm, "PvC", True, False, False
         )
         gs = self.gc.game_state
-        gs.makeMove([m for m in gs.getValidMoves() if str(m) == "e4"][0])
-        self.gc.valid_moves = gs.getValidMoves()
+        gs.make_move([m for m in gs.get_valid_moves() if str(m) == "e4"][0])
+        self.gc.valid_moves = gs.get_valid_moves()
 
     def tearDown(self):
         ChessMain.Process, ChessMain.Queue = self._orig  # type: ignore[misc]
@@ -367,7 +367,7 @@ class ClockIgnoresMenusAndAnimation(unittest.TestCase):
 
     def test_time_during_move_animation_is_not_counted(self):
         gs = self.gc.game_state
-        gs.makeMove([m for m in gs.getValidMoves() if str(m) == "e4"][0])
+        gs.make_move([m for m in gs.get_valid_moves() if str(m) == "e4"][0])
         self.gc.move_made = self.gc.animate = True
         with mock.patch.object(
             self.gc.renderer, "animate_move", lambda *a: self._ten_seconds_in_a_menu()
@@ -417,7 +417,7 @@ class EndOfGameDisplay(unittest.TestCase):
     def test_undo_after_mate_reopens_the_game(self):
         gc = self._controller("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
         gs = gc.game_state
-        gs.makeMove(next(m for m in gs.getValidMoves() if (m.end_row, m.end_col) == (0, 0)))
+        gs.make_move(next(m for m in gs.get_valid_moves() if (m.end_row, m.end_col) == (0, 0)))
         self.assertTrue(gc.game_over)
         gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_z}))
         self.assertFalse(gc.game_over)

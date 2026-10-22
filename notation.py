@@ -8,9 +8,9 @@ Conversion entre les ``ChessEngine.Move`` et les deux notations usuelles :
 - **SAN** (notation algébrique standard, PGN) : ``Nbd2``, ``exd5``, ``exd8=N``,
   ``O-O-O``, ``Qxf7#``…
 
-Corrige B19 et B35 (``Move.getChessNotation`` / ``Move.__str__`` ne sont pas de la
+Corrige B19 et B35 (``Move.get_chess_notation`` / ``Move.__str__`` ne sont pas de la
 SAN) sans toucher au moteur : ce module ne s'appuie que sur l'API publique du
-``GameState`` (``getValidMoves``, ``makeMove``, ``undoMove``, ``inCheck``).
+``GameState`` (``get_valid_moves``, ``make_move``, ``undo_move``, ``king_in_check``).
 
 Correspondance des cases : ``row 0`` = rangée 8, ``col 0`` = colonne a
 (cf. ``Move.ranks_to_rows`` / ``Move.files_to_cols``).
@@ -49,7 +49,7 @@ def parse_square(text: str) -> tuple[int, int]:
 # --------------------------------------------------------------------------
 def _legal_moves(game_state: GameState) -> list[Move]:
     """Copie de la liste des coups légaux (le moteur la met en cache)."""
-    return list(game_state.getValidMoves())
+    return list(game_state.get_valid_moves())
 
 
 def _find_legal(game_state: GameState, move: Move) -> Move:
@@ -65,7 +65,7 @@ def _check_suffix(game_state: GameState, move: Move) -> str:
     Le mat prime sur les nulles automatiques dans le moteur (FIDE 9.3) : un mat donné
     au 100ᵉ demi-coup est donc bien noté « # ».
 
-    ``undoMove`` remet à zéro le statut de fin et vide le cache des coups : ces
+    ``undo_move`` remet à zéro le statut de fin et vide le cache des coups : ces
     attributs, ainsi que ``in_check`` / ``pins`` / ``checks``, sont restaurés à
     l'identique pour que l'appelant retrouve exactement sa position.
     """
@@ -78,14 +78,14 @@ def _check_suffix(game_state: GameState, move: Move) -> str:
         game_state.pins,
         game_state.checks,
     )
-    game_state.makeMove(move, validate=False)
+    game_state.make_move(move, validate=False)
     try:
-        if not game_state.inCheck():
+        if not game_state.king_in_check():
             return ""
-        game_state.getValidMoves()
+        game_state.get_valid_moves()
         return "#" if game_state.termination is Termination.CHECKMATE else "+"
     finally:
-        game_state.undoMove()
+        game_state.undo_move()
         (
             game_state._valid_moves,
             game_state.checkmate,
@@ -278,7 +278,7 @@ def move_list_to_san(start_state: GameState, moves: Iterable[Move]) -> list[str]
     for move in moves:
         actual = _find_legal(game_state, move)
         result.append(to_san(game_state, actual))
-        game_state.makeMove(actual, validate=False)
+        game_state.make_move(actual, validate=False)
     return result
 
 
@@ -290,7 +290,7 @@ def san_history(game_state: GameState) -> list[str]:
     """
     start = copy.deepcopy(game_state)
     for _ in range(len(start.move_log)):
-        start.undoMove()
+        start.undo_move()
     return move_list_to_san(start, game_state.move_log)
 
 

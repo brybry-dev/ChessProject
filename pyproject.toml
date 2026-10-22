@@ -33,7 +33,7 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "B", "I", "UP", "SIM"]
+select = ["E", "F", "B", "I", "N", "UP", "SIM"]
 ignore = [
     "SIM102",  # if imbriqués : gardés quand ils suivent la structure des règles
     "SIM108",  # ternaires : pas imposés quand le if/else est plus lisible
@@ -41,6 +41,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["E402"]  # les tests fixent SDL_VIDEODRIVER avant d'importer pygame
+# Noms de modules hérités (ChessEngine, ChessAI, ChessMain) : renommage avec le passage en paquet.
+"Chess*.py" = ["N999"]
 
 # --------------------------------------------------------------------------
 # Typage : strict sur le moteur, souple sur l'UI et les tests (cf. rapport §4, J0.1)

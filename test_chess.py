@@ -34,11 +34,11 @@ class TestChessRules(unittest.TestCase):
         self.game.board[0][4] = "bK"
         self.game.white_to_move = False  # noir à jouer
         move = ChessEngine.Move((1, 3), (3, 3), self.game.board)
-        self.game.makeMove(move, validate=False)
+        self.game.make_move(move, validate=False)
         # La case d'en passant doit être mise à jour
         expected = ((1 + 3) // 2, 3)
         self.assertEqual(self.game.enpassant_possible, expected, "En passant non mis à jour")
-        valid_moves = self.game.getValidMoves()
+        valid_moves = self.game.get_valid_moves()
         en_passant_moves = [m for m in valid_moves if m.is_enpassant_move]
         self.assertTrue(len(en_passant_moves) > 0, "Le coup en passant devrait être valide")
 
@@ -49,26 +49,26 @@ class TestChessRules(unittest.TestCase):
         self.game.white_king_location = (7, 4)
         self.game.current_castling_rights = ChessEngine.CastleRights(True, True, True, True)
         self.game.white_to_move = True
-        valid_moves = self.game.getValidMoves()
+        valid_moves = self.game.get_valid_moves()
         castling_moves = [m for m in valid_moves if m.is_castle_move]
         self.assertTrue(len(castling_moves) >= 1, "Au moins un roque devrait être possible")
 
     def test_repetition(self):
         # Simule la répétition de la position
         initial_hash = self.game.get_board_hash_str()
-        move = self.game.getValidMoves()[0]
-        self.game.makeMove(move, validate=False)
-        self.game.undoMove()
+        move = self.game.get_valid_moves()[0]
+        self.game.make_move(move, validate=False)
+        self.game.undo_move()
         # Effectue deux fois le même coup pour simuler une répétition
-        self.game.makeMove(move, validate=False)
-        self.game.undoMove()
+        self.game.make_move(move, validate=False)
+        self.game.undo_move()
         rep_count = self.game.position_history.get(initial_hash, 0)
         self.assertTrue(rep_count >= 1, "La répétition de position doit être comptabilisée")
 
     def test_fifty_move_rule(self):
         # Simule le compteur des 50 coups
         self.game.fifty_move_counter = 100
-        valid_moves = self.game.getValidMoves()
+        valid_moves = self.game.get_valid_moves()
         self.assertEqual(
             len(valid_moves), 0, "La règle des 50 coups doit provoquer un draw (aucun mouvement)"
         )
@@ -80,10 +80,10 @@ class TestAI(unittest.TestCase):
 
     def test_ai_performance(self):
         # Teste que l'IA renvoie un coup en moins de 5 secondes
-        valid_moves = self.game.getValidMoves()
+        valid_moves = self.game.get_valid_moves()
         q: Queue[ChessEngine.Move | None] = Queue()
         start_time = time.time()
-        p_process = Process(target=ChessAI.findBestMove, args=(self.game, valid_moves, q))
+        p_process = Process(target=ChessAI.find_best_move, args=(self.game, valid_moves, q))
         p_process.start()
         p_process.join(timeout=5)
         end_time = time.time()

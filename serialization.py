@@ -143,7 +143,7 @@ def _find_move(
     end_col: int,
     promotion: str | None,
 ) -> ChessEngine.Move:
-    for move in game_state.getValidMoves():
+    for move in game_state.get_valid_moves():
         if (move.start_row, move.start_col, move.end_row, move.end_col) != (
             start_row,
             start_col,
@@ -210,7 +210,7 @@ def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState,
             last = ChessEngine.DIMENSION - 1
             start_col, end_col = last - start_col, last - end_col
         move = _find_move(game_state, start_row, start_col, end_row, end_col, promotion)
-        game_state.makeMove(move, validate=False)
-    game_state.getValidMoves()  # recalcule checkmate / stalemate
+        game_state.make_move(move, validate=False)
+    game_state.get_valid_moves()  # recalcule checkmate / stalemate
     logger.info("Partie chargée depuis %s (%d coups)", filename, len(game_state.move_log))
     return game_state, flip_board

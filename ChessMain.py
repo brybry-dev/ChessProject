@@ -213,7 +213,7 @@ class UIManager:
 
     def _move_lines(self, game_state):
         """Historique en SAN, recalculé seulement quand la liste des coups change."""
-        key = (id(game_state), tuple(m.moveID for m in game_state.move_log))
+        key = (id(game_state), tuple(m.move_id for m in game_state.move_log))
         if key != self._move_lines_key:
             sans = notation.san_history(game_state)
             white_starts = game_state.white_to_move == (len(sans) % 2 == 0)
@@ -458,7 +458,7 @@ class Renderer:
 # --------------------------------------------------
 # Menus dynamiques de personnalisation
 # --------------------------------------------------
-def gameModeMenu(screen):
+def game_mode_menu(screen):
     buttons = []
     button_width = 200
     button_height = 50
@@ -696,7 +696,7 @@ class GameController:
         self.move_log_font = p.font.SysFont("Arial", 14)
 
         self.game_state = ChessEngine.GameState()
-        self.valid_moves = self.game_state.getValidMoves()
+        self.valid_moves = self.game_state.get_valid_moves()
         self.ui.reset_timer()
 
         self.square_selected: tuple[int, int] | tuple[()] = ()
@@ -739,7 +739,7 @@ class GameController:
 
     def _new_game(self, game_state):
         self.game_state = game_state
-        self.valid_moves = self.game_state.getValidMoves()
+        self.valid_moves = self.game_state.get_valid_moves()
         self._reset_selection()
         self.move_made = False
         self.animate = False
@@ -782,7 +782,7 @@ class GameController:
                 # Le coup joué est celui que le moteur a généré pour cette pièce :
                 # historique, sauvegarde et plateau restent cohérents (B29).
                 move = next(m for m in self.promotion_moves if m.promotion_piece == btn.text)
-                self.game_state.makeMove(move)
+                self.game_state.make_move(move)
                 _play_move_sound(move)
                 logger.info("Coup joué : %s", move)
                 self.move_made = True
@@ -837,7 +837,7 @@ class GameController:
                     (300, 100),
                 )
             else:
-                self.game_state.makeMove(valid_move)
+                self.game_state.make_move(valid_move)
                 self.move_made = True
                 _play_move_sound(valid_move)
                 logger.info("Coup joué : %s", valid_move)
@@ -847,12 +847,12 @@ class GameController:
     def _handle_keydown(self, e):
         if e.key == p.K_z:  # Retour en arrière
             if self.game_state.move_log:
-                self.game_state.undoMove()
+                self.game_state.undo_move()
                 logger.info("Undo effectué")
             # Contre l'IA seulement : annuler aussi le coup de l'IA pour rendre
             # la main au joueur. En PvP/CvC, un seul undo.
             if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
-                self.game_state.undoMove()
+                self.game_state.undo_move()
             self.move_made = True
             self.animate = False
             self._stop_ai()
@@ -883,14 +883,14 @@ class GameController:
             return
         # Toujours partir de la liste légale de la position courante (mise en
         # cache par le moteur), jamais d'une liste potentiellement périmée.
-        valid_moves = self.game_state.getValidMoves()
+        valid_moves = self.game_state.get_valid_moves()
         if not self.ai_thinking:
             self.ai_thinking = True
             self.ai_started_at = time.monotonic()
             self.return_queue = Queue()
             # daemon : le processus est tué avec l'application au lieu d'être attendu.
             self.move_finder_process = Process(
-                target=ChessAI.findBestMove,
+                target=ChessAI.find_best_move,
                 args=(self.game_state, valid_moves, self.return_queue),
                 daemon=True,
             )
@@ -908,8 +908,8 @@ class GameController:
         if ai_move not in valid_moves:
             if ai_move is not None:
                 logger.error("Coup de l'IA illégal ignoré : %s", ai_move)
-            ai_move = ChessAI.findRandomMove(valid_moves)
-        self.game_state.makeMove(ai_move)
+            ai_move = ChessAI.find_random_move(valid_moves)
+        self.game_state.make_move(ai_move)
         _play_move_sound(ai_move)
         self.move_made = True
         self.animate = True
@@ -948,14 +948,14 @@ class GameController:
         """Une étape de logique de jeu (sans dessin) : appelée à chaque image."""
         # Rafraîchir la liste des coups légaux AVANT de lancer l'IA : sinon
         # l'IA reçoit la liste du camp précédent (coup humain déjà joué) et
-        # renvoie un coup rejeté par makeMove (« Mouvement non valide »).
+        # renvoie un coup rejeté par make_move (« Mouvement non valide »).
         if self.move_made:
             if self.animate and self.game_state.move_log:
                 with self.ui.timer_paused():
                     self.renderer.animate_move(
                         self.game_state.move_log[-1], self.game_state.board, self.clock
                     )
-            self.valid_moves = self.game_state.getValidMoves()
+            self.valid_moves = self.game_state.get_valid_moves()
             self.move_made = False
             self.animate = False
 
@@ -992,7 +992,7 @@ def main():
     ui_manager = UIManager(BOARD_WIDTH, BOARD_HEIGHT, MOVE_LOG_PANEL_WIDTH, MOVE_LOG_PANEL_HEIGHT)
     resource_manager = ResourceManager(SQ_SIZE)
 
-    mode, player_one, player_two = gameModeMenu(screen)
+    mode, player_one, player_two = game_mode_menu(screen)
     # En PvC, si le joueur humain a les noirs, on retourne le plateau.
     flip_board = mode == "PvC" and not player_one
 

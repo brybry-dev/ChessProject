@@ -65,7 +65,7 @@ def _snapshot(gs):
         gs.checkmate,
         gs.stalemate,
         gs.in_check,
-        sorted(m.moveID for m in gs.getValidMoves()),
+        sorted(m.move_id for m in gs.get_valid_moves()),
     )
 
 
@@ -219,7 +219,7 @@ class SanTests(unittest.TestCase):
         for text in sans[:-1]:
             move = parse_san(gs, text)
             moves.append(move)
-            gs.makeMove(move)
+            gs.make_move(move)
         self.assertEqual(to_san(gs, _move(gs, "h5f7")), "Qxf7#")
         moves.append(parse_san(gs, "Qxf7#"))
         self.assertEqual(move_list_to_san(ChessEngine.GameState(), moves), sans)
@@ -233,16 +233,16 @@ class SanTests(unittest.TestCase):
         gs = load_fen("7k/8/6Q1/8/8/8/8/K7 w - - 0 1")
         move = _move(gs, "g6f7")
         self.assertEqual(to_san(gs, move), "Qf7")
-        gs.makeMove(move)
-        self.assertEqual(gs.getValidMoves(), [])
+        gs.make_move(move)
+        self.assertEqual(gs.get_valid_moves(), [])
         self.assertTrue(gs.stalemate)
 
     def test_position_left_intact(self):
         for fen in (START, KIWIPETE, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"):
             gs = load_fen(fen)
-            gs.makeMove(gs.getValidMoves()[0])
+            gs.make_move(gs.get_valid_moves()[0])
             before = _snapshot(gs)
-            for move in list(gs.getValidMoves()):
+            for move in list(gs.get_valid_moves()):
                 to_san(gs, move)
             self.assertEqual(_snapshot(gs), before)
 
@@ -288,7 +288,7 @@ def _differential(test, n_games, seed, full_every=0):
             gs = load_fen(fen)
             board = chess.Board(fen)
             for ply in range(80):
-                legal = list(gs.getValidMoves())
+                legal = list(gs.get_valid_moves())
                 if not legal:
                     break
                 if full_every and ply % full_every == 0:
@@ -305,7 +305,7 @@ def _differential(test, n_games, seed, full_every=0):
                 test.assertEqual(uci, chess_move.uci(), where)
                 test.assertEqual(parse_san(gs, san), move, where)
                 test.assertEqual(parse_uci(gs, uci), move, where)
-                gs.makeMove(move, validate=False)
+                gs.make_move(move, validate=False)
                 board.push(chess_move)
                 plies += 1
     return plies
@@ -322,7 +322,7 @@ class PythonChessReferenceTests(unittest.TestCase):
         for fen in ("8/8/k7/8/4Q2Q/8/K7/7Q w - - 0 1", "4k3/8/8/R7/8/8/8/R3K3 w - - 0 1"):
             gs = load_fen(fen)
             board = chess.Board(fen)
-            for move in gs.getValidMoves():
+            for move in gs.get_valid_moves():
                 with self.subTest(fen=fen, move=to_uci(move)):
                     self.assertEqual(to_san(gs, move), board.san(chess.Move.from_uci(to_uci(move))))
 
@@ -336,7 +336,7 @@ class PythonChessReferenceTests(unittest.TestCase):
             "5r2/p3kN2/Bq1p2p1/1P6/b2bP2K/P2n4/R4P1P/7r w - - 7 37",
         ):
             gs = load_fen(fen)
-            ours = {to_uci(m) for m in gs.getValidMoves()}
+            ours = {to_uci(m) for m in gs.get_valid_moves()}
             theirs = {m.uci() for m in chess.Board(fen).legal_moves}
             self.assertEqual(ours, theirs, fen)
 
@@ -350,7 +350,7 @@ class HistoryTests(unittest.TestCase):
     def test_san_history_replays_the_whole_game_and_leaves_it_intact(self):
         gs = ChessEngine.GameState()
         for san in ("e4", "e5", "Nf3", "Nc6", "Bb5", "a6"):
-            gs.makeMove(parse_san(gs, san))
+            gs.make_move(parse_san(gs, san))
         before = _snapshot(gs)
         self.assertEqual(san_history(gs), ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6"])
         self.assertEqual(_snapshot(gs), before)

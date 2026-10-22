@@ -14,17 +14,17 @@ def _play_uci(gs, ucis):
         end = (8 - int(uci[3]), files.index(uci[2]))
         move = next(
             m
-            for m in gs.getValidMoves()
+            for m in gs.get_valid_moves()
             if (m.start_row, m.start_col, m.end_row, m.end_col) == (*start, *end)
             and (len(uci) == 4 or m.promotion_piece == uci[4].upper())
         )
-        gs.makeMove(move, validate=False)
+        gs.make_move(move, validate=False)
 
 
 class GameResultTests(unittest.TestCase):
     def _result(self, fen):
         gs = load_fen(fen)
-        gs.getValidMoves()
+        gs.get_valid_moves()
         return gs.result()
 
     def test_ongoing_game(self):
@@ -57,14 +57,14 @@ class GameResultTests(unittest.TestCase):
     def test_fifty_move_rule(self):
         gs = load_fen("8/8/4k3/8/8/4K3/8/R7 w - - 0 1")
         gs.fifty_move_counter = 100
-        gs.getValidMoves()
+        gs.get_valid_moves()
         self.assertEqual(gs.result().termination, Termination.FIFTY_MOVES)
         self.assertEqual(gs.result().description, "Nulle par la règle des 50 coups")
 
     def test_threefold_repetition(self):
         gs = ChessEngine.GameState()
         _play_uci(gs, ["g1f3", "g8f6", "f3g1", "f6g8"] * 2)
-        gs.getValidMoves()
+        gs.get_valid_moves()
         self.assertEqual(gs.result().termination, Termination.THREEFOLD_REPETITION)
         self.assertEqual(gs.result().description, "Nulle par triple répétition")
 
@@ -74,7 +74,7 @@ class GameResultTests(unittest.TestCase):
         gs.fifty_move_counter = 99
         _play_uci(gs, ["a1a8"])
         self.assertEqual(gs.fifty_move_counter, 100)
-        gs.getValidMoves()
+        gs.get_valid_moves()
         self.assertTrue(gs.checkmate)
         self.assertEqual(gs.result().termination, Termination.CHECKMATE)
         self.assertEqual(gs.result().winner, Color.WHITE)
@@ -82,8 +82,8 @@ class GameResultTests(unittest.TestCase):
     def test_undo_clears_the_result(self):
         gs = ChessEngine.GameState()
         _play_uci(gs, ["f2f3", "e7e5", "g2g4", "d8h4"])
-        gs.undoMove()
-        gs.getValidMoves()
+        gs.undo_move()
+        gs.get_valid_moves()
         self.assertFalse(gs.result().is_over)
 
 

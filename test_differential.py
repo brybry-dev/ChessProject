@@ -51,7 +51,7 @@ def _uci(move) -> str:
 
 
 def _our_draw_reason(gs) -> str | None:
-    """Motif de nulle automatique retenu par notre moteur (cf. getValidMoves)."""
+    """Motif de nulle automatique retenu par notre moteur (cf. get_valid_moves)."""
     if gs.fifty_move_counter >= 100:
         return "fifty"
     if gs.insufficient_material():
@@ -61,7 +61,7 @@ def _our_draw_reason(gs) -> str | None:
     return None
 
 
-class _Mismatch(AssertionError):
+class _MismatchError(AssertionError):
     pass
 
 
@@ -73,7 +73,7 @@ def _play_random_game(fen: str, seed: int, max_plies: int) -> int:
     history: list[str] = []
     for ply in range(max_plies + 1):
         context = f"FEN de départ {fen!r}, graine {seed}, coups {' '.join(history)}"
-        moves = ours.getValidMoves()
+        moves = ours.get_valid_moves()
         reason = _our_draw_reason(ours)
 
         if reason is not None:
@@ -84,28 +84,32 @@ def _play_random_game(fen: str, seed: int, max_plies: int) -> int:
                 "repetition": ref.is_repetition(3),
             }[reason]
             if not expected:
-                raise _Mismatch(f"nulle « {reason} » non reconnue par python-chess ; {context}")
+                raise _MismatchError(
+                    f"nulle « {reason} » non reconnue par python-chess ; {context}"
+                )
             return ply + 1
 
         ours_uci = {_uci(m) for m in moves}
         ref_uci = {m.uci() for m in ref.legal_moves}
         if ours_uci != ref_uci:
-            raise _Mismatch(
+            raise _MismatchError(
                 f"coups légaux différents : en trop {sorted(ours_uci - ref_uci)}, "
                 f"manquants {sorted(ref_uci - ours_uci)} ; FEN {ref.fen()} ; {context}"
             )
         if ours.in_check != ref.is_check():
-            raise _Mismatch(f"échec : nous {ours.in_check}, référence {ref.is_check()}; {context}")
+            raise _MismatchError(
+                f"échec : nous {ours.in_check}, référence {ref.is_check()}; {context}"
+            )
         if not moves:
             if ours.checkmate != ref.is_checkmate() or ours.stalemate != ref.is_stalemate():
-                raise _Mismatch(f"fin de partie divergente ; FEN {ref.fen()} ; {context}")
+                raise _MismatchError(f"fin de partie divergente ; FEN {ref.fen()} ; {context}")
             return ply + 1
         if ply == max_plies:
             return ply + 1
 
         move = rng.choice(sorted(moves, key=_uci))
         history.append(_uci(move))
-        ours.makeMove(move, validate=False)
+        ours.make_move(move, validate=False)
         ref.push(chess.Move.from_uci(_uci(move)))
     return max_plies + 1
 
@@ -137,8 +141,8 @@ class DifferentialHarnessTests(unittest.TestCase):
 
     def test_a_missing_legal_move_is_reported(self):
         # Moteur saboté (plus de roques) : Kiwipete autorise le roque d'emblée.
-        no_castling = mock.patch.object(ChessEngine.GameState, "getCastleMoves", lambda *a: None)
-        with no_castling, self.assertRaises(_Mismatch):
+        no_castling = mock.patch.object(ChessEngine.GameState, "get_castle_moves", lambda *a: None)
+        with no_castling, self.assertRaises(_MismatchError):
             _play_random_game(START_FENS[1], seed=0, max_plies=1)
 
 

@@ -67,7 +67,7 @@ class TestFenValidation(unittest.TestCase):
 
     def test_side_to_move_may_be_in_check(self):
         gs = load_fen("4k3/8/8/8/8/8/4Q3/4K3 b - - 0 1")
-        self.assertTrue(gs.inCheck())
+        self.assertTrue(gs.king_in_check())
 
     def test_plausible_en_passant_for_black(self):
         gs = load_fen("4k3/8/8/8/3pP3/8/8/4K3 b - e3 0 1")
@@ -97,8 +97,8 @@ class TestFenRoundTrip(unittest.TestCase):
     def test_halfmove_counter_is_loaded(self):
         gs = load_fen("r3k2r/8/8/8/8/8/8/R3K2R w Kq - 42 87")
         self.assertEqual(gs.fifty_move_counter, 42)
-        gs.makeMove(gs.getValidMoves()[0], validate=False)
-        gs.undoMove()
+        gs.make_move(gs.get_valid_moves()[0], validate=False)
+        gs.undo_move()
         self.assertEqual(gs.fifty_move_counter, 42, "le compteur chargé doit survivre à un undo")
         self.assertEqual(start_fullmove(gs), 87)
 
@@ -108,9 +108,9 @@ class TestFenRoundTrip(unittest.TestCase):
 
 
 def _play(gs, start, end):
-    for move in gs.getValidMoves():
+    for move in gs.get_valid_moves():
         if (move.start_row, move.start_col) == start and (move.end_row, move.end_col) == end:
-            gs.makeMove(move)
+            gs.make_move(move)
             return
     raise AssertionError(f"coup introuvable {start}->{end}")
 
@@ -127,7 +127,7 @@ class TestFullmoveNumber(unittest.TestCase):
         _play(gs, (0, 3), (0, 2))  # ...Kc8
         self.assertEqual(serialization.to_fen(gs), "2k5/8/8/8/8/8/R7/4K3 w - - 8 14")
         for _ in range(3):
-            gs.undoMove()
+            gs.undo_move()
         self.assertEqual(serialization.to_fen(gs), self.START)
 
     def test_fullmove_from_white_to_move(self):
