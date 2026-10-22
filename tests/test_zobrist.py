@@ -89,6 +89,7 @@ class ZobristTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
                 check=True,
+                timeout=120,
             ).stdout.strip()
             for seed in (1, 2)
         }

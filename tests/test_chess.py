@@ -1,3 +1,4 @@
+import queue
 import time
 import unittest
 from enum import Enum
@@ -83,16 +84,24 @@ class TestAI(unittest.TestCase):
         valid_moves = self.game.get_valid_moves()
         q: Queue[engine.Move | None] = Queue()
         start_time = time.time()
-        p_process = Process(target=search.find_best_move, args=(self.game, valid_moves, q))
+        # daemon + lecture avec délai AVANT join + arrêt garanti : un processus enfant lent
+        # (démarrage « spawn » sous macOS / Windows) ne peut ni bloquer la lecture ni
+        # empêcher pytest de se terminer.
+        p_process = Process(
+            target=search.find_best_move, args=(self.game, valid_moves, q), daemon=True
+        )
         p_process.start()
-        p_process.join(timeout=5)
-        end_time = time.time()
-        self.assertTrue(end_time - start_time < 5, "L'IA doit répondre en moins de 5 secondes")
-        if not q.empty():
-            best_move = q.get()
-            self.assertIsNotNone(best_move, "L'IA doit renvoyer un coup")
-        else:
+        try:
+            best_move = q.get(timeout=10)
+        except queue.Empty:
             self.fail("Aucun coup n'a été renvoyé par l'IA")
+        finally:
+            p_process.join(timeout=5)
+            if p_process.is_alive():
+                p_process.terminate()
+        end_time = time.time()
+        self.assertIsNotNone(best_move, "L'IA doit renvoyer un coup")
+        self.assertLess(end_time - start_time, 10, "L'IA doit répondre en moins de 10 secondes")
 
 
 if __name__ == "__main__":
