@@ -652,7 +652,6 @@ class GameController:
         self.player_clicks: list[tuple[int, int]] = []
         self.move_made = False
         self.animate = False
-        self.move_undone = False
         self.game_over = False
 
         self.ai_thinking = False
@@ -688,7 +687,6 @@ class GameController:
         self.move_made = False
         self.animate = False
         self.game_over = False
-        self.move_undone = True
         self.ui.reset_timer()
         self._stop_ai()
 
@@ -793,7 +791,6 @@ class GameController:
             self.animate = False
             self.game_over = False
             self._stop_ai()
-            self.move_undone = True
         elif e.key == p.K_r:  # Réinitialiser
             self._new_game(ChessEngine.GameState())
             logging.info("Partie réinitialisée")
@@ -813,7 +810,7 @@ class GameController:
 
     # -- IA ----------------------------------------------------------
     def update_ai(self):
-        if self.game_over or self.human_turn() or self.move_undone or self.promotion_popup:
+        if self.game_over or self.human_turn() or self.promotion_popup:
             return
         # Toujours partir de la liste légale de la position courante (mise en
         # cache par le moteur), jamais d'une liste potentiellement périmée.
@@ -860,6 +857,22 @@ class GameController:
             self.renderer.draw_end_game_text("Impasse")
 
     # -- boucle principale --------------------------------------
+    def update(self):
+        """Une étape de logique de jeu (sans dessin) : appelée à chaque image."""
+        # Rafraîchir la liste des coups légaux AVANT de lancer l'IA : sinon
+        # l'IA reçoit la liste du camp précédent (coup humain déjà joué) et
+        # renvoie un coup rejeté par makeMove (« Mouvement non valide »).
+        if self.move_made:
+            if self.animate and self.game_state.move_log:
+                self.renderer.animate_move(
+                    self.game_state.move_log[-1], self.game_state.board, self.clock
+                )
+            self.valid_moves = self.game_state.getValidMoves()
+            self.move_made = False
+            self.animate = False
+
+        self.update_ai()
+
     def run(self):
         while True:
             if not self.game_over:
@@ -870,20 +883,7 @@ class GameController:
             for e in p.event.get():
                 self.handle_event(e)
 
-            # Rafraîchir la liste des coups légaux AVANT de lancer l'IA : sinon
-            # l'IA reçoit la liste du camp précédent (coup humain déjà joué) et
-            # renvoie un coup rejeté par makeMove (« Mouvement non valide »).
-            if self.move_made:
-                if self.animate and self.game_state.move_log:
-                    self.renderer.animate_move(
-                        self.game_state.move_log[-1], self.game_state.board, self.clock
-                    )
-                self.valid_moves = self.game_state.getValidMoves()
-                self.move_made = False
-                self.animate = False
-                self.move_undone = False
-
-            self.update_ai()
+            self.update()
 
             self.draw()
             self.clock.tick(MAX_FPS)

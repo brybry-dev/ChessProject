@@ -22,6 +22,7 @@ try:
 except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
+import ChessEngine
 import ChessMain
 
 
@@ -90,7 +91,6 @@ class AITurnAfterHumanMove(unittest.TestCase):
         # `move_made` encore vrai : update_ai doit repartir de la position
         # courante et non de cette liste.
         stale = list(self.gc.valid_moves)
-        self.gc.move_undone = False
 
         self.gc.update_ai()  # ne doit pas lever « Mouvement non valide »
         self.assertTrue(stale)  # la liste périmée existait bien
@@ -98,6 +98,60 @@ class AITurnAfterHumanMove(unittest.TestCase):
         self.assertEqual(len(self.gc.game_state.move_log), 2)
         ai_move = self.gc.game_state.move_log[-1]
         self.assertEqual(ai_move.piece_moved[0], "b")
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class NewGameWhenAIToMove(unittest.TestCase):
+    """B28 : après R (réinitialiser) ou L (charger), l'IA doit jouer si elle a le trait."""
+
+    def setUp(self):
+        self._orig = (ChessMain.Process, ChessMain.Queue)
+        ChessMain.Process = _InlineProcess  # type: ignore[misc, assignment]
+        ChessMain.Queue = _SyncQueue  # type: ignore[misc, assignment]
+
+    def tearDown(self):
+        ChessMain.Process, ChessMain.Queue = self._orig  # type: ignore[misc]
+
+    def _controller(self, mode, white_human, black_human):
+        ui = ChessMain.UIManager(512, 512, 250, 512)
+        rm = ChessMain.ResourceManager(64)
+        flip = mode == "PvC" and not white_human
+        return ChessMain.GameController(
+            p.display.get_surface(), p.time.Clock(), ui, rm, mode, white_human, black_human, flip
+        )
+
+    def _frames(self, gc, n=3):
+        for _ in range(n):
+            gc.animate = False  # pas d'animation dans les tests
+            gc.update()
+
+    def _press(self, gc, key):
+        gc.handle_event(p.event.Event(p.KEYDOWN, {"key": key}))
+
+    def test_reset_with_ai_playing_white(self):
+        gc = self._controller("PvC", False, True)
+        self._frames(gc)
+        self.assertEqual(len(gc.game_state.move_log), 1)
+        self._press(gc, p.K_r)
+        self._frames(gc)
+        self.assertEqual(len(gc.game_state.move_log), 1, "l'IA doit rejouer après R")
+        self.assertFalse(gc.game_state.white_to_move)
+
+    def test_reset_in_ai_vs_ai(self):
+        gc = self._controller("CvC", False, False)
+        self._frames(gc, 2)
+        self._press(gc, p.K_r)
+        self._frames(gc, 4)
+        self.assertGreaterEqual(len(gc.game_state.move_log), 2, "la partie IA/IA doit reprendre")
+
+    def test_load_with_ai_to_move(self):
+        gc = self._controller("PvC", True, False)
+        # Partie chargée où les noirs (IA) ont le trait.
+        loaded = ChessEngine.GameState()
+        loaded.makeMove([m for m in loaded.getValidMoves() if str(m) == "e4"][0])
+        gc._new_game(loaded)
+        self._frames(gc)
+        self.assertEqual(len(gc.game_state.move_log), 2, "l'IA doit jouer après L")
 
 
 if __name__ == "__main__":
