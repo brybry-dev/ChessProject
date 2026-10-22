@@ -55,14 +55,14 @@ class TestChessRules(unittest.TestCase):
 
     def test_repetition(self):
         # Simule la répétition de la position
-        initial_hash = self.game.get_board_hash_str()
+        initial_zobrist = self.game.zobrist_key
         move = self.game.get_valid_moves()[0]
         self.game.make_move(move, validate=False)
         self.game.undo_move()
         # Effectue deux fois le même coup pour simuler une répétition
         self.game.make_move(move, validate=False)
         self.game.undo_move()
-        rep_count = self.game.position_history.get(initial_hash, 0)
+        rep_count = self.game.position_history.get(initial_zobrist, 0)
         self.assertTrue(rep_count >= 1, "La répétition de position doit être comptabilisée")
 
     def test_fifty_move_rule(self):

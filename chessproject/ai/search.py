@@ -118,7 +118,7 @@ class TTEntry:
     best_move: engine.Move | None
 
 
-TranspositionTable = dict[str, TTEntry]
+TranspositionTable = dict[int, TTEntry]
 
 
 def find_best_move(
@@ -172,7 +172,7 @@ def negamax(
         color = 1 if game_state.white_to_move else -1
         return color * score_board(game_state), None
 
-    board_hash = game_state.get_board_hash_str()
+    board_hash = game_state.zobrist_key
     entry = transposition_table.get(board_hash)
     tt_move: engine.Move | None = None
     if entry is not None:

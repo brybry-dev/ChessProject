@@ -56,7 +56,7 @@ def _our_draw_reason(gs) -> str | None:
         return "fifty"
     if gs.insufficient_material():
         return "material"
-    if gs.position_history.get(gs.get_board_hash_str(), 0) >= 3:
+    if gs.repetition_count() >= 3:
         return "repetition"
     return None
 

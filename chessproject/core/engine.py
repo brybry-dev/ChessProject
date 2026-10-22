@@ -1,9 +1,11 @@
 """
 Module chessproject.core.engine
 -------------------------------
-Gestion du plateau, des coups, de l’évaluation et du cache des mouvements.
+Règles du jeu : plateau, génération des coups légaux, annulation, hachage de Zobrist et
+fins de partie.
 """
 
+import random
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -12,6 +14,30 @@ from typing import Any
 DIMENSION: int = 8
 # Case du plateau : (rangée, colonne), rangée 0 = 8e rangée, colonne 0 = colonne a.
 Square = tuple[int, int]
+
+# --------------------------------------------------------------------------
+# Hachage de Zobrist (J3.1) : une clé de 64 bits par position, mise à jour par XOR à
+# chaque coup. Graine fixe : les clés sont identiques d'un processus à l'autre (B32).
+# --------------------------------------------------------------------------
+_ZOBRIST_RNG = random.Random(20261022)
+_PIECE_CODES = ("wp", "wN", "wB", "wR", "wQ", "wK", "bp", "bN", "bB", "bR", "bQ", "bK")
+ZOBRIST_PIECES: dict[str, tuple[int, ...]] = {
+    code: tuple(_ZOBRIST_RNG.getrandbits(64) for _ in range(64)) for code in _PIECE_CODES
+}
+ZOBRIST_BLACK_TO_MOVE: int = _ZOBRIST_RNG.getrandbits(64)
+# Un nombre par combinaison des 4 droits de roque (masque wks|wqs|bks|bqs sur 4 bits).
+ZOBRIST_CASTLING: tuple[int, ...] = tuple(_ZOBRIST_RNG.getrandbits(64) for _ in range(16))
+# Case en passant : un nombre par colonne. Convention identique à la clé historique :
+# la case compte dès qu'elle est posée, que la prise soit possible ou non.
+ZOBRIST_EN_PASSANT: tuple[int, ...] = tuple(_ZOBRIST_RNG.getrandbits(64) for _ in range(8))
+
+
+def _zobrist_square(piece: str, row: int, col: int) -> int:
+    return ZOBRIST_PIECES[piece][row * 8 + col]
+
+
+def _zobrist_en_passant(square: "Square | None") -> int:
+    return ZOBRIST_EN_PASSANT[square[1]] if square else 0
 
 
 class Color(Enum):
@@ -133,18 +159,37 @@ class GameState:
         self.undo_stack: list[UndoInfo] = []
         # Répétitions : clés des positions rencontrées depuis le départ (pile) et nombre
         # d'occurrences de chacune, tenus à jour coup par coup (plus de deepcopy).
-        self.position_keys: list[str] = []
-        self.position_history: dict[str, int] = {}
+        self.position_keys: list[int] = []
+        self.position_history: dict[int, int] = {}
+        self.zobrist_key: int = 0
         self.reset_history()
 
     def reset_history(self) -> None:
         """Fait de la position courante le départ de la partie (après un chargement FEN)."""
         self.move_log = []
         self.undo_stack = []
-        key = self.get_board_hash_str()
-        self.position_keys = [key]
-        self.position_history = {key: 1}
+        self.zobrist_key = self.compute_zobrist_key()
+        self.position_keys = [self.zobrist_key]
+        self.position_history = {self.zobrist_key: 1}
         self._valid_moves = None
+
+    def compute_zobrist_key(self) -> int:
+        """Clé de Zobrist recalculée entièrement (référence des mises à jour incrémentales)."""
+        key = 0
+        for r in range(DIMENSION):
+            for c in range(DIMENSION):
+                piece = self.board[r][c]
+                if piece != "--":
+                    key ^= _zobrist_square(piece, r, c)
+        if not self.white_to_move:
+            key ^= ZOBRIST_BLACK_TO_MOVE
+        key ^= ZOBRIST_CASTLING[self.current_castling_rights.mask()]
+        key ^= _zobrist_en_passant(self.enpassant_possible)
+        return key
+
+    def repetition_count(self) -> int:
+        """Nombre d'occurrences de la position courante depuis le début de la partie."""
+        return self.position_history.get(self.zobrist_key, 0)
 
     def get_board_hash_str(self) -> str:
         """Retourne une chaîne représentant l'état complet de la position.
@@ -153,9 +198,8 @@ class GameState:
         c'est nécessaire pour que la triple répétition (règle FIDE) et la table de
         transposition ne confondent pas deux positions réellement différentes.
         """
-        # Chaîne explicite et non ``hash()`` : le hachage des str est randomisé par
-        # processus (PYTHONHASHSEED), or l'IA calcule ses clés dans un autre
-        # processus que l'UI (cf. B32). Zobrist remplacera cette clé en J3.1.
+        # Clé lisible, utile au diagnostic ; le moteur et l'IA utilisent zobrist_key.
+        # Chaîne explicite et non ``hash()``, randomisé par processus (cf. B32).
         cr = self.current_castling_rights
         castle = "".join("1" if right else "0" for right in (cr.wks, cr.wqs, cr.bks, cr.bqs))
         ep = self.enpassant_possible
@@ -214,6 +258,13 @@ class GameState:
                 fifty_move_counter=self.fifty_move_counter,
             )
         )
+        old_castling_mask = self.current_castling_rights.mask()
+        old_enpassant = self.enpassant_possible
+        key = self.zobrist_key ^ _zobrist_square(move.piece_moved, move.start_row, move.start_col)
+        if move.is_enpassant_move:
+            key ^= _zobrist_square(move.piece_captured, move.start_row, move.end_col)
+        elif move.piece_captured != "--":
+            key ^= _zobrist_square(move.piece_captured, move.end_row, move.end_col)
         self.board[move.start_row][move.start_col] = "--"
         self.board[move.end_row][move.end_col] = move.piece_moved
         self.move_log.append(move)
@@ -253,7 +304,22 @@ class GameState:
                 self.board[move.end_row][move.end_col - 2] = "--"
         self.update_castle_rights(move)
         self._valid_moves = None
-        key = self.get_board_hash_str()
+        # Fin de la mise à jour de Zobrist : pièce d'arrivée (éventuellement promue), tour
+        # du roque, trait, droits de roque et case en passant.
+        key ^= _zobrist_square(self.board[move.end_row][move.end_col], move.end_row, move.end_col)
+        if move.is_castle_move:
+            rook = move.piece_moved[0] + "R"
+            if move.end_col - move.start_col == 2:
+                rook_from, rook_to = move.end_col + 1, move.end_col - 1
+            else:
+                rook_from, rook_to = move.end_col - 2, move.end_col + 1
+            key ^= _zobrist_square(rook, move.end_row, rook_from)
+            key ^= _zobrist_square(rook, move.end_row, rook_to)
+        key ^= ZOBRIST_BLACK_TO_MOVE
+        key ^= ZOBRIST_CASTLING[old_castling_mask]
+        key ^= ZOBRIST_CASTLING[self.current_castling_rights.mask()]
+        key ^= _zobrist_en_passant(old_enpassant) ^ _zobrist_en_passant(self.enpassant_possible)
+        self.zobrist_key = key
         self.position_keys.append(key)
         self.position_history[key] = self.position_history.get(key, 0) + 1
 
@@ -268,6 +334,7 @@ class GameState:
             del self.position_history[key]
         else:
             self.position_history[key] -= 1
+        self.zobrist_key = self.position_keys[-1]
         self.board[move.start_row][move.start_col] = move.piece_moved
         self.board[move.end_row][move.end_col] = move.piece_captured
         self.white_to_move = not self.white_to_move
@@ -403,7 +470,7 @@ class GameState:
             return Termination.FIFTY_MOVES
         if self.insufficient_material():
             return Termination.INSUFFICIENT_MATERIAL
-        if self.position_history.get(self.get_board_hash_str(), 0) >= 3:
+        if self.repetition_count() >= 3:
             return Termination.THREEFOLD_REPETITION
         return None
 
@@ -826,6 +893,10 @@ class CastleRights:
         self.bks = bks
         self.wqs = wqs
         self.bqs = bqs
+
+    def mask(self) -> int:
+        """Les 4 droits sur 4 bits (index des clés de Zobrist)."""
+        return self.wks | (self.wqs << 1) | (self.bks << 2) | (self.bqs << 3)
 
     def copy(self) -> "CastleRights":
         return CastleRights(self.wks, self.bks, self.wqs, self.bqs)
