@@ -45,12 +45,64 @@ _KING_OFFSETS: tuple[tuple[int, int], ...] = (
     (1, 1),
 )
 
-# Tables positionnelles du moteur converties en centipions entiers (arrondi, pas troncature).
-# Les tables noires du moteur sont les tables blanches aux rangées inversées : l'évaluation
-# est donc exactement antisymétrique par miroir des couleurs.
-PIECE_POSITION_SCORES: dict[str, list[list[int]]] = {
-    piece: [[round(float(value) * 100) for value in row] for row in table]
-    for piece, table in ChessEngine.piece_position_scores.items()
+# Tables positionnelles en centipions, du point de vue des Blancs (rangée 0 = 8e rangée).
+# Les tables noires sont les mêmes, rangées inversées : l'évaluation est donc exactement
+# antisymétrique par miroir des couleurs.
+_WHITE_POSITION_SCORES: dict[str, tuple[tuple[int, ...], ...]] = {
+    "N": (
+        (0, 10, 20, 20, 20, 20, 10, 0),
+        (10, 30, 50, 50, 50, 50, 30, 10),
+        (20, 50, 60, 65, 65, 60, 50, 20),
+        (20, 55, 65, 70, 70, 65, 55, 20),
+        (20, 50, 65, 70, 70, 65, 50, 20),
+        (20, 55, 60, 65, 65, 60, 55, 20),
+        (10, 30, 50, 55, 55, 50, 30, 10),
+        (0, 10, 20, 20, 20, 20, 10, 0),
+    ),
+    "B": (
+        (0, 20, 20, 20, 20, 20, 20, 0),
+        (20, 40, 40, 40, 40, 40, 40, 20),
+        (20, 40, 50, 60, 60, 50, 40, 20),
+        (20, 50, 50, 60, 60, 50, 50, 20),
+        (20, 40, 60, 60, 60, 60, 40, 20),
+        (20, 60, 60, 60, 60, 60, 60, 20),
+        (20, 50, 40, 40, 40, 40, 50, 20),
+        (0, 20, 20, 20, 20, 20, 20, 0),
+    ),
+    "R": (
+        (25, 25, 25, 25, 25, 25, 25, 25),
+        (50, 75, 75, 75, 75, 75, 75, 50),
+        (0, 25, 25, 25, 25, 25, 25, 0),
+        (0, 25, 25, 25, 25, 25, 25, 0),
+        (0, 25, 25, 25, 25, 25, 25, 0),
+        (0, 25, 25, 25, 25, 25, 25, 0),
+        (0, 25, 25, 25, 25, 25, 25, 0),
+        (25, 25, 25, 50, 50, 25, 25, 25),
+    ),
+    "Q": (
+        (0, 20, 20, 30, 30, 20, 20, 0),
+        (20, 40, 40, 40, 40, 40, 40, 20),
+        (20, 40, 50, 50, 50, 50, 40, 20),
+        (30, 40, 50, 50, 50, 50, 40, 30),
+        (40, 40, 50, 50, 50, 50, 40, 30),
+        (20, 50, 50, 50, 50, 50, 40, 20),
+        (20, 40, 50, 40, 40, 40, 40, 20),
+        (0, 20, 20, 30, 30, 20, 20, 0),
+    ),
+    "p": (
+        (80, 80, 80, 80, 80, 80, 80, 80),
+        (70, 70, 70, 70, 70, 70, 70, 70),
+        (30, 30, 40, 50, 50, 40, 30, 30),
+        (25, 25, 30, 45, 45, 30, 25, 25),
+        (20, 20, 20, 20, 20, 20, 20, 20),
+        (25, 15, 10, 20, 20, 10, 15, 25),
+        (25, 30, 30, 0, 0, 30, 30, 25),
+        (20, 20, 20, 20, 20, 20, 20, 20),
+    ),
+}
+PIECE_POSITION_SCORES: dict[str, tuple[tuple[int, ...], ...]] = {
+    **{"w" + kind: table for kind, table in _WHITE_POSITION_SCORES.items()},
+    **{"b" + kind: table[::-1] for kind, table in _WHITE_POSITION_SCORES.items()},
 }
 
 # Table de transposition : seuls les scores EXACTS (ni coupure bêta, ni échec bas) et hors

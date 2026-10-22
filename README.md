@@ -24,7 +24,7 @@ L'état du projet, les bugs suivis et la feuille de route sont dans
 ## Prérequis
 
 - Python **3.12** ou plus récent.
-- Dépendances (installées automatiquement) : `pygame` 2.6.1, `numpy`, `platformdirs`.
+- Dépendances (installées automatiquement) : `pygame` 2.6.1, `platformdirs`.
 
 ## Installation
 

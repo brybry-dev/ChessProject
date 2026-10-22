@@ -22,7 +22,7 @@ import serialization
 # --------------------------------------------------
 # Constantes d'affichage
 # --------------------------------------------------
-DIMENSION = 8
+DIMENSION = ChessEngine.DIMENSION
 BOARD_WIDTH = BOARD_HEIGHT = 512
 MOVE_LOG_PANEL_WIDTH = 250
 LEFT_PANEL_WIDTH = 250

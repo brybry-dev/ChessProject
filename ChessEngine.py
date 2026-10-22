@@ -8,12 +8,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-import numpy as np
-
 # Constantes
 DIMENSION: int = 8
-CHECKMATE: int = 1000
-STALEMATE: int = 0
+# Case du plateau : (rangée, colonne), rangée 0 = 8e rangée, colonne 0 = colonne a.
+Square = tuple[int, int]
 
 
 class Color(Enum):
@@ -81,88 +79,6 @@ class GameResult:
         return _DRAW_DESCRIPTIONS[self.termination]
 
 
-# Évaluations de base
-piece_score: dict[str, int] = {"K": 0, "Q": 9, "R": 5, "B": 3, "N": 3, "p": 1}
-
-knight_scores = np.array(
-    [
-        [0.0, 0.1, 0.2, 0.2, 0.2, 0.2, 0.1, 0.0],
-        [0.1, 0.3, 0.5, 0.5, 0.5, 0.5, 0.3, 0.1],
-        [0.2, 0.5, 0.6, 0.65, 0.65, 0.6, 0.5, 0.2],
-        [0.2, 0.55, 0.65, 0.7, 0.7, 0.65, 0.55, 0.2],
-        [0.2, 0.5, 0.65, 0.7, 0.7, 0.65, 0.5, 0.2],
-        [0.2, 0.55, 0.6, 0.65, 0.65, 0.6, 0.55, 0.2],
-        [0.1, 0.3, 0.5, 0.55, 0.55, 0.5, 0.3, 0.1],
-        [0.0, 0.1, 0.2, 0.2, 0.2, 0.2, 0.1, 0.0],
-    ]
-)
-
-bishop_scores = np.array(
-    [
-        [0.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.0],
-        [0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2],
-        [0.2, 0.4, 0.5, 0.6, 0.6, 0.5, 0.4, 0.2],
-        [0.2, 0.5, 0.5, 0.6, 0.6, 0.5, 0.5, 0.2],
-        [0.2, 0.4, 0.6, 0.6, 0.6, 0.6, 0.4, 0.2],
-        [0.2, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.2],
-        [0.2, 0.5, 0.4, 0.4, 0.4, 0.4, 0.5, 0.2],
-        [0.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.0],
-    ]
-)
-
-rook_scores = np.array(
-    [
-        [0.25] * DIMENSION,
-        [0.5, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.5],
-        [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0],
-        [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0],
-        [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0],
-        [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0],
-        [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0],
-        [0.25, 0.25, 0.25, 0.5, 0.5, 0.25, 0.25, 0.25],
-    ]
-)
-
-queen_scores = np.array(
-    [
-        [0.0, 0.2, 0.2, 0.3, 0.3, 0.2, 0.2, 0.0],
-        [0.2, 0.4, 0.4, 0.4, 0.4, 0.4, 0.4, 0.2],
-        [0.2, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.2],
-        [0.3, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3],
-        [0.4, 0.4, 0.5, 0.5, 0.5, 0.5, 0.4, 0.3],
-        [0.2, 0.5, 0.5, 0.5, 0.5, 0.5, 0.4, 0.2],
-        [0.2, 0.4, 0.5, 0.4, 0.4, 0.4, 0.4, 0.2],
-        [0.0, 0.2, 0.2, 0.3, 0.3, 0.2, 0.2, 0.0],
-    ]
-)
-
-pawn_scores = np.array(
-    [
-        [0.8] * DIMENSION,
-        [0.7] * DIMENSION,
-        [0.3, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.3],
-        [0.25, 0.25, 0.3, 0.45, 0.45, 0.3, 0.25, 0.25],
-        [0.2] * DIMENSION,
-        [0.25, 0.15, 0.1, 0.2, 0.2, 0.1, 0.15, 0.25],
-        [0.25, 0.3, 0.3, 0.0, 0.0, 0.3, 0.3, 0.25],
-        [0.2] * DIMENSION,
-    ]
-)
-
-piece_position_scores = {
-    "wN": knight_scores,
-    "bN": knight_scores[::-1],
-    "wB": bishop_scores,
-    "bB": bishop_scores[::-1],
-    "wQ": queen_scores,
-    "bQ": queen_scores[::-1],
-    "wR": rook_scores,
-    "bR": rook_scores[::-1],
-    "wp": pawn_scores,
-    "bp": pawn_scores[::-1],
-}
-
-
 def is_valid_index(index: int) -> bool:
     """Vérifier si un index est dans la plage du plateau."""
     return 0 <= index < DIMENSION
@@ -195,8 +111,8 @@ class GameState:
         }
         self.white_to_move: bool = True
         self.move_log: list[Move] = []
-        self.white_king_location: tuple[int, int] = (7, 4)
-        self.black_king_location: tuple[int, int] = (0, 4)
+        self.white_king_location: Square = (7, 4)
+        self.black_king_location: Square = (0, 4)
         self.checkmate: bool = False
         self.stalemate: bool = False
         # Motif de fin de la position courante, positionné par getValidMoves().
@@ -205,7 +121,7 @@ class GameState:
         self.pins: list[tuple[int, int, int, int]] = []
         self.checks: list[tuple[int, int, int, int]] = []
         # Case d'en passant, ou None si aucune prise en passant n'est possible.
-        self.enpassant_possible: tuple[int, int] | None = None
+        self.enpassant_possible: Square | None = None
         self.current_castling_rights: CastleRights = CastleRights(True, True, True, True)
         self._valid_moves: list[Move] | None = None
 
@@ -892,7 +808,7 @@ class UndoInfo:
     """État écrasé par un coup et nécessaire pour l'annuler."""
 
     castling_rights: "CastleRights"
-    enpassant_possible: tuple[int, int] | None
+    enpassant_possible: Square | None
     fifty_move_counter: int
 
 
@@ -908,6 +824,23 @@ class CastleRights:
 
 
 class Move:
+    # Des millions de Move sont créés pendant une recherche : __slots__ réduit la mémoire
+    # et accélère l'accès aux attributs.
+    __slots__ = (
+        "start_row",
+        "start_col",
+        "end_row",
+        "end_col",
+        "piece_moved",
+        "piece_captured",
+        "is_pawn_promotion",
+        "promotion_piece",
+        "moveID",
+        "is_enpassant_move",
+        "is_castle_move",
+        "is_capture",
+    )
+
     ranks_to_rows: dict[str, int] = {"1": 7, "2": 6, "3": 5, "4": 4, "5": 3, "6": 2, "7": 1, "8": 0}
     rows_to_ranks: dict[int, str] = {v: k for k, v in ranks_to_rows.items()}
     files_to_cols: dict[str, int] = {"a": 0, "b": 1, "c": 2, "d": 3, "e": 4, "f": 5, "g": 6, "h": 7}
@@ -915,8 +848,8 @@ class Move:
 
     def __init__(
         self,
-        startSq: tuple[int, int],
-        endSq: tuple[int, int],
+        startSq: Square,
+        endSq: Square,
         board: list[list[str]],
         is_enpassant_move: bool = False,
         is_castle_move: bool = False,
