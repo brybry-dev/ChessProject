@@ -20,6 +20,8 @@ from typing import Any
 import ChessEngine
 from fen_utils import load_fen
 
+logger = logging.getLogger(__name__)
+
 # v2 : ``flip_board`` n'est plus qu'une préférence d'affichage, la position est
 # toujours standard. v1 : en mode retourné, la position était le miroir
 # (colonnes inversées, roi et dame permutés) de la vraie partie (cf. B26).
@@ -111,9 +113,9 @@ def save_game(
     try:
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(game_to_dict(game_state, flip_board, start_fen), f, indent=2)
-        logging.info("Partie sauvegardée dans %s", filename)
+        logger.info("Partie sauvegardée dans %s", filename)
     except Exception as e:  # noqa: BLE001 - on journalise et on continue
-        logging.error("Erreur lors de la sauvegarde : %s", e)
+        logger.error("Erreur lors de la sauvegarde : %s", e)
 
 
 def _find_move(
@@ -192,5 +194,5 @@ def load_game(filename: str = DEFAULT_SAVE_FILE) -> tuple[ChessEngine.GameState,
         move = _find_move(game_state, start_row, start_col, end_row, end_col, promotion)
         game_state.makeMove(move, validate=False)
     game_state.getValidMoves()  # recalcule checkmate / stalemate
-    logging.info("Partie chargée depuis %s (%d coups)", filename, len(game_state.move_log))
+    logger.info("Partie chargée depuis %s (%d coups)", filename, len(game_state.move_log))
     return game_state, flip_board

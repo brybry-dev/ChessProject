@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pygame==2.6.1",
     "numpy==2.5.3",
+    "platformdirs>=4.2",
 ]
 
 [project.optional-dependencies]
@@ -23,7 +24,7 @@ dev = [
 ]
 
 [tool.setuptools]
-py-modules = ["ChessAI", "ChessEngine", "ChessMain", "fen_utils", "serialization"]
+py-modules = ["ChessAI", "ChessEngine", "ChessMain", "fen_utils", "paths", "serialization"]
 
 # --------------------------------------------------------------------------
 # Lint et formatage
@@ -53,7 +54,7 @@ warn_unused_ignores = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["ChessEngine", "ChessAI", "fen_utils", "serialization"]
+module = ["ChessEngine", "ChessAI", "fen_utils", "paths", "serialization"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 disallow_any_generics = true

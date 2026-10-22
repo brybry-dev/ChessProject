@@ -3,6 +3,7 @@ Fichier Principal, gérant les entrées/sorties, la personnalisation et les sauv
 """
 
 import logging
+import logging.handlers
 import os
 import queue
 import sys
@@ -14,6 +15,7 @@ import pygame as p
 
 import ChessAI
 import ChessEngine
+import paths
 import serialization
 
 # --------------------------------------------------
@@ -32,16 +34,29 @@ AI_RESULT_TIMEOUT_SECONDS = 1.0
 SQ_SIZE = BOARD_HEIGHT // DIMENSION
 
 
+logger = logging.getLogger(__name__)
+
+LOG_MAX_BYTES = 1_000_000
+LOG_BACKUP_COUNT = 3
+
+
 def _configure_logging() -> None:
-    """Configure le logging fichier. Appelé depuis main() pour éviter les
-    effets de bord à l'import (les tests importent ce module)."""
-    if not logging.getLogger().handlers:
-        logging.basicConfig(
-            filename="chess_debug.log",
-            level=logging.DEBUG,
-            format="%(asctime)s - %(levelname)s - %(message)s",
+    """Journal fichier tournant, niveau INFO, dans le dossier de données utilisateur.
+    Appelé depuis main() pour éviter les effets de bord à l'import (tests)."""
+    root = logging.getLogger()
+    if not root.handlers:
+        handler = logging.handlers.RotatingFileHandler(
+            paths.log_file(),
+            maxBytes=LOG_MAX_BYTES,
+            backupCount=LOG_BACKUP_COUNT,
+            encoding="utf-8",
         )
-    logging.info("Lancement du jeu d'échecs")
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+        )
+        root.addHandler(handler)
+        root.setLevel(logging.INFO)
+    logger.info("Lancement du jeu d'échecs")
 
 
 # --------------------------------------------------
@@ -54,7 +69,7 @@ class ResourceManager:
     image_path: str
     cache: dict[str, p.Surface]
 
-    def __new__(cls, sq_size, image_path="images"):
+    def __new__(cls, sq_size, image_path=str(paths.IMAGES_DIR)):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance.sq_size = sq_size
@@ -67,7 +82,7 @@ class ResourceManager:
             return self.cache[piece]
         path = os.path.join(self.image_path, piece + ".png")
         if not os.path.exists(path):
-            logging.error(f"Image not found: {path}")
+            logger.error("Image not found: %s", path)
             raise FileNotFoundError(f"Image not found: {path}")
         image = p.transform.scale(p.image.load(path), (self.sq_size, self.sq_size))
         self.cache[piece] = image
@@ -627,17 +642,17 @@ def _load_sounds() -> None:
     try:
         p.mixer.init()
     except Exception as e:
-        logging.warning(f"Impossible d'initialiser l'audio: {e}")
+        logger.warning("Impossible d'initialiser l'audio: %s", e)
         return
     for name, path in (
-        ("move_sound", "sounds/move1.wav"),
-        ("capture_sound", "sounds/capture1.wav"),
-        ("gameover_sound", "sounds/gameover.wav"),
+        ("move_sound", "move1.wav"),
+        ("capture_sound", "capture1.wav"),
+        ("gameover_sound", "gameover.wav"),
     ):
         try:
-            globals()[name] = p.mixer.Sound(path)
+            globals()[name] = p.mixer.Sound(paths.SOUNDS_DIR / path)
         except Exception as e:
-            logging.warning(f"Erreur chargement son {path}: {e}")
+            logger.warning("Erreur chargement son %s: %s", path, e)
 
 
 def _play_move_sound(move) -> None:
@@ -751,7 +766,7 @@ class GameController:
                 move = next(m for m in self.promotion_moves if m.promotion_piece == btn.text)
                 self.game_state.makeMove(move)
                 _play_move_sound(move)
-                logging.info(f"Coup joué : {move}")
+                logger.info("Coup joué : %s", move)
                 self.move_made = True
                 self.animate = True
                 self._close_promotion_popup()
@@ -807,7 +822,7 @@ class GameController:
                 self.game_state.makeMove(valid_move)
                 self.move_made = True
                 _play_move_sound(valid_move)
-                logging.info(f"Coup joué : {valid_move}")
+                logger.info("Coup joué : %s", valid_move)
             self._reset_selection()
             return
 
@@ -815,7 +830,7 @@ class GameController:
         if e.key == p.K_z:  # Retour en arrière
             if self.game_state.move_log:
                 self.game_state.undoMove()
-                logging.info("Undo effectué")
+                logger.info("Undo effectué")
             # Contre l'IA seulement : annuler aussi le coup de l'IA pour rendre
             # la main au joueur. En PvP/CvC, un seul undo.
             if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
@@ -826,16 +841,18 @@ class GameController:
             self._stop_ai()
         elif e.key == p.K_r:  # Réinitialiser
             self._new_game(ChessEngine.GameState())
-            logging.info("Partie réinitialisée")
+            logger.info("Partie réinitialisée")
         elif e.key == p.K_s:  # Sauvegarder
-            serialization.save_game(self.game_state, flip_board=self.flip_board)
+            serialization.save_game(
+                self.game_state, flip_board=self.flip_board, filename=str(paths.save_file())
+            )
         elif e.key == p.K_l:  # Charger
             try:
-                loaded, flip = serialization.load_game()
+                loaded, flip = serialization.load_game(str(paths.existing_save_file()))
                 self.renderer.flip_board = flip
                 self._new_game(loaded)
             except Exception as ex:
-                logging.error(f"Erreur lors du chargement : {ex}")
+                logger.error("Erreur lors du chargement : %s", ex)
         elif e.key == p.K_c:  # Couleurs
             with self.ui.timer_paused():
                 customization_menu(self.screen, self.ui)
@@ -866,21 +883,21 @@ class GameController:
         if self.move_finder_process.is_alive():
             if time.monotonic() - self.ai_started_at < AI_MAX_THINK_SECONDS:
                 return
-            logging.error("IA arrêtée : plus de %.0f s de réflexion", AI_MAX_THINK_SECONDS)
+            logger.error("IA arrêtée : plus de %.0f s de réflexion", AI_MAX_THINK_SECONDS)
             self.move_finder_process.terminate()
             ai_move = None
         else:
             ai_move = self._collect_ai_move()
         if ai_move not in valid_moves:
             if ai_move is not None:
-                logging.error("Coup de l'IA illégal ignoré : %s", ai_move)
+                logger.error("Coup de l'IA illégal ignoré : %s", ai_move)
             ai_move = ChessAI.findRandomMove(valid_moves)
         self.game_state.makeMove(ai_move)
         _play_move_sound(ai_move)
         self.move_made = True
         self.animate = True
         self.ai_thinking = False
-        logging.info(f"Coup joué par l'IA : {ai_move}")
+        logger.info("Coup joué par l'IA : %s", ai_move)
 
     def _collect_ai_move(self):
         """Récupère le coup d'un processus d'IA terminé, ou None s'il n'en a pas rendu."""
@@ -889,7 +906,7 @@ class GameController:
             # Délai court : le processus est terminé, son résultat est déjà en route.
             return self.return_queue.get(timeout=AI_RESULT_TIMEOUT_SECONDS)
         except queue.Empty:
-            logging.error(
+            logger.error(
                 "Le processus d'IA s'est terminé sans coup (code %s)",
                 self.move_finder_process.exitcode,
             )

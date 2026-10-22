@@ -24,7 +24,7 @@ Noirs, B26) ; ils sont suivis dans [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 ## Prérequis
 
 - Python **3.12** ou plus récent.
-- Dépendances (installées automatiquement) : `pygame` 2.6.1, `numpy`.
+- Dépendances (installées automatiquement) : `pygame` 2.6.1, `numpy`, `platformdirs`.
 
 ## Installation
 
@@ -42,9 +42,10 @@ python -m pip install -e .
 python ChessMain.py
 ```
 
-À lancer **depuis la racine du dépôt** : les dossiers `images/` et `sounds/` sont pour
-l'instant résolus depuis le dossier courant (bug connu B42). La sauvegarde
-(`saved_game.json`) et le journal (`chess_debug.log`) sont écrits dans ce même dossier.
+Le jeu peut être lancé depuis n'importe quel dossier. La sauvegarde (`saved_game.json`)
+et le journal (`chess.log`, tournant) sont écrits dans le dossier de données de
+l'utilisateur (par exemple `~/.local/share/ChessProject` sous Linux), modifiable avec la
+variable d'environnement `CHESSPROJECT_DATA_DIR`.
 
 ### Raccourcis clavier
 
@@ -80,6 +81,7 @@ l'arbre des coups légaux est comparé aux valeurs publiées. Le détail des tes
 | `ChessEngine.py` | Moteur de règles : plateau, coups, génération des coups légaux, fins de partie |
 | `ChessAI.py` | IA : recherche NegaMax alpha-bêta et évaluation de position |
 | `serialization.py` | Sauvegarde / chargement des parties en JSON, génération de FEN |
+| `paths.py` | Chemins des ressources (images, sons) et des données utilisateur |
 | `fen_utils.py` | Chargement d'une position FEN et fonctions `perft` (utilitaires de test) |
 | `test_*.py` | Tests : perft, régressions de règles, sérialisation, contrôleur |
 | `images/`, `sounds/` | Images des pièces et effets sonores |
