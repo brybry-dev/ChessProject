@@ -655,6 +655,27 @@ corrigés, chacun verrouillé par un test. C'est un bon moment pour un premier t
 
 #### J3 — IA : un bon adversaire
 
+> **Avancement (2026-10-22)** : mesures par mini-ligue (`tools/match.py`) sur 48 parties
+> (24 ouvertures, couleurs inversées), avec la suite tactique `tests/data/tactics.epd`
+> (44 positions, solutions vérifiées par programme).
+> - J3.0 ✅ : UCI minimal (`python -m chessproject.uci`), mini-ligue avec Elo, intervalle
+>   de confiance et LOS, suite tactique.
+> - J3.1 ✅ : Zobrist incrémental. Performance neutre ; sert de clé entière à la table de
+>   transposition.
+> - Génération des coups : perft +20 %, après profilage.
+> - J3.2 – J3.5 ✅ : recherche bornée (temps / profondeur / nœuds), table de transposition
+>   à bornes (B6), coups tueurs et historique, quiescence. Mesure contre la fin de J2,
+>   **+545 Elo** (45 V / 2 N / 1 D) aussi bien à profondeur égale qu'à temps égal
+>   (300 ms/coup) ; IC 95 % ≥ +400.
+> - J3.6 ✅ : évaluation par phase. **+112 Elo à temps égal** [+18, +226], **+280 Elo à
+>   profondeur égale** [+186, +428]. La critère de +100 Elo est atteint en estimation
+>   ponctuelle, mais sur 48 parties et non 200 comme prévu.
+> - Suite tactique : **44/44 à profondeur 5**, **39/44 (89 %) en 1 s** (cible J3.5 : 80 %).
+> - J3.7 : 5 niveaux en place. Leur classement en mini-ligue est en cours de mesure.
+> - **Limite connue** : environ 10 k nœuds/s en Python pur. À 1 s par coup, l'IA atteint la
+>   profondeur 3–4 en ouverture et 1–2 dans les positions très tactiques. Le passage des
+>   pièces en entiers (reporté de J2.3) reste la principale piste de vitesse.
+
 Les techniques sont classiques, et chaque étape est mesurée par une **mini-ligue** :
 N parties contre la version précédente, avec un script `tools/match.py`.
 
