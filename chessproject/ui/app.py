@@ -14,7 +14,7 @@ from multiprocessing import Process, Queue
 import pygame as p
 
 from chessproject import paths, serialization
-from chessproject.ai import search
+from chessproject.ai import levels, search
 from chessproject.core import engine, notation
 
 # --------------------------------------------------
@@ -704,6 +704,8 @@ class GameController:
 
         self.ai_thinking = False
         self.ai_started_at = 0.0
+        # Niveau de l'IA (choix dans le menu prévu en J4.6).
+        self.ai_level = levels.DEFAULT_LEVEL.name
         self.move_finder_process = None
         self.return_queue = None
 
@@ -889,7 +891,7 @@ class GameController:
             # daemon : le processus est tué avec l'application au lieu d'être attendu.
             self.move_finder_process = Process(
                 target=search.find_best_move,
-                args=(self.game_state, valid_moves, self.return_queue),
+                args=(self.game_state, valid_moves, self.return_queue, self.ai_level),
                 daemon=True,
             )
             self.move_finder_process.start()
