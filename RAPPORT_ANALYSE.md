@@ -556,7 +556,7 @@ Prochaine étape : Phase 4 — Feuille de route (§4).
 
 | Jalon | Objectif | Horizon | Effort |
 |---|---|---|---|
-| **J0** Outillage | Rendre la qualité mesurable et automatique | Court terme | ~1,5 j |
+| **J0** Outillage ✅ | Rendre la qualité mesurable et automatique | Court terme | ~1,5 j |
 | **J1** Correction | Plus aucun bug connu bloquant (règles, IA, contrôleur) | Court terme | ~4–5 j |
 | **J2** Socle moteur | Types, résultat de partie, SAN, FEN validée, moteur sans effets de bord | Moyen terme | ~5–6 j |
 | **J3** IA | Un bon adversaire, borné en temps, avec des niveaux | Moyen terme | ~5–7 j |
@@ -573,12 +573,18 @@ que de J2. Les niveaux de difficulté dépendent de J3.
 
 #### J0 — Outillage (filet de sécurité de la vitrine)
 
+> ✅ **Réalisé le 2026-10-22** : `pyproject.toml` (J0.1), ruff appliqué (J0.2), mypy de 40 à 0
+> erreur, sans `# type: ignore` dans le moteur (J0.3), CI `ci.yml` + `nightly.yml` (J0.4),
+> `README.md` (J0.5). Points restants : licence à choisir par l'auteur ;
+> `test_ai_performance` dépend du temps réel, il est donc fragile sur les runners
+> Windows et macOS lents (à reprendre en J1.7).
+
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|
 | J0.1 | `pyproject.toml` : métadonnées, dépendances, configuration `ruff` (`E,F,B,I,UP,SIM`, ligne de 100), `ruff format`, `mypy` (strict pour `ChessEngine`, `serialization`, `fen_utils`, souple pour `ChessMain`), `pytest` (marqueur `slow` à la place de `RUN_SLOW_PERFT`) | `ruff check`, `ruff format --check`, `mypy` et `pytest -m "not slow"` passent localement. Les fichiers `requirements*.txt` sont générés depuis le pyproject ou supprimés | M |
 | J0.2 | Passage `ruff --fix` + `ruff format` (commit purement mécanique) et corrections des 4 constats `F/B` | Diff sans changement de comportement, tests au vert | S |
 | J0.3 | Corriger les 9 erreurs mypy : `Optional[Square]` pour l'en passant et les broches, clé de la table de transposition, scores `int` | `mypy` sans erreur ni `# type: ignore` dans le moteur | S |
-| J0.4 | CI GitHub Actions : lint, types, tests rapides sur **Linux, Windows et macOS** (Python 3.12 et 3.13), perft lent la nuit | Badge vert. La matrice multi-OS fait apparaître B32 et B42 comme attendu, en échec « attendu » marqué `xfail` jusqu'à J1 | M |
+| J0.4 | CI GitHub Actions : lint, types, tests rapides sur **Linux, Windows et macOS** (Python 3.12 et 3.13), perft lent la nuit | Badge vert sur les 3 OS. *(Révisé : les tests actuels ne couvrent ni B32 ni B42 ; leurs tests multi-processus et hors du dossier courant arrivent avec J1.6 et J1.9.)* | M |
 | J0.5 | `README.md` minimal : présentation, installation, lancement, tests, lien vers ce rapport | Lisible sur GitHub. Captures d'écran remises à J6 | S |
 
 #### J1 — Correction (aucun bug bloquant connu)
