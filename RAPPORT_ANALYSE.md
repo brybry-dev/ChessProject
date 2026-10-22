@@ -592,7 +592,7 @@ que de J2. Les niveaux de difficulté dépendent de J3.
 > ✅ **Réalisé le 2026-10-22**, une tâche = un commit, chaque bug verrouillé par un test qui
 > échouait avant le correctif. B26, B27, B28, B29, B30, B31, B32, B33, B40, B42, B43, B44 et
 > B45 sont corrigés ; B11, B12 et B39 aussi, au passage (J1.5). Suite : 82 tests rapides (contre
-> 35), perft rapide inchangé.
+> 35), perft rapide et profond inchangés.
 > Écarts avec le plan :
 > - J1.4 contient le retrait de la pénalité de répétition, sans lequel le test du pat
 >   ne pouvait pas passer.
