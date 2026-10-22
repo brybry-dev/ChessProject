@@ -5,7 +5,6 @@ Gestion du plateau, des coups, de l’évaluation et du cache des mouvements.
 """
 
 import copy
-from collections.abc import Callable
 from enum import Enum
 from typing import Any
 
@@ -219,7 +218,6 @@ class GameState:
     def makeMove(
         self,
         move: "Move",
-        promotion_callback: Callable[[], str] | None = None,
         validate: bool = True,
     ) -> None:
         """
@@ -240,11 +238,9 @@ class GameState:
             self.white_king_location = (move.end_row, move.end_col)
         elif move.piece_moved == "bK":
             self.black_king_location = (move.end_row, move.end_col)
-        # Si le mouvement est une promotion, on demande le choix
+        # Promotion : la pièce est portée par le coup (cf. Move.promotion_piece).
         if move.is_pawn_promotion:
-            promoted_piece = (
-                promotion_callback() if promotion_callback else (move.promotion_piece or "Q")
-            )
+            promoted_piece = move.promotion_piece or "Q"
             self.board[move.end_row][move.end_col] = move.piece_moved[0] + promoted_piece
         # En passant
         if move.is_enpassant_move:

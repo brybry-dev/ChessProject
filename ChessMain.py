@@ -222,7 +222,9 @@ class Button:
 
 
 class PromotionPopup:
-    def __init__(self, pos, size, callback):
+    """Choix de la pièce de promotion. Échap ou clic hors du popup : annulation."""
+
+    def __init__(self, pos, size):
         self.rect = p.Rect(pos, size)
         self.pieces = ["Q", "R", "B", "N"]
         self.buttons = []
@@ -230,7 +232,7 @@ class PromotionPopup:
         for i, piece in enumerate(self.pieces):
             x = self.rect.x + 10 + i * (btn_size[0] + 10)
             y = self.rect.centery - btn_size[1] // 2
-            self.buttons.append(Button(piece, (x, y), btn_size, lambda p=piece: callback(p)))
+            self.buttons.append(Button(piece, (x, y), btn_size, lambda: None))
 
     def draw(self, screen):
         p.draw.rect(screen, p.Color("white"), self.rect)
@@ -659,7 +661,8 @@ class GameController:
         self.return_queue = None
 
         self.promotion_popup: PromotionPopup | None = None
-        self.promotion_pending_move: ChessEngine.Move | None = None
+        # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
+        self.promotion_moves: list[ChessEngine.Move] = []
 
     # -- helpers -------------------------------------------------------
     @property
@@ -706,28 +709,32 @@ class GameController:
         elif e.type == p.KEYDOWN:
             self._handle_keydown(e)
 
+    def _close_promotion_popup(self):
+        self.promotion_popup = None
+        self.promotion_moves = []
+
     def _handle_promotion_event(self, e):
+        assert self.promotion_popup is not None
+        if e.type == p.KEYDOWN and e.key == p.K_ESCAPE:
+            self._close_promotion_popup()
+            return
         if e.type != p.MOUSEBUTTONDOWN:
             return
-        assert self.promotion_popup is not None
+        if not self.promotion_popup.rect.collidepoint(e.pos):
+            self._close_promotion_popup()
+            return
         for btn in self.promotion_popup.buttons:
             if btn.rect.collidepoint(e.pos):
-                chosen: str = btn.text
-                assert self.promotion_pending_move is not None
-
-                # Fonction nommée plutôt qu'une lambda à argument par défaut, dont
-                # mypy ne sait pas inférer le type ; même sémantique (valeur figée).
-                def _promotion_choice(chosen: str = chosen) -> str:
-                    return chosen
-
-                self.game_state.makeMove(
-                    self.promotion_pending_move, promotion_callback=_promotion_choice
-                )
-                _play_move_sound(self.promotion_pending_move)
+                # Le coup joué est celui que le moteur a généré pour cette pièce :
+                # historique, sauvegarde et plateau restent cohérents (B29).
+                move = next(m for m in self.promotion_moves if m.promotion_piece == btn.text)
+                self.game_state.makeMove(move)
+                _play_move_sound(move)
+                logging.info(f"Coup joué : {move}")
                 self.move_made = True
                 self.animate = True
-                self.promotion_popup = None
-                self.promotion_pending_move = None
+                self._close_promotion_popup()
+                return
 
     def _handle_board_click(self, pos):
         if self.game_over or not self.human_turn():
@@ -764,11 +771,16 @@ class GameController:
             if move != valid_move:
                 continue
             if valid_move.is_pawn_promotion:
-                self.promotion_pending_move = valid_move
+                self.promotion_moves = [
+                    m
+                    for m in self.valid_moves
+                    if m.is_pawn_promotion
+                    and (m.start_row, m.start_col, m.end_row, m.end_col)
+                    == (start[0], start[1], end[0], end[1])
+                ]
                 self.promotion_popup = PromotionPopup(
                     (BOARD_WIDTH // 2 - 150 + LEFT_PANEL_WIDTH, BOARD_HEIGHT // 2 - 50),
                     (300, 100),
-                    lambda piece: piece,
                 )
             else:
                 self.game_state.makeMove(valid_move)

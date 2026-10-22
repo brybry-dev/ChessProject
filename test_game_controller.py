@@ -8,6 +8,7 @@ premier coup en mode Joueur (blancs) vs IA.
 
 import os
 import queue
+import tempfile
 import unittest
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
@@ -24,6 +25,8 @@ except Exception:  # pragma: no cover - environnement sans SDL
 
 import ChessEngine
 import ChessMain
+import serialization
+from fen_utils import load_fen
 
 
 class _InlineProcess:
@@ -152,6 +155,67 @@ class NewGameWhenAIToMove(unittest.TestCase):
         gc._new_game(loaded)
         self._frames(gc)
         self.assertEqual(len(gc.game_state.move_log), 2, "l'IA doit jouer après L")
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class PromotionThroughTheUI(unittest.TestCase):
+    """B29 / B40 : le choix du popup doit être le coup joué, enregistré et sauvegardé."""
+
+    FEN = "7k/P7/8/8/8/8/8/K7 w - - 0 1"
+
+    def setUp(self):
+        ui = ChessMain.UIManager(512, 512, 250, 512)
+        rm = ChessMain.ResourceManager(64)
+        self.gc = ChessMain.GameController(
+            p.display.get_surface(), p.time.Clock(), ui, rm, "PvP", True, True, False
+        )
+        self.gc._new_game(load_fen(self.FEN))
+
+    def _click_pos(self, pos):
+        self.gc.handle_event(p.event.Event(p.MOUSEBUTTONDOWN, {"pos": pos, "button": 1}))
+
+    def _click_square(self, row, col):
+        self._click_pos(self.gc.renderer.square_rect(row, col).center)
+
+    def _open_popup(self):
+        self._click_square(1, 0)  # a7
+        self._click_square(0, 0)  # a8
+        self.assertIsNotNone(self.gc.promotion_popup)
+
+    def _choose(self, piece):
+        assert self.gc.promotion_popup is not None
+        btn = next(b for b in self.gc.promotion_popup.buttons if b.text == piece)
+        self._click_pos(btn.rect.center)
+
+    def test_knight_promotion_is_recorded_and_saved(self):
+        self._open_popup()
+        self._choose("N")
+        gs = self.gc.game_state
+        self.assertEqual(gs.board[0][0], "wN")
+        self.assertEqual(gs.move_log[-1].promotion_piece, "N")
+        self.assertEqual(str(gs.move_log[-1]), "a8=N")
+
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        try:
+            serialization.save_game(gs, filename=path, start_fen=self.FEN)
+            loaded, _ = serialization.load_game(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(loaded.board[0][0], "wN")
+
+    def test_escape_cancels_the_promotion(self):
+        self._open_popup()
+        self.gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_ESCAPE}))
+        self.assertIsNone(self.gc.promotion_popup)
+        self.assertEqual(self.gc.game_state.move_log, [])
+        self.assertEqual(self.gc.game_state.board[1][0], "wp")
+
+    def test_click_outside_the_popup_cancels_the_promotion(self):
+        self._open_popup()
+        self._click_pos((5, 5))  # panneau de gauche, hors du popup
+        self.assertIsNone(self.gc.promotion_popup)
+        self.assertEqual(self.gc.game_state.move_log, [])
 
 
 if __name__ == "__main__":
