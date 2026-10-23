@@ -105,10 +105,15 @@ jobs:
       - name: Release GitHub
         env:
           GH_TOKEN: ${{ github.token }}
-        # Sur un tag poussé, la release s'y rattache ; lancé à la main, gh crée le tag
+          TAG: ${{ steps.tag.outputs.name }}
+        shell: bash
+        # Release déjà créée à la main dans l'interface (ce qui crée aussi le tag) : on y
+        # ajoute les exécutables. Sinon on la crée ; lancé à la main, gh crée alors le tag
         # sur le commit construit.
-        run: >
-          gh release create "${{ steps.tag.outputs.name }}" dist/*.zip
-          --title "ChessProject ${{ steps.tag.outputs.name }}"
-          --notes-file notes.md
-          --target "${GITHUB_SHA}"
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.zip --clobber
+          else
+            gh release create "$TAG" dist/*.zip --title "ChessProject $TAG" \
+              --notes-file notes.md --target "${GITHUB_SHA}"
+          fi
