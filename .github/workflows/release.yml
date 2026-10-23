@@ -2,8 +2,10 @@ name: Release
 
 # Exécutables Windows, macOS et Linux (J6.2) : construits et testés à chaque tag de
 # version, puis publiés dans une release GitHub avec les notes du CHANGELOG (J6.4).
-# Lancé à la main (workflow_dispatch) ou par une PR qui touche à l'empaquetage, il
-# construit et teste sans publier.
+# Lancé à la main (onglet Actions, « Run workflow ») sur master avec « publier » coché,
+# il crée aussi le tag v<version> et la release : utile quand on ne peut pas pousser de
+# tag. Sans cette case, ou sur une PR qui touche à l'empaquetage, il construit et teste
+# sans publier.
 on:
   push:
     tags: ["v*"]
@@ -15,6 +17,11 @@ on:
       - "chessproject/assets/**"
       - "pyproject.toml"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publier la release v<version du paquet> (depuis master uniquement)"
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -65,7 +72,10 @@ jobs:
   release:
     name: Publication
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && inputs.publish
+          && github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -78,14 +88,27 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Tag de la version
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' chessproject/__init__.py)
+            echo "name=v${version}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Notes de version
-        run: python tools/release_notes.py "${GITHUB_REF_NAME}" > notes.md
+        run: python tools/release_notes.py "${{ steps.tag.outputs.name }}" > notes.md
 
       - name: Release GitHub
         env:
           GH_TOKEN: ${{ github.token }}
+        # Sur un tag poussé, la release s'y rattache ; lancé à la main, gh crée le tag
+        # sur le commit construit.
         run: >
-          gh release create "${GITHUB_REF_NAME}" dist/*.zip
-          --title "ChessProject ${GITHUB_REF_NAME}"
+          gh release create "${{ steps.tag.outputs.name }}" dist/*.zip
+          --title "ChessProject ${{ steps.tag.outputs.name }}"
           --notes-file notes.md
-          --verify-tag
+          --target "${GITHUB_SHA}"

@@ -841,7 +841,7 @@ J0 à J6 sont réalisés et fusionnés. Le même principe s'applique pour la sui
 
 | # | Tâche | Critère d'acceptation | Taille |
 |---|---|---|---|
-| J7.1 | Pousser le tag `v1.0.0` sur `master` | Release GitHub avec les trois zips et les notes du changelog | S |
+| J7.1 | Pousser le tag `v1.0.0` sur `master`, ou lancer « Release » sur `master` avec « publier » coché (la session de travail ne peut pas pousser de tag) | Release GitHub avec les trois zips et les notes du changelog | S |
 | J7.2 | Lancer les exécutables à la main sur un vrai Windows et un vrai Mac (SmartScreen, Gatekeeper, fenêtre réelle, son) | Une partie complète jouée sur chaque système ; écarts consignés dans le README | S |
 | J7.3 | Délai des jobs macOS porté à 30 min : l'attente d'une machine (environ 10 min observées) est comptée dans le délai | Plus d'annulation de job macOS sans test exécuté | S |
 

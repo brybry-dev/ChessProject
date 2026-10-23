@@ -159,7 +159,9 @@ python tools/build_exe.py --smoke-test   # -> dist/ChessProject-<version>-<syst�
 
 Mettre à jour la version (`pyproject.toml`, `chessproject/__init__.py`) et
 `CHANGELOG.md`, puis pousser un tag `v<version>` : le workflow
-[`release.yml`](.github/workflows/release.yml) construit, teste et publie.
+[`release.yml`](.github/workflows/release.yml) construit, teste et publie. Sans
+possibilité de pousser un tag : onglet Actions, workflow « Release », « Run workflow »
+sur `master` avec « publier » coché (le tag est alors créé par le workflow).
 
 ## Structure du dépôt
 
