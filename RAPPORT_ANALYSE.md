@@ -832,12 +832,62 @@ deux fois.
 | `v0.8` | + J4 | PGN lu et écrit en accord avec `python-chess`, cadence testée, 5 niveaux ordonnés |
 | `v1.0` | + J5 + J6 | Exécutables sur 3 OS, README vitrine, UI à 60 images/s |
 
-### 4.7 Prochaine action proposée
+### 4.7 Suite : feuille de route après la 1.0 (2026-10-22)
 
-J0 à J6 sont réalisés. Reste à publier `v1.0.0` : fusionner la PR, puis pousser le tag
-`v1.0.0` sur `master` pour déclencher `release.yml`. Pistes ensuite : régler l'écart
-entre les niveaux (§J3.7), mesurer l'Elo des niveaux contre un moteur de référence,
-afficher la variante principale de l'IA dans un mode analyse.
+J0 à J6 sont réalisés et fusionnés. Le même principe s'applique pour la suite : une tâche
+= un commit avec son test, et toute amélioration de l'IA est mesurée en mini-ligue.
+
+#### J7 — Publier la 1.0 (une demi-journée)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J7.1 | Pousser le tag `v1.0.0` sur `master`, ou lancer « Release » sur `master` avec « publier » coché (la session de travail ne peut pas pousser de tag) | Release GitHub avec les trois zips et les notes du changelog | S |
+| J7.2 | Lancer les exécutables à la main sur un vrai Windows et un vrai Mac (SmartScreen, Gatekeeper, fenêtre réelle, son) | Une partie complète jouée sur chaque système ; écarts consignés dans le README | S |
+| J7.3 | Délai des jobs macOS porté à 30 min : l'attente d'une machine (environ 10 min observées) est comptée dans le délai | Plus d'annulation de job macOS sans test exécuté | S |
+
+#### J8 — v1.1 : un adversaire calibré (2–3 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J8.1 | Recalibrer les niveaux (bruit, profondeur, temps) : les écarts actuels vont de 90 à 99 % des points | Entre deux niveaux voisins, 60 à 75 % des points pour le plus fort (mini-ligue, 100 parties) | M |
+| J8.2 | Elo de chaque niveau contre Stockfish bridé (`UCI_LimitStrength`), affiché dans l'écran « Nouvelle partie » | Elo publié avec intervalle de confiance | M |
+| J8.3 | Petit livre d'ouvertures (quelques centaines de lignes) et nom de l'ouverture dans l'historique | L'IA varie ses débuts ; nom affiché pour les ouvertures courantes | M |
+
+#### J9 — v1.2 : mode analyse (2–3 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J9.1 | Variante principale de l'IA affichée (écart resté ouvert de J5.5) | PV légale, mise à jour pendant la réflexion | M |
+| J9.2 | Bouton « Indice » (meilleur coup en flèche) | Désactivé en partie classée contre l'IA si l'utilisateur le choisit | S |
+| J9.3 | Courbe d'évaluation et bilan de fin de partie (imprécisions, erreurs, gaffes selon la chute d'évaluation) | Seuils documentés et testés sur des parties de référence | M |
+
+#### J10 — v1.3 : moteur plus rapide (3–5 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J10.1 | Profilage (environ 10 000 nœuds/s aujourd'hui) et optimisations ciblées | Gain mesuré en nœuds/s, perft inchangé | M |
+| J10.2 | Null move, réductions des coups tardifs, PVS, fenêtres d'aspiration, chacun mesuré | Chaque technique gardée seulement si elle gagne en Elo à temps égal | L |
+| J10.3 | Un seul calcul de temps de réflexion (UCI et pendule) | Tests de `allocate_think_time_ms` partagés | S |
+
+Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffisent pas.
+
+#### J11 — v1.4 : confort (2–3 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J11.1 | Choix du fichier de sauvegarde ou de PGN, plusieurs sauvegardes, choix d'une partie dans un PGN multiple | Parcours testé avec le contrôleur sans écran | M |
+| J11.2 | Jouer au clavier en tapant le coup (SAN) | Saisie tolérante (`e4`, `Nf3`, `O-O`), erreurs signalées | S |
+| J11.3 | Version anglaise | Toutes les chaînes de l'interface traduites, langue dans les préférences | M |
+| J11.4 | Audit d'accessibilité WCAG avec un outil | Contrastes AA vérifiés, écarts corrigés | S |
+
+#### En continu
+
+- Couverture des tests mesurée en CI, avec un badge.
+- Paquet AppImage pour Linux.
+- Signature des exécutables Windows et notarisation macOS : nécessite des certificats
+  payants, décision du propriétaire du projet.
+
+Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11.
 
 ---
 
