@@ -867,6 +867,23 @@ machine de développement (8 cœurs) ; Stockfish 19 accepte `UCI_Elo` de 1320 à
 Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent des FEN de
 `tools/openings.txt`, les mesures de J8.1 et J8.2 n'en dépendent donc pas.
 
+> **Avancement J8.1 (2026-10-25)** : échelles `tools/calibrate.py`, positions de départ
+> tirées du livre (`--book-openings`), couleurs inversées, 8 parties en parallèle (sans
+> effet sur la force : les niveaux sont bornés en nœuds).
+>
+> | Échelle | Réglages (nœuds / bruit cp / erreurs) | Scores du plus fort, de bas en haut |
+> |---|---|---|
+> | 1 (40 parties) | 500/100/15 % · 1 500/50/8 % · 4 000/20/3 % · 12 000 · 40 000 | 95 % · 90 % · interrompue |
+> | 2 (40 parties) | 600/50/4 % · 1 500/30/2 % · 4 000/15/0 · 12 000 · 40 000 | 70 % · 77,5 % · 80 % · 83,8 % (écart total +888 Elo) |
+>
+> - Les « erreurs » (coup tiré parmi les meilleurs) affaiblissent bien plus que le bruit
+>   ou le budget de nœuds : on les garde très rares.
+> - **Bug trouvé** pendant l'échelle 1 : sans profondeur maximale, la réévaluation bruitée
+>   des coups de la racine n'était pas bornée (un coup de plus de 120 s). Corrigé, test
+>   d'abord : approfondissement borné par un second budget de nœuds et 30 % du temps.
+> - Pour aller plus vite, les échelles de réglage se jouent sur 20 parties par paire
+>   (adjudication nulle à 200 demi-coups) ; seule la validation finale est plus longue.
+
 #### J9 — v1.2 : mode analyse (2–3 j)
 
 | # | Tâche | Critère d'acceptation | Taille |
