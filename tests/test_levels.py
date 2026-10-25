@@ -3,6 +3,7 @@
 import random
 import time
 import unittest
+from unittest import mock
 
 from chessproject.ai import levels, search
 from chessproject.ai.search import SearchLimits
@@ -101,6 +102,33 @@ class NodeBudgetTests(unittest.TestCase):
         level = levels.Level("Test", 60_000, search.MAX_PLY, 60, 0.2, 3, max_nodes=600)
         moves = {levels.choose_move(gs, level, random.Random(5)) for _ in range(3)}
         self.assertEqual(len(moves), 1)
+
+    def test_noise_reevaluation_stays_within_the_node_budget(self):
+        # Régression (calibration J8.1) : sans profondeur maximale, une finale simple est
+        # explorée très profond en peu de nœuds, et la réévaluation bruitée des coups à
+        # cette profondeur n'était pas bornée (plus de 120 s pour un coup).
+        gs = load_fen("8/8/4k3/8/8/4K3/4P3/8 w - - 0 1")
+        level = levels.Level("Test", 60_000, search.MAX_PLY, 30, 0.0, 1, max_nodes=400)
+        ticks = 0
+        original = search.Searcher._tick
+
+        def counting_tick(searcher):
+            nonlocal ticks
+            ticks += 1
+            original(searcher)
+
+        with mock.patch.object(search.Searcher, "_tick", counting_tick):
+            move = levels.choose_move(gs, level, random.Random(0), use_book=False)
+        self.assertIn(move, gs.get_valid_moves())
+        self.assertLessEqual(ticks, 2 * 400 + 1)
+
+    def test_noise_reevaluation_respects_the_time_cap(self):
+        gs = load_fen("8/8/4k3/8/8/4K3/4P3/8 w - - 0 1")
+        level = levels.Level("Test", 200, search.MAX_PLY, 30, 0.0, 1)
+        start = time.monotonic()
+        move = levels.choose_move(gs, level, random.Random(0), use_book=False)
+        self.assertIn(move, gs.get_valid_moves())
+        self.assertLess(time.monotonic() - start, 1.0)
 
 
 class LevelSpecTests(unittest.TestCase):

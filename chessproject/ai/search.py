@@ -157,6 +157,13 @@ class Searcher:
         result.pv = self._principal_variation(game_state, result.depth)
         return result
 
+    def set_limits(self, deadline: float | None, extra_nodes: int | None) -> None:
+        """Limites des appels directs à ``negamax`` après ``think`` (réévaluation des
+        niveaux) : échéance absolue (horloge du Searcher) et nœuds supplémentaires au-delà
+        du compteur actuel. ``SearchLimitError`` est levée quand l'une est atteinte."""
+        self._deadline = deadline
+        self._max_nodes = None if extra_nodes is None else self.nodes + extra_nodes
+
     # -- arbre ----------------------------------------------------------
     def _tick(self) -> None:
         self.nodes += 1

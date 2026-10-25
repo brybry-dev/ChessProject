@@ -94,6 +94,10 @@ LEVELS: tuple[Level, ...] = (
 LEVELS_BY_NAME: dict[str, Level] = {level.name: level for level in LEVELS}
 DEFAULT_LEVEL: Level = LEVELS_BY_NAME["Moyen"]
 
+# Part du temps d'un niveau bruité consacrée à la recherche ; le reste sert à réévaluer
+# les coups de la racine avant d'y ajouter le bruit.
+SEARCH_TIME_SHARE: float = 0.7
+
 # Clés de parse_level_spec -> champ de Level
 _SPEC_FIELDS: dict[str, str] = {
     "movetime": "movetime_ms",
@@ -157,6 +161,32 @@ def book_choice(
     return book.book_move(game_state, rng)
 
 
+def _score_root_moves(
+    searcher: Searcher,
+    game_state: engine.GameState,
+    moves: list[engine.Move],
+    depth: int,
+    level: Level,
+    rng: random.Random,
+) -> list[tuple[int, engine.Move]]:
+    """Score bruité de chaque coup de la racine (point de vue du camp au trait)."""
+    scored: list[tuple[int, engine.Move]] = []
+    for move in moves:
+        game_state.make_move(move, validate=False)
+        try:
+            score, _ = searcher.negamax(
+                game_state, game_state.get_valid_moves(), depth, -search.INF, search.INF, 1
+            )
+        finally:
+            game_state.undo_move()
+        noise = rng.randint(-level.eval_noise_cp, level.eval_noise_cp)
+        # Un mat reste un mat : le bruit ne s'applique qu'aux scores ordinaires.
+        if abs(score) < search.MATE_THRESHOLD:
+            score += noise
+        scored.append((-score, move))
+    return scored
+
+
 def choose_move(
     game_state: engine.GameState,
     level: Level,
@@ -178,34 +208,34 @@ def choose_move(
         if move is not None:
             return move
     searcher = Searcher()
+    movetime = min(level.movetime_ms, movetime_ms or level.movetime_ms)
+    deadline = searcher.clock() + movetime / 1000
+    noisy = level.eval_noise_cp > 0 or level.mistake_probability > 0.0
+    # Un niveau bruité garde une part de son temps pour la réévaluation ci-dessous.
+    search_ms = max(1, int(movetime * SEARCH_TIME_SHARE)) if noisy else movetime
     result = searcher.think(
         game_state,
-        SearchLimits(
-            depth=level.max_depth,
-            movetime_ms=min(level.movetime_ms, movetime_ms or level.movetime_ms),
-            nodes=level.max_nodes,
-        ),
+        SearchLimits(depth=level.max_depth, movetime_ms=search_ms, nodes=level.max_nodes),
     )
-    if level.eval_noise_cp == 0 and level.mistake_probability == 0.0:
+    if not noisy:
         return result.move
 
-    # Évaluation de chaque coup de la racine à la profondeur atteinte (moins un), avec la
-    # table de transposition déjà remplie : rapide, et cohérent avec la recherche.
-    depth = max(result.depth - 1, 0)
-    scored: list[tuple[int, engine.Move]] = []
-    for move in moves:
-        game_state.make_move(move, validate=False)
-        try:
-            score, _ = searcher.negamax(
-                game_state, game_state.get_valid_moves(), depth, -search.INF, search.INF, 1
-            )
-        finally:
-            game_state.undo_move()
-        noise = rng.randint(-level.eval_noise_cp, level.eval_noise_cp)
-        # Un mat reste un mat : le bruit ne s'applique qu'aux scores ordinaires.
-        if abs(score) < search.MATE_THRESHOLD:
-            score += noise
-        scored.append((-score, move))
+    # Évaluation de chaque coup de la racine, avec la table de transposition déjà
+    # remplie, par approfondissement jusqu'à la profondeur atteinte moins un. Elle est
+    # bornée par un second budget de nœuds égal à celui de la recherche et par le reste
+    # du temps : on garde la dernière profondeur achevée ; si même la profondeur 0
+    # n'aboutit pas, le coup de la recherche est joué, sans bruit.
+    scored: list[tuple[int, engine.Move]] | None = None
+    searcher.set_limits(deadline, level.max_nodes)
+    try:
+        for depth in range(max(result.depth - 1, 0) + 1):
+            scored = _score_root_moves(searcher, game_state, moves, depth, level, rng)
+    except search.SearchLimitError:
+        pass
+    finally:
+        searcher.set_limits(None, None)
+    if scored is None:
+        return result.move
     scored.sort(key=lambda item: item[0], reverse=True)
     if level.mistake_probability and rng.random() < level.mistake_probability:
         pool = scored[: max(1, level.mistake_pool)]
