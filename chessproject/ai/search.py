@@ -157,6 +157,13 @@ class Searcher:
         result.pv = self._principal_variation(game_state, result.depth)
         return result
 
+    def set_limits(self, deadline: float | None, extra_nodes: int | None) -> None:
+        """Limites des appels directs à ``negamax`` après ``think`` (réévaluation des
+        niveaux) : échéance absolue (horloge du Searcher) et nœuds supplémentaires au-delà
+        du compteur actuel. ``SearchLimitError`` est levée quand l'une est atteinte."""
+        self._deadline = deadline
+        self._max_nodes = None if extra_nodes is None else self.nodes + extra_nodes
+
     # -- arbre ----------------------------------------------------------
     def _tick(self) -> None:
         self.nodes += 1
@@ -352,7 +359,8 @@ def find_best_move(
     Sans ``level_name``, recherche à profondeur fixe ``DEPTH`` ; sinon, jeu au niveau de
     difficulté nommé (cf. ``chessproject.ai.levels``), avec un temps de réflexion plafonné
     à ``movetime_ms`` s'il est donné (cadence). ``valid_moves`` est conservé pour
-    compatibilité : la recherche part de la position.
+    compatibilité : la recherche part de la position. Le livre d'ouvertures n'est pas
+    consulté ici : l'interface le lit elle-même, sans lancer de processus (J8.3).
     """
     if not valid_moves:
         return_queue.put(None)
@@ -363,7 +371,7 @@ def find_best_move(
     from chessproject.ai import levels  # import local : levels importe ce module
 
     level = levels.LEVELS_BY_NAME[level_name]
-    return_queue.put(levels.choose_move(game_state, level, movetime_ms=movetime_ms))
+    return_queue.put(levels.choose_move(game_state, level, movetime_ms=movetime_ms, use_book=False))
 
 
 def move_ordering_heuristic(move: engine.Move) -> int:

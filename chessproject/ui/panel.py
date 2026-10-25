@@ -124,6 +124,7 @@ class PanelModel:
     status: str
     status_kind: str = "info"  # info, accent, warning
     eval_text: str | None = None
+    opening: str | None = None  # « ECO · nom » de l'ouverture (J8.3)
     can_undo: bool = True
     can_draw: bool = True
     can_resign: bool = True
@@ -131,6 +132,7 @@ class PanelModel:
 
 
 ROW_HEIGHT = 34
+OPENING_HEIGHT = 30
 CARD_HEIGHT = 64
 ACTIONS_HEIGHT = 44
 GAP = 12
@@ -280,6 +282,20 @@ class SidePanel:
                 "midleft",
             )
         p.draw.line(surface, t.border, (rect.x, head.bottom), (rect.right - 1, head.bottom))
+        top = head.bottom
+        if model.opening:
+            band = p.Rect(rect.x, head.bottom, rect.width, OPENING_HEIGHT)
+            f = th.font(12, "medium")
+            w.text(
+                surface,
+                w.ellipsize(model.opening, f, band.width - 32),
+                f,
+                t.muted,
+                (band.x + 16, band.centery),
+                "midleft",
+            )
+            p.draw.line(surface, t.border, (rect.x, band.bottom), (rect.right - 1, band.bottom))
+            top = band.bottom
 
         foot = p.Rect(rect.x, rect.bottom - 42, rect.width, 42)
         p.draw.line(surface, t.border, (rect.x, foot.y), (rect.right - 1, foot.y))
@@ -295,9 +311,7 @@ class SidePanel:
             "midleft",
         )
 
-        self._list_rect = p.Rect(
-            rect.x + 8, head.bottom + 6, rect.width - 16, foot.y - head.bottom - 12
-        )
+        self._list_rect = p.Rect(rect.x + 8, top + 6, rect.width - 16, foot.y - top - 12)
         self._draw_rows(surface, model, t, mouse)
 
     def _draw_rows(self, surface, model: PanelModel, t: Theme, mouse) -> None:

@@ -21,7 +21,7 @@ from chessproject.ui.theme import Theme
 MODES = [("PvC", "Joueur vs IA"), ("PvP", "Joueur vs Joueur"), ("CvC", "IA vs IA")]
 COLORS = [("w", "Blancs"), ("r", "Au hasard"), ("b", "Noirs")]
 LEVEL_HINTS = {
-    "Débutant": "erreurs",
+    "Débutant": "pour débuter",
     "Facile": "imprécis",
     "Moyen": "solide",
     "Difficile": "précis",
@@ -60,7 +60,10 @@ def config_from(settings: Settings, rng: random.Random | None = None) -> GameCon
     return GameConfig(mode, white, black, settings.level, settings.control)
 
 
-def _think_label(level: levels.Level) -> str:
+def _strength_label(level: levels.Level) -> str:
+    """Force du niveau (« ≈ 1450 Elo », J8.2), ou à défaut son temps de réflexion."""
+    if level.elo is not None:
+        return f"≈ {level.elo} Elo"
     seconds = level.movetime_ms / 1000
     return f"{seconds:g}".replace(".", ",") + " s"
 
@@ -290,7 +293,7 @@ class NewGameMenu:
             )
             w.text(
                 surface,
-                _think_label(level),
+                _strength_label(level),
                 th.font(11, "medium", mono=True),
                 t.muted,
                 (rect.x + 12, rect.bottom - 10),

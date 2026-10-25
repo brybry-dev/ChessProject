@@ -200,6 +200,37 @@ def test_missing_engine_loses() -> None:
     assert record.score_a == 1.0
 
 
+def test_parse_options() -> None:
+    assert match.parse_options(None) == {}
+    assert match.parse_options(["UCI_LimitStrength=true", " UCI_Elo = 1500 "]) == {
+        "UCI_LimitStrength": "true",
+        "UCI_Elo": "1500",
+    }
+    for bad in ("UCI_Elo", "=1500"):
+        with pytest.raises(ValueError):
+            match.parse_options([bad])
+
+
+def test_engine_options_are_sent_before_the_game(tmp_path: Path) -> None:
+    log = tmp_path / "received.txt"
+    script = tmp_path / "logger.py"
+    script.write_text(
+        _FAKE_ENGINE.format(move="0000").replace(
+            "for line in sys.stdin:\n",
+            f"log = open({str(log)!r}, 'w', encoding='utf-8')\n"
+            "for line in sys.stdin:\n    log.write(line); log.flush()\n",
+        ),
+        encoding="utf-8",
+    )
+    good = match.EngineSpec("bon", ENGINE)
+    spec = match.EngineSpec("journal", f'python "{script}"', options={"UCI_Elo": "1500"})
+    fen = match.load_openings(match.DEFAULT_OPENINGS)[0]
+    match.play_game(0, 0, fen, False, good, spec, _config())
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert "setoption name UCI_Elo value 1500" in lines
+    assert lines.index("setoption name UCI_Elo value 1500") < lines.index("ucinewgame")
+
+
 def test_checkmate_detected_by_arbiter() -> None:
     # Mat en 1 pour les Blancs (Ta8#) : la partie s'arrête au premier coup.
     fen = "6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1"

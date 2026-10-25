@@ -109,6 +109,8 @@ class EngineSpec:
     name: str
     command: str
     pythonpath: str | None = None
+    # Options UCI envoyées avant chaque partie (ex. {"UCI_Elo": "1500"} pour Stockfish)
+    options: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -132,6 +134,17 @@ class MatchConfig:
     movetime_ms: int | None
     max_plies: int
     timeout_s: float | None
+
+
+def parse_options(items: Sequence[str] | None) -> dict[str, str]:
+    """Options UCI ``NOM=VALEUR`` de la ligne de commande ; ``ValueError`` si mal formées."""
+    options: dict[str, str] = {}
+    for item in items or ():
+        name, sep, value = item.partition("=")
+        if not sep or not name.strip():
+            raise ValueError(f"option UCI mal formée (NOM=VALEUR attendu) : {item!r}")
+        options[name.strip()] = value.strip()
+    return options
 
 
 def load_openings(path: Path) -> list[str]:
@@ -206,6 +219,8 @@ def play_game(
                 engine = UciProcess(spec.command, spec.pythonpath, name=spec.name)
                 engines[is_white] = engine
                 engine.handshake()
+                for option, value in spec.options.items():
+                    engine.send(f"setoption name {option} value {value}")
                 engine.send("ucinewgame")
                 engine.is_ready()
             except (EngineError, OSError) as exc:
@@ -359,6 +374,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name-b", default="B")
     parser.add_argument("--pythonpath-a", help="PYTHONPATH propre au moteur A")
     parser.add_argument("--pythonpath-b", help="PYTHONPATH propre au moteur B")
+    for side in ("a", "b"):
+        parser.add_argument(
+            f"--option-{side}",
+            action="append",
+            metavar="NOM=VALEUR",
+            help=f"option UCI du moteur {side.upper()} (répétable), ex. UCI_Elo=1500",
+        )
     parser.add_argument("--games", type=int, default=40, help="Nombre de parties (défaut 40)")
     limit = parser.add_mutually_exclusive_group()
     limit.add_argument("--depth", type=int, help="Profondeur fixe par coup")
@@ -382,8 +404,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     depth, movetime = args.depth, args.movetime
     if depth is None and movetime is None:
         depth = 3
-    engine_a = EngineSpec(args.name_a, args.engine_a, args.pythonpath_a)
-    engine_b = EngineSpec(args.name_b, args.engine_b, args.pythonpath_b)
+    try:
+        options_a, options_b = parse_options(args.option_a), parse_options(args.option_b)
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    engine_a = EngineSpec(args.name_a, args.engine_a, args.pythonpath_a, options_a)
+    engine_b = EngineSpec(args.name_b, args.engine_b, args.pythonpath_b, options_b)
     config = MatchConfig(depth, movetime, args.max_plies, args.timeout)
     openings = load_openings(args.openings)
     records, summary = run_match(

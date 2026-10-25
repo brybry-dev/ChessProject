@@ -3,6 +3,7 @@
 import random
 import time
 import unittest
+from unittest import mock
 
 from chessproject.ai import levels, search
 from chessproject.ai.search import SearchLimits
@@ -18,6 +19,9 @@ class LevelDefinitionTests(unittest.TestCase):
                 self.assertLessEqual(weaker.max_depth, stronger.max_depth)
                 self.assertGreaterEqual(weaker.eval_noise_cp, stronger.eval_noise_cp)
                 self.assertGreaterEqual(weaker.mistake_probability, stronger.mistake_probability)
+                assert weaker.max_nodes is not None and stronger.max_nodes is not None
+                self.assertLess(weaker.max_nodes, stronger.max_nodes)
+                self.assertLessEqual(weaker.book_plies, stronger.book_plies)
 
     def test_five_named_levels_and_a_default(self):
         self.assertEqual(
@@ -85,6 +89,82 @@ class ChooseMoveTests(unittest.TestCase):
                     self.assertNotEqual(gs.result().termination, engine.Termination.CHECKMATE)
                     gs.undo_move()
                 gs.undo_move()
+
+
+class NodeBudgetTests(unittest.TestCase):
+    def test_node_budget_bounds_the_search(self):
+        # Sans bruit, choose_move joue le coup d'une recherche bornée au même budget.
+        gs = load_fen("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")
+        level = levels.Level("Test", 60_000, search.MAX_PLY, 0, 0.0, 1, max_nodes=800)
+        expected = search.think(gs, SearchLimits(movetime_ms=60_000, nodes=800)).move
+        self.assertEqual(levels.choose_move(gs, level), expected)
+
+    def test_node_budget_makes_the_choice_independent_of_the_clock(self):
+        # Même budget, même graine : même coup, quelle que soit la vitesse de la machine.
+        gs = engine.GameState()
+        level = levels.Level("Test", 60_000, search.MAX_PLY, 60, 0.2, 3, max_nodes=600)
+        moves = {levels.choose_move(gs, level, random.Random(5)) for _ in range(3)}
+        self.assertEqual(len(moves), 1)
+
+    def test_noise_reevaluation_stays_within_the_node_budget(self):
+        # Régression (calibration J8.1) : sans profondeur maximale, une finale simple est
+        # explorée très profond en peu de nœuds, et la réévaluation bruitée des coups à
+        # cette profondeur n'était pas bornée (plus de 120 s pour un coup).
+        gs = load_fen("8/8/4k3/8/8/4K3/4P3/8 w - - 0 1")
+        level = levels.Level("Test", 60_000, search.MAX_PLY, 30, 0.0, 1, max_nodes=400)
+        ticks = 0
+        original = search.Searcher._tick
+
+        def counting_tick(searcher):
+            nonlocal ticks
+            ticks += 1
+            original(searcher)
+
+        with mock.patch.object(search.Searcher, "_tick", counting_tick):
+            move = levels.choose_move(gs, level, random.Random(0), use_book=False)
+        self.assertIn(move, gs.get_valid_moves())
+        self.assertLessEqual(ticks, 2 * 400 + 1)
+
+    def test_noise_reevaluation_respects_the_time_cap(self):
+        gs = load_fen("8/8/4k3/8/8/4K3/4P3/8 w - - 0 1")
+        level = levels.Level("Test", 200, search.MAX_PLY, 30, 0.0, 1)
+        start = time.monotonic()
+        move = levels.choose_move(gs, level, random.Random(0), use_book=False)
+        self.assertIn(move, gs.get_valid_moves())
+        self.assertLess(time.monotonic() - start, 1.0)
+
+
+class LevelSpecTests(unittest.TestCase):
+    def test_base_level_without_overrides(self):
+        self.assertEqual(levels.parse_level_spec("base=Facile"), levels.LEVELS_BY_NAME["Facile"])
+
+    def test_overrides_replace_the_base_values(self):
+        level = levels.parse_level_spec("base=Moyen, nodes=4000, noise=40, mistake=0.05")
+        base = levels.LEVELS_BY_NAME["Moyen"]
+        self.assertEqual(level.name, "Moyen*")
+        self.assertEqual(
+            (level.max_nodes, level.eval_noise_cp, level.mistake_probability),
+            (4000, 40, 0.05),
+        )
+        self.assertEqual((level.movetime_ms, level.max_depth), (base.movetime_ms, base.max_depth))
+
+    def test_name_and_nodes_zero(self):
+        level = levels.parse_level_spec("name=Essai,nodes=0,depth=4")
+        self.assertEqual((level.name, level.max_nodes, level.max_depth), ("Essai", None, 4))
+
+    def test_invalid_specs_are_rejected(self):
+        for spec in (
+            "vitesse=3",
+            "nodes",
+            "nodes=",
+            "base=Inconnu",
+            "noise=-5",
+            "mistake=1.5",
+            "depth=0",
+            "nodes=beaucoup",
+        ):
+            with self.subTest(spec=spec), self.assertRaises(ValueError):
+                levels.parse_level_spec(spec)
 
 
 class FindBestMoveWithLevelTests(unittest.TestCase):

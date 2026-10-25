@@ -10,15 +10,23 @@ d'affaiblir le jeu de manière naturelle pour un humain :
   meilleurs coups plutôt que le meilleur.
 
 « Difficile » et « Expert » jouent le meilleur coup trouvé, sans bruit ; ils ne
-diffèrent que par le temps et la profondeur de réflexion.
+diffèrent que par leur budget de réflexion.
+
+La réflexion est bornée par un budget de **nœuds** (J8.0) : la force d'un niveau ne
+dépend ni de la vitesse de la machine ni de la charge (mini-ligues en parallèle). Le temps
+reste un plafond, pour qu'une machine lente ne fasse pas attendre le joueur.
+
+Chaque niveau suit le livre d'ouvertures (J8.3) pendant ses ``book_plies`` premiers
+demi-coups : les niveaux faibles en sortent tôt, les plus forts connaissent plus de
+théorie.
 """
 
 import random
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
-from chessproject.ai import search
+from chessproject.ai import book, search
 from chessproject.ai.search import Searcher, SearchLimits
-from chessproject.core import engine
+from chessproject.core import engine, fen
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,82 +37,160 @@ class Level:
     eval_noise_cp: int  # amplitude maximale de l'erreur de jugement (± centipions)
     mistake_probability: float  # probabilité de jouer un coup parmi les suivants
     mistake_pool: int  # nombre de coups candidats lors d'une « erreur »
+    max_nodes: int | None = None  # budget de nœuds de la recherche (None : temps seul)
+    book_plies: int = 0  # demi-coups (depuis le début de partie) joués dans le livre
+    # Force mesurée contre Stockfish bridé (J8.2) : Elo et demi-largeur de l'IC à 95 %
+    elo: int | None = None
+    elo_margin: int | None = None
 
 
+# Calibrés en J8.1 (cf. RAPPORT_ANALYSE.md) : environ 1,8 fois plus de nœuds d'un niveau
+# au suivant, un peu de bruit en bas pour varier le jeu, aucune « erreur » (elles creusent
+# des écarts de 90 % et plus entre voisins). Le temps n'est qu'un plafond pour les
+# machines lentes ; sur la machine de mesure (~10 k nœuds/s), Expert réfléchit ~4 s.
+# Elo (J8.2) : Expert contre Stockfish 19 bridé (UCI_Elo 1900, 1 s par coup), les autres
+# par chaînage de l'échelle ; arrondis à 50, IC 95 % dans elo_margin (peu de parties).
 LEVELS: tuple[Level, ...] = (
     Level(
         "Débutant",
-        movetime_ms=150,
-        max_depth=1,
-        eval_noise_cp=250,
-        mistake_probability=0.35,
-        mistake_pool=5,
+        movetime_ms=2000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=20,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=3500,
+        book_plies=4,
+        elo=1250,
+        elo_margin=905,
     ),
     Level(
         "Facile",
-        movetime_ms=300,
-        max_depth=2,
-        eval_noise_cp=120,
-        mistake_probability=0.20,
-        mistake_pool=4,
+        movetime_ms=3000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=10,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=6500,
+        book_plies=6,
+        elo=1450,
+        elo_margin=746,
     ),
     Level(
         "Moyen",
-        movetime_ms=700,
-        max_depth=3,
-        eval_noise_cp=50,
-        mistake_probability=0.08,
-        mistake_pool=3,
+        movetime_ms=4000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=5,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=12_000,
+        book_plies=10,
+        elo=1700,
+        elo_margin=551,
     ),
     Level(
         "Difficile",
-        movetime_ms=1500,
-        max_depth=5,
-        eval_noise_cp=0,
-        mistake_probability=0.0,
-        mistake_pool=1,
-    ),
-    Level(
-        "Expert",
-        movetime_ms=3000,
+        movetime_ms=6000,
         max_depth=search.MAX_PLY,
         eval_noise_cp=0,
         mistake_probability=0.0,
         mistake_pool=1,
+        max_nodes=22_000,
+        book_plies=14,
+        elo=1800,
+        elo_margin=485,
+    ),
+    Level(
+        "Expert",
+        movetime_ms=8000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=0,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=40_000,
+        book_plies=20,
+        elo=1950,
+        elo_margin=276,
     ),
 )
 LEVELS_BY_NAME: dict[str, Level] = {level.name: level for level in LEVELS}
 DEFAULT_LEVEL: Level = LEVELS_BY_NAME["Moyen"]
 
+# Part du temps d'un niveau bruité consacrée à la recherche ; le reste sert à réévaluer
+# les coups de la racine avant d'y ajouter le bruit.
+SEARCH_TIME_SHARE: float = 0.7
 
-def choose_move(
-    game_state: engine.GameState,
-    level: Level,
-    rng: random.Random | None = None,
-    movetime_ms: int | None = None,
-) -> engine.Move | None:
-    """Coup joué par l'IA au niveau ``level`` (None s'il n'existe aucun coup légal).
+# Clés de parse_level_spec -> champ de Level
+_SPEC_FIELDS: dict[str, str] = {
+    "movetime": "movetime_ms",
+    "depth": "max_depth",
+    "noise": "eval_noise_cp",
+    "mistake": "mistake_probability",
+    "pool": "mistake_pool",
+    "nodes": "max_nodes",
+    "book": "book_plies",
+}
 
-    ``movetime_ms`` plafonne le temps de réflexion du niveau (cadence, J4.2).
+
+def parse_level_spec(spec: str) -> Level:
+    """Niveau décrit par ``"base=Moyen,nodes=4000,noise=40"`` (outil de calibration, J8.0).
+
+    ``base`` (défaut : niveau par défaut) donne les valeurs de départ ; les autres clés
+    les remplacent : ``movetime``, ``depth``, ``noise``, ``mistake``, ``pool``, ``nodes``
+    (``nodes=0`` : pas de budget de nœuds), ``book`` et ``name``. ``ValueError`` si la description
+    est invalide.
     """
-    rng = rng or random.Random()
-    moves = game_state.get_valid_moves()
-    if not moves:
-        return None
-    searcher = Searcher()
-    result = searcher.think(
-        game_state,
-        SearchLimits(
-            depth=level.max_depth,
-            movetime_ms=min(level.movetime_ms, movetime_ms or level.movetime_ms),
-        ),
-    )
-    if level.eval_noise_cp == 0 and level.mistake_probability == 0.0:
-        return result.move
+    values: dict[str, str] = {}
+    for item in spec.split(","):
+        if not item.strip():
+            continue
+        key, sep, value = item.partition("=")
+        key, value = key.strip(), value.strip()
+        if not sep or not value:
+            raise ValueError(f"élément sans valeur : {item.strip()!r}")
+        if key not in _SPEC_FIELDS and key not in ("base", "name"):
+            raise ValueError(f"clé inconnue : {key!r}")
+        values[key] = value
+    base_name = values.pop("base", DEFAULT_LEVEL.name)
+    if base_name not in LEVELS_BY_NAME:
+        raise ValueError(f"niveau de base inconnu : {base_name!r}")
+    fields = asdict(LEVELS_BY_NAME[base_name])
+    fields["name"] = values.pop("name", f"{base_name}*" if values else base_name)
+    for key, value in values.items():
+        field = _SPEC_FIELDS[key]
+        number: int | float = float(value) if field == "mistake_probability" else int(value)
+        if number < 0 or (field == "mistake_probability" and number > 1):
+            raise ValueError(f"valeur hors limites pour {key} : {value}")
+        fields[field] = number
+    if fields["max_nodes"] == 0:
+        fields["max_nodes"] = None
+    if fields["movetime_ms"] < 1 or fields["max_depth"] < 1 or fields["mistake_pool"] < 1:
+        raise ValueError("movetime, depth et pool doivent valoir au moins 1")
+    return Level(**fields)
 
-    # Évaluation de chaque coup de la racine à la profondeur atteinte (moins un), avec la
-    # table de transposition déjà remplie : rapide, et cohérent avec la recherche.
-    depth = max(result.depth - 1, 0)
+
+def game_ply(game_state: engine.GameState) -> int:
+    """Demi-coups joués depuis le début de la partie (d'après le numéro de coup FEN)."""
+    return 2 * (fen.fullmove_number(game_state) - 1) + (0 if game_state.white_to_move else 1)
+
+
+def book_choice(
+    game_state: engine.GameState, level: Level, rng: random.Random | None = None
+) -> engine.Move | None:
+    """Coup du livre pour ce niveau, ou None (hors livre, ou au-delà de ``book_plies``)."""
+    if game_ply(game_state) >= level.book_plies:
+        return None
+    return book.book_move(game_state, rng)
+
+
+def _score_root_moves(
+    searcher: Searcher,
+    game_state: engine.GameState,
+    moves: list[engine.Move],
+    depth: int,
+    level: Level,
+    rng: random.Random,
+) -> list[tuple[int, engine.Move]]:
+    """Score bruité de chaque coup de la racine (point de vue du camp au trait)."""
     scored: list[tuple[int, engine.Move]] = []
     for move in moves:
         game_state.make_move(move, validate=False)
@@ -119,6 +205,58 @@ def choose_move(
         if abs(score) < search.MATE_THRESHOLD:
             score += noise
         scored.append((-score, move))
+    return scored
+
+
+def choose_move(
+    game_state: engine.GameState,
+    level: Level,
+    rng: random.Random | None = None,
+    movetime_ms: int | None = None,
+    use_book: bool = True,
+) -> engine.Move | None:
+    """Coup joué par l'IA au niveau ``level`` (None s'il n'existe aucun coup légal).
+
+    ``movetime_ms`` plafonne le temps de réflexion du niveau (cadence, J4.2) ;
+    ``use_book=False`` ignore le livre d'ouvertures (mesures de force, J8.1).
+    """
+    rng = rng or random.Random()
+    moves = game_state.get_valid_moves()
+    if not moves:
+        return None
+    if use_book:
+        move = book_choice(game_state, level, rng)
+        if move is not None:
+            return move
+    searcher = Searcher()
+    movetime = min(level.movetime_ms, movetime_ms or level.movetime_ms)
+    deadline = searcher.clock() + movetime / 1000
+    noisy = level.eval_noise_cp > 0 or level.mistake_probability > 0.0
+    # Un niveau bruité garde une part de son temps pour la réévaluation ci-dessous.
+    search_ms = max(1, int(movetime * SEARCH_TIME_SHARE)) if noisy else movetime
+    result = searcher.think(
+        game_state,
+        SearchLimits(depth=level.max_depth, movetime_ms=search_ms, nodes=level.max_nodes),
+    )
+    if not noisy:
+        return result.move
+
+    # Évaluation de chaque coup de la racine, avec la table de transposition déjà
+    # remplie, par approfondissement jusqu'à la profondeur atteinte moins un. Elle est
+    # bornée par un second budget de nœuds égal à celui de la recherche et par le reste
+    # du temps : on garde la dernière profondeur achevée ; si même la profondeur 0
+    # n'aboutit pas, le coup de la recherche est joué, sans bruit.
+    scored: list[tuple[int, engine.Move]] | None = None
+    searcher.set_limits(deadline, level.max_nodes)
+    try:
+        for depth in range(max(result.depth - 1, 0) + 1):
+            scored = _score_root_moves(searcher, game_state, moves, depth, level, rng)
+    except search.SearchLimitError:
+        pass
+    finally:
+        searcher.set_limits(None, None)
+    if scored is None:
+        return result.move
     scored.sort(key=lambda item: item[0], reverse=True)
     if level.mistake_probability and rng.random() < level.mistake_probability:
         pool = scored[: max(1, level.mistake_pool)]

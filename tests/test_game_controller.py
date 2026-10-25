@@ -31,6 +31,18 @@ from chessproject.core import clock, engine, notation
 from chessproject.core.fen import load_fen
 from chessproject.ui import app
 
+# Ces tests portent sur le processus de recherche de l'IA : le livre d'ouvertures (J8.3),
+# qui répond sans processus dans les positions connues, est neutralisé (cf. BookMoves).
+_no_book = mock.patch.object(app.levels, "book_choice", return_value=None)
+
+
+def setUpModule():
+    _no_book.start()
+
+
+def tearDownModule():
+    _no_book.stop()
+
 
 class _InlineProcess:
     """Faux multiprocessing.Process : exécute la cible immédiatement."""
@@ -757,3 +769,60 @@ class PgnKeys(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class BookMoves(unittest.TestCase):
+    """Coups du livre d'ouvertures (J8.3) : joués sans processus, après une courte pause."""
+
+    def setUp(self):
+        _no_book.stop()
+        self.addCleanup(_no_book.start)
+        self.screen = p.display.get_surface()
+        ui = app.UIManager()
+        rm = app.ResourceManager()
+        # IA = blancs : elle joue le premier coup, toujours dans le livre.
+        self.gc = app.GameController(
+            self.screen, p.time.Clock(), ui, rm, "PvC", False, True, True, level="Expert"
+        )
+        self.spawned = []
+        patcher = mock.patch.object(app, "Process", side_effect=self._spawn)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _spawn(self, *args, **kwargs):
+        self.spawned.append(args)
+        raise AssertionError("aucun processus attendu pour un coup du livre")
+
+    def test_book_move_is_played_after_a_short_pause_without_a_process(self):
+        now = [1000.0]
+        with mock.patch.object(app.time, "monotonic", side_effect=lambda: now[0]):
+            self.gc.update_ai()
+            self.assertTrue(self.gc.ai_thinking)
+            self.assertEqual(self.gc.game_state.move_log, [])
+            now[0] += app.BOOK_MOVE_DELAY_SECONDS + 0.01
+            self.gc.update_ai()
+        self.assertFalse(self.gc.ai_thinking)
+        self.assertEqual(len(self.gc.game_state.move_log), 1)
+        first = notation.to_uci(self.gc.game_state.move_log[0])
+        self.assertIn(first, app.book.default_book().candidates(engine.GameState()))
+        self.assertEqual(self.spawned, [])
+
+    def test_stopping_the_ai_drops_the_pending_book_move(self):
+        self.gc.update_ai()
+        self.gc._stop_ai()
+        self.assertIsNone(self.gc._ai_book_move)
+        self.assertFalse(self.gc.ai_thinking)
+
+    def test_panel_and_pgn_name_the_opening(self):
+        for san in ("e4", "c5", "Nf3", "d6", "d4", "cxd4", "Nxd4", "Nf6", "Nc3", "a6"):
+            self.gc.game_state.make_move(notation.parse_san(self.gc.game_state, san))
+        label = self.gc._opening_label(self.gc.game_state, len(self.gc.game_state.move_log))
+        self.assertEqual(label, "B90 · Défense sicilienne : variante Najdorf")
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "partie.pgn"
+            with mock.patch.object(app.paths, "pgn_file", return_value=target):
+                self.gc._export_pgn()
+            text = target.read_text(encoding="utf-8")
+        self.assertIn('[ECO "B90"]', text)
+        self.assertIn('[Opening "Défense sicilienne : variante Najdorf"]', text)
