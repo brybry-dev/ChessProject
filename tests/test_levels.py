@@ -87,6 +87,55 @@ class ChooseMoveTests(unittest.TestCase):
                 gs.undo_move()
 
 
+class NodeBudgetTests(unittest.TestCase):
+    def test_node_budget_bounds_the_search(self):
+        # Sans bruit, choose_move joue le coup d'une recherche bornée au même budget.
+        gs = load_fen("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3")
+        level = levels.Level("Test", 60_000, search.MAX_PLY, 0, 0.0, 1, max_nodes=800)
+        expected = search.think(gs, SearchLimits(movetime_ms=60_000, nodes=800)).move
+        self.assertEqual(levels.choose_move(gs, level), expected)
+
+    def test_node_budget_makes_the_choice_independent_of_the_clock(self):
+        # Même budget, même graine : même coup, quelle que soit la vitesse de la machine.
+        gs = engine.GameState()
+        level = levels.Level("Test", 60_000, search.MAX_PLY, 60, 0.2, 3, max_nodes=600)
+        moves = {levels.choose_move(gs, level, random.Random(5)) for _ in range(3)}
+        self.assertEqual(len(moves), 1)
+
+
+class LevelSpecTests(unittest.TestCase):
+    def test_base_level_without_overrides(self):
+        self.assertEqual(levels.parse_level_spec("base=Facile"), levels.LEVELS_BY_NAME["Facile"])
+
+    def test_overrides_replace_the_base_values(self):
+        level = levels.parse_level_spec("base=Moyen, nodes=4000, noise=40, mistake=0.05")
+        base = levels.LEVELS_BY_NAME["Moyen"]
+        self.assertEqual(level.name, "Moyen*")
+        self.assertEqual(
+            (level.max_nodes, level.eval_noise_cp, level.mistake_probability),
+            (4000, 40, 0.05),
+        )
+        self.assertEqual((level.movetime_ms, level.max_depth), (base.movetime_ms, base.max_depth))
+
+    def test_name_and_nodes_zero(self):
+        level = levels.parse_level_spec("name=Essai,nodes=0,depth=4")
+        self.assertEqual((level.name, level.max_nodes, level.max_depth), ("Essai", None, 4))
+
+    def test_invalid_specs_are_rejected(self):
+        for spec in (
+            "vitesse=3",
+            "nodes",
+            "nodes=",
+            "base=Inconnu",
+            "noise=-5",
+            "mistake=1.5",
+            "depth=0",
+            "nodes=beaucoup",
+        ):
+            with self.subTest(spec=spec), self.assertRaises(ValueError):
+                levels.parse_level_spec(spec)
+
+
 class FindBestMoveWithLevelTests(unittest.TestCase):
     def test_level_name_is_used(self):
         class Box:

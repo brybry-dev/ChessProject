@@ -147,7 +147,7 @@ def test_level_option_selects_a_difficulty_level() -> None:
     engine.handle("uci")
     assert "option name Level type combo" in out.getvalue()
     engine.handle("setoption name Level value Débutant")
-    assert engine.level == "Débutant"
+    assert engine.level is not None and engine.level.name == "Débutant"
     engine.handle("go movetime 50")
     assert out.getvalue().strip().splitlines()[-1].startswith("bestmove ")
     engine.handle("setoption name Level value Max")
@@ -206,3 +206,25 @@ def test_level_command_line_option() -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip().splitlines()[-1].startswith("bestmove ")
+
+
+def test_level_spec_command_line_option() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "chessproject.uci", "--level-spec", "base=Facile,nodes=500"],
+        input="position startpos\ngo movetime 50\nquit\n",
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_S,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip().splitlines()[-1].startswith("bestmove ")
+    refused = subprocess.run(
+        [sys.executable, "-m", "chessproject.uci", "--level-spec", "vitesse=3"],
+        input="quit\n",
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_S,
+        check=False,
+    )
+    assert refused.returncode == 2 and "clé inconnue" in refused.stderr

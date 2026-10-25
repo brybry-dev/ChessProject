@@ -74,7 +74,7 @@ def _think(
     depth: int | None,
     movetime_ms: int | None,
     nodes: int | None = None,
-    level: str | None = None,
+    level: levels.Level | None = None,
 ) -> tuple[Move | None, SearchResult | None]:
     """Unique point d'entrée vers l'IA : coup choisi (None sans coup légal) et, hors
     niveau de difficulté, le résultat détaillé de la recherche.
@@ -86,7 +86,7 @@ def _think(
     if not game_state.get_valid_moves():
         return None, None
     if level is not None:
-        return levels.choose_move(game_state, levels.LEVELS_BY_NAME[level]), None
+        return levels.choose_move(game_state, level), None
     if depth is None and movetime_ms is None and nodes is None:
         depth = search.DEPTH
     result = search.think(
@@ -104,7 +104,7 @@ class UciEngine:
         self.pending_bestmove: str | None = None
         self.pending_info: str | None = None  # ligne info retenue avec le bestmove (infinite)
         # Niveau de difficulté (option UCI Level) ; None = pleine force, limites de go.
-        self.level: str | None = None
+        self.level: levels.Level | None = None
 
     # -- sortie -----------------------------------------------------------
     def send(self, line: str) -> None:
@@ -208,7 +208,7 @@ class UciEngine:
         if value == FULL_STRENGTH:
             self.level = None
         elif value in levels.LEVELS_BY_NAME:
-            self.level = value
+            self.level = levels.LEVELS_BY_NAME[value]
         else:
             self.info(f"niveau inconnu : {value!r}")
 
@@ -276,13 +276,14 @@ class UciEngine:
             self.send(f"bestmove {bestmove}")
 
 
-def run(stdin: TextIO, stdout: TextIO, level: str | None = None) -> None:
+def run(stdin: TextIO, stdout: TextIO, level: str | levels.Level | None = None) -> None:
     """Boucle principale : lit ``stdin`` ligne par ligne jusqu'à ``quit`` ou EOF.
 
-    ``level`` fixe le niveau de départ (équivalent de ``setoption name Level``).
+    ``level`` fixe le niveau de départ (équivalent de ``setoption name Level``), par son
+    nom ou par un niveau quelconque (``--level-spec``).
     """
     engine = UciEngine(stdout)
-    engine.level = level
+    engine.level = levels.LEVELS_BY_NAME[level] if isinstance(level, str) else level
     for line in stdin:
         if not engine.handle(line):
             return
@@ -291,14 +292,26 @@ def run(stdin: TextIO, stdout: TextIO, level: str | None = None) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Moteur UCI ChessProject.")
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         "--level",
         choices=[level.name for level in levels.LEVELS],
         help="niveau de difficulté de départ (défaut : pleine force)",
     )
+    group.add_argument(
+        "--level-spec",
+        metavar="SPEC",
+        help="niveau sur mesure pour la calibration, ex. « base=Moyen,nodes=4000,noise=40 »",
+    )
     args = parser.parse_args(argv)
+    level: str | levels.Level | None = args.level
+    if args.level_spec is not None:
+        try:
+            level = levels.parse_level_spec(args.level_spec)
+        except ValueError as exc:
+            parser.error(f"--level-spec : {exc}")
     with contextlib.suppress(KeyboardInterrupt, BrokenPipeError):
-        run(sys.stdin, sys.stdout, args.level)
+        run(sys.stdin, sys.stdout, level)
 
 
 if __name__ == "__main__":
