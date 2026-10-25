@@ -15,6 +15,7 @@ import calibrate
 import match
 
 from chessproject.ai import levels
+from chessproject.core.fen import load_fen
 
 
 def test_parse_rung_accepts_names_and_specs() -> None:
@@ -26,6 +27,15 @@ def test_parse_rung_accepts_names_and_specs() -> None:
     assert custom.command.endswith("--level-spec base=Moyen,nodes=3000")
     with pytest.raises(ValueError):
         calibrate.parse_rung("Inconnu")
+
+
+def test_book_openings_are_distinct_legal_positions() -> None:
+    fens = calibrate.book_openings(50)
+    assert len(fens) == len(set(fens)) == 50
+    for fen in fens:
+        load_fen(fen)
+    with pytest.raises(ValueError):
+        calibrate.book_openings(100_000)
 
 
 def test_parse_anchor() -> None:

@@ -24,10 +24,11 @@ except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
 from chessproject import settings as settings_module
+from chessproject.ai import levels
 from chessproject.core import clock, engine, notation
 from chessproject.core.fen import load_fen
 from chessproject.settings import Settings
-from chessproject.ui import app, layout, widgets
+from chessproject.ui import app, layout, new_game, widgets
 from chessproject.ui.board_view import PieceSet
 from chessproject.ui.new_game import GameConfig, NewGameMenu, config_from
 
@@ -112,6 +113,12 @@ class SettingsTests(unittest.TestCase):
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
 class NewGameMenuTests(unittest.TestCase):
+    def test_level_cards_show_the_measured_strength(self):
+        level = levels.Level("Test", 1500, 3, 0, 0.0, 1)
+        self.assertEqual(new_game._strength_label(level), "1,5 s")  # pas encore mesuré
+        measured = levels.Level("Test", 1500, 3, 0, 0.0, 1, elo=1450, elo_margin=60)
+        self.assertEqual(new_game._strength_label(measured), "≈ 1450 Elo")
+
     def test_choices_become_the_game_configuration(self):
         menu = NewGameMenu(Settings(), can_cancel=False, pieces=PIECES)
         menu.choose("color", "b")

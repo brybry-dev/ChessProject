@@ -39,6 +39,9 @@ class Level:
     mistake_pool: int  # nombre de coups candidats lors d'une « erreur »
     max_nodes: int | None = None  # budget de nœuds de la recherche (None : temps seul)
     book_plies: int = 0  # demi-coups (depuis le début de partie) joués dans le livre
+    # Force mesurée contre Stockfish bridé (J8.2) : Elo et demi-largeur de l'IC à 95 %
+    elo: int | None = None
+    elo_margin: int | None = None
 
 
 LEVELS: tuple[Level, ...] = (

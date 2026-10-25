@@ -7,9 +7,16 @@ Fait jouer chaque niveau contre son voisin immédiat (``tools/match.py``) et cha
     python tools/calibrate.py --games 100 --concurrency 6
     python tools/calibrate.py Débutant "base=Débutant,nodes=300" Facile --games 40
     python tools/calibrate.py --anchor 4=1650:45 --json echelle.json
+    python tools/calibrate.py --book-openings 50 --games 100
 
 Chaque échelon est un nom de niveau (``chessproject.ai.levels``) ou une description pour
 ``--level-spec`` (``base=Moyen,nodes=4000,noise=40``). Sans échelon, les cinq niveaux.
+
+Ouvertures : ``--openings`` (défaut ``tools/openings.txt``, 24 positions) ou
+``--book-openings N`` : N positions distinctes tirées du livre d'ouvertures (fins de
+lignes de 8 à 12 demi-coups). Avec un budget de nœuds, un niveau sans bruit joue de
+façon déterministe : il faut au moins ``games / 2`` positions pour que deux parties ne
+soient pas identiques.
 
 Chaînage : l'écart entre deux voisins est ``Elo(s)`` (cf. ``match.elo_difference``), son
 écart type est estimé par la demi-largeur de l'intervalle à 95 % divisée par 1,96. L'Elo
@@ -31,7 +38,10 @@ from pathlib import Path
 
 import match
 
-from chessproject.ai import levels
+from chessproject.ai import book, levels
+from chessproject.core.engine import GameState
+from chessproject.core.fen import to_fen
+from chessproject.core.notation import parse_san
 
 ENGINE = "python -m chessproject.uci"
 # Écart retenu quand un match est gagné ou perdu à 100 % (Elo infini) : borne prudente.
@@ -74,6 +84,28 @@ def parse_rung(text: str) -> Rung:
     if text in levels.LEVELS_BY_NAME:
         return Rung(text, levels.LEVELS_BY_NAME[text])
     return Rung(text, levels.parse_level_spec(text))
+
+
+def book_openings(count: int, min_ply: int = 8, max_ply: int = 12) -> list[str]:
+    """``count`` FEN distinctes de fins de lignes du livre (``min_ply`` à ``max_ply``
+    demi-coups), dans l'ordre du fichier, réparties sur tout le livre."""
+    fens: list[str] = []
+    for line in book.book_path().read_text(encoding="utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        sans = line.split("\t")[2].split()
+        if not min_ply <= len(sans) <= max_ply:
+            continue
+        game_state = GameState()
+        for san in sans:
+            game_state.make_move(parse_san(game_state, san), validate=False)
+        fen = to_fen(game_state)
+        if fen not in fens:
+            fens.append(fen)
+    if count > len(fens):
+        raise ValueError(f"le livre n'offre que {len(fens)} positions distinctes")
+    step = len(fens) / count
+    return [fens[int(i * step)] for i in range(count)]
 
 
 def parse_anchor(text: str, rungs: int) -> tuple[int, float, float]:
@@ -142,6 +174,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--concurrency", type=int, default=1, help="parties en parallèle")
     parser.add_argument("--seed", type=int, help="mélange l'ordre des ouvertures")
     parser.add_argument("--openings", type=Path, default=match.DEFAULT_OPENINGS)
+    parser.add_argument("--book-openings", type=int, metavar="N", help="N positions du livre")
     parser.add_argument("--max-plies", type=int, default=300)
     parser.add_argument("--anchor", help="INDICE=ELO[:ÉCART_TYPE] (défaut : 0=0)")
     parser.add_argument("--json", metavar="FICHIER", help="résultats machine")
@@ -155,10 +188,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         if len(rungs) < 2:
             raise ValueError("il faut au moins deux échelons")
         anchor = parse_anchor(args.anchor, len(rungs)) if args.anchor else (0, 0.0, 0.0)
+        if args.book_openings is not None:
+            openings = book_openings(args.book_openings)
+        else:
+            openings = match.load_openings(args.openings)
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
-    openings = match.load_openings(args.openings)
     # Les niveaux ignorent les limites de « go » ; la profondeur 1 ne sert qu'à la commande,
     # et le délai de réponse de ce mode (120 s) couvre le plafond de temps de tout niveau.
     config = match.MatchConfig(1, None, args.max_plies, None)
