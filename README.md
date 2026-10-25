@@ -37,7 +37,9 @@ chessproject
   IA contre IA.
 - **IA** : NegaMax alpha-bêta, approfondissement itératif limité en temps, table de
   transposition (Zobrist), quiescence, évaluation par phase de jeu. Cinq niveaux, de
-  Débutant à Expert, dans un processus séparé pour que l'interface reste réactive.
+  Débutant (≈ 1250 Elo) à Expert (≈ 1950 Elo), mesurés contre Stockfish bridé, dans un
+  processus séparé pour que l'interface reste réactive. **Livre d'ouvertures** de 342
+  lignes : l'IA varie ses débuts, et le nom de l'ouverture s'affiche pendant la partie.
 - **Cadences** : Bullet 1+0, Blitz 3+2 et 5+0, Rapide 10+5 et 15+10, ou sans limite.
   Incrément Fischer, perte au temps (nulle si l'adversaire n'a pas de quoi mater). L'IA
   gère son temps.
@@ -109,7 +111,9 @@ se testent sans écran, et le même moteur sert le jeu, le protocole UCI et les 
 - **IA mesurée en Elo.** Chaque amélioration passe par une mini-ligue (`tools/match.py`)
   avec intervalle de confiance : +545 Elo pour la recherche (table de transposition
   Zobrist, approfondissement itératif, quiescence), +112 Elo à temps égal pour
-  l'évaluation par phase de jeu. Les cinq niveaux sont strictement ordonnés.
+  l'évaluation par phase de jeu. Les cinq niveaux sont calibrés sur une échelle
+  (`tools/calibrate.py`) et ancrés contre Stockfish 19 bridé ; leur force repose sur un
+  budget de nœuds, la même sur toutes les machines.
 - **Temps maîtrisé.** L'IA tourne dans un processus séparé (l'interface reste fluide).
   Son budget de réflexion suit sa pendule, moins un surcoût **mesuré** en jeu (lancement
   du processus, échéance) : aucune perte au temps en 1+0.

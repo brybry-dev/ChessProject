@@ -5,6 +5,33 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.1.0] - 2026-10-25
+
+Un adversaire calibré : niveaux resserrés et mesurés en Elo, livre d'ouvertures.
+
+### Ajouté
+
+- **Elo de chaque niveau** affiché dans l'écran « Nouvelle partie » (de ≈ 1250 pour
+  Débutant à ≈ 1950 pour Expert), mesuré contre Stockfish 19 bridé.
+- **Livre d'ouvertures** de 342 lignes (codes ECO, noms français) : l'IA varie ses débuts,
+  plus ou moins longtemps selon le niveau.
+- **Nom de l'ouverture** au-dessus de l'historique des coups, et en-têtes PGN `ECO` et
+  `Opening` à l'export.
+- Moteur UCI : option `OwnBook`, niveau sur mesure `--level-spec`.
+- Outils : échelle des niveaux avec Elo chaîné (`tools/calibrate.py`), options UCI par
+  moteur dans la mini-ligue (`--option-a` / `--option-b`).
+
+### Modifié
+
+- **Niveaux recalibrés** : chaque niveau bat le précédent avec 60 à 80 % des points
+  (contre 90 à 99 % en 1.0). Leur force repose sur un budget de nœuds, identique sur
+  toutes les machines ; le temps de réflexion n'est plus qu'un plafond.
+
+### Corrigé
+
+- La réévaluation bruitée des coups d'un niveau sans profondeur maximale pouvait durer
+  plus de deux minutes dans une finale simple ; elle est maintenant bornée.
+
 ## [1.0.0] - 2026-10-22
 
 Première version publiée : règles complètes et vérifiées, IA à cinq niveaux, pendule,
@@ -50,5 +77,6 @@ PGN, interface refondue, exécutables pour Windows, macOS et Linux.
 
 Version initiale : jeu Pygame avec IA NegaMax, trois modes de jeu.
 
+[1.1.0]: https://github.com/brybry-dev/ChessProject/releases/tag/v1.1.0
 [1.0.0]: https://github.com/brybry-dev/ChessProject/releases/tag/v1.0.0
 [0.1.0]: https://github.com/brybry-dev/ChessProject/commits/master

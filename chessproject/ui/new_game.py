@@ -21,7 +21,7 @@ from chessproject.ui.theme import Theme
 MODES = [("PvC", "Joueur vs IA"), ("PvP", "Joueur vs Joueur"), ("CvC", "IA vs IA")]
 COLORS = [("w", "Blancs"), ("r", "Au hasard"), ("b", "Noirs")]
 LEVEL_HINTS = {
-    "Débutant": "erreurs",
+    "Débutant": "pour débuter",
     "Facile": "imprécis",
     "Moyen": "solide",
     "Difficile": "précis",

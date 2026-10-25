@@ -10,7 +10,7 @@ d'affaiblir le jeu de manière naturelle pour un humain :
   meilleurs coups plutôt que le meilleur.
 
 « Difficile » et « Expert » jouent le meilleur coup trouvé, sans bruit ; ils ne
-diffèrent que par le temps et la profondeur de réflexion.
+diffèrent que par leur budget de réflexion.
 
 La réflexion est bornée par un budget de **nœuds** (J8.0) : la force d'un niveau ne
 dépend ni de la vitesse de la machine ni de la charge (mini-ligues en parallèle). Le temps
@@ -44,51 +44,72 @@ class Level:
     elo_margin: int | None = None
 
 
+# Calibrés en J8.1 (cf. RAPPORT_ANALYSE.md) : environ 1,8 fois plus de nœuds d'un niveau
+# au suivant, un peu de bruit en bas pour varier le jeu, aucune « erreur » (elles creusent
+# des écarts de 90 % et plus entre voisins). Le temps n'est qu'un plafond pour les
+# machines lentes ; sur la machine de mesure (~10 k nœuds/s), Expert réfléchit ~4 s.
+# Elo (J8.2) : Expert contre Stockfish 19 bridé (UCI_Elo 1900, 1 s par coup), les autres
+# par chaînage de l'échelle ; arrondis à 50, IC 95 % dans elo_margin (peu de parties).
 LEVELS: tuple[Level, ...] = (
     Level(
         "Débutant",
-        movetime_ms=150,
-        max_depth=1,
-        eval_noise_cp=250,
-        mistake_probability=0.35,
-        mistake_pool=5,
+        movetime_ms=2000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=20,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=3500,
         book_plies=4,
+        elo=1250,
+        elo_margin=905,
     ),
     Level(
         "Facile",
-        movetime_ms=300,
-        max_depth=2,
-        eval_noise_cp=120,
-        mistake_probability=0.20,
-        mistake_pool=4,
+        movetime_ms=3000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=10,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=6500,
         book_plies=6,
+        elo=1450,
+        elo_margin=746,
     ),
     Level(
         "Moyen",
-        movetime_ms=700,
-        max_depth=3,
-        eval_noise_cp=50,
-        mistake_probability=0.08,
-        mistake_pool=3,
+        movetime_ms=4000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=5,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=12_000,
         book_plies=10,
+        elo=1700,
+        elo_margin=551,
     ),
     Level(
         "Difficile",
-        movetime_ms=1500,
-        max_depth=5,
-        eval_noise_cp=0,
-        mistake_probability=0.0,
-        mistake_pool=1,
-        book_plies=14,
-    ),
-    Level(
-        "Expert",
-        movetime_ms=3000,
+        movetime_ms=6000,
         max_depth=search.MAX_PLY,
         eval_noise_cp=0,
         mistake_probability=0.0,
         mistake_pool=1,
+        max_nodes=22_000,
+        book_plies=14,
+        elo=1800,
+        elo_margin=485,
+    ),
+    Level(
+        "Expert",
+        movetime_ms=8000,
+        max_depth=search.MAX_PLY,
+        eval_noise_cp=0,
+        mistake_probability=0.0,
+        mistake_pool=1,
+        max_nodes=40_000,
         book_plies=20,
+        elo=1950,
+        elo_margin=276,
     ),
 )
 LEVELS_BY_NAME: dict[str, Level] = {level.name: level for level in LEVELS}

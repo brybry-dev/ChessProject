@@ -19,6 +19,9 @@ class LevelDefinitionTests(unittest.TestCase):
                 self.assertLessEqual(weaker.max_depth, stronger.max_depth)
                 self.assertGreaterEqual(weaker.eval_noise_cp, stronger.eval_noise_cp)
                 self.assertGreaterEqual(weaker.mistake_probability, stronger.mistake_probability)
+                assert weaker.max_nodes is not None and stronger.max_nodes is not None
+                self.assertLess(weaker.max_nodes, stronger.max_nodes)
+                self.assertLessEqual(weaker.book_plies, stronger.book_plies)
 
     def test_five_named_levels_and_a_default(self):
         self.assertEqual(

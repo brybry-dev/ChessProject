@@ -864,6 +864,9 @@ machine de développement (8 cœurs) ; Stockfish 19 accepte `UCI_Elo` de 1320 à
 | J8.3 | Livre d'ouvertures : `assets/openings.tsv` (ECO, nom français, coups SAN, environ 250 lignes), `ai/book.py` (arbre des suites de coups depuis la position initiale, coup tiré au hasard pondéré par le nombre de lignes). Profondeur de livre par niveau (`Level.book_plies`), option UCI `OwnBook`. Nom de l'ouverture dans le panneau d'historique, en-têtes PGN `ECO` / `Opening` | Toutes les lignes sont légales (test) ; l'IA varie ses débuts (test statistique sur graine) ; nom affiché pour les ouvertures courantes | M |
 | J8.4 | Publication `v1.1.0` : version, CHANGELOG, README, rapport | CI verte, release créée | S |
 
+État : J8.0, J8.3 ✅ ; J8.1 et J8.2 ✅ en mesure écourtée (voir ci-dessous) ; J8.4 : version,
+CHANGELOG et README prêts, release à créer après fusion.
+
 Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent des FEN de
 `tools/openings.txt`, les mesures de J8.1 et J8.2 n'en dépendent donc pas.
 
@@ -881,8 +884,38 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 > - **Bug trouvé** pendant l'échelle 1 : sans profondeur maximale, la réévaluation bruitée
 >   des coups de la racine n'était pas bornée (un coup de plus de 120 s). Corrigé, test
 >   d'abord : approfondissement borné par un second budget de nœuds et 30 % du temps.
-> - Pour aller plus vite, les échelles de réglage se jouent sur 20 parties par paire
->   (adjudication nulle à 200 demi-coups) ; seule la validation finale est plus longue.
+> - À la demande du propriétaire, la mesure a été écourtée : l'échelle 3 (20 parties par
+>   paire) a été interrompue après sa première paire (90 %), et la validation finale
+>   s'est jouée sur **8 parties par paire** (4 positions du livre, couleurs inversées,
+>   nulle par adjudication à 160 demi-coups). Le critère de 100 parties n'est donc pas
+>   rempli : les écarts sont des estimations grossières.
+>
+> **Réglages retenus (v1.1.0)** : budgets de 3 500, 6 500, 12 000, 22 000 et 40 000
+> nœuds ; bruit de ±20, ±10 et ±5 cp pour les trois premiers niveaux ; aucune erreur.
+>
+> | Match (8 parties) | V / N / D | Score | Écart Elo [IC 95 %] |
+> |---|---|---|---|
+> | Facile – Débutant | 6 / 0 / 2 | 75,0 % | +191 [−322, +704] |
+> | Moyen – Facile | 6 / 1 / 1 | 81,2 % | +255 [−248, +757] |
+> | Difficile – Moyen | 4 / 2 / 2 | 62,5 % | +89 [−173, +351] |
+> | Expert – Difficile | 5 / 1 / 2 | 68,8 % | +137 [−262, +536] |
+>
+> **J8.2 — ancrage** : Expert contre Stockfish 19 (`UCI_LimitStrength`, `UCI_Elo`
+> 1900, 1 s par coup), 8 parties : 4 / 1 / 3, +44 [−199, +352] (auparavant, 18 victoires
+> sur 18 contre `UCI_Elo` 1320). Elo chaînés (échelle de Stockfish, pas l'Elo FIDE) :
+>
+> | Niveau | Elo affiché | Estimation | IC 95 % |
+> |---|---|---|---|
+> | Débutant | ≈ 1250 | 1272 | ± 905 |
+> | Facile | ≈ 1450 | 1463 | ± 746 |
+> | Moyen | ≈ 1700 | 1718 | ± 551 |
+> | Difficile | ≈ 1800 | 1807 | ± 485 |
+> | Expert | ≈ 1950 | 1944 | ± 276 |
+>
+> Écart total ≈ 670 Elo, contre plus de 2 000 en 1.0 : Débutant est nettement plus fort
+> qu'avant. **Reste à faire** : valider sur 100 parties par paire quand du temps de
+> calcul est disponible (`python tools/calibrate.py --book-openings 50 --games 100`), et
+> envisager un sixième niveau très faible pour les grands débutants.
 
 #### J9 — v1.2 : mode analyse (2–3 j)
 
