@@ -48,7 +48,8 @@ def test_full_dialogue() -> None:
     )
     assert lines[:2] == ["id name ChessProject", "id author BryanBlinDorard"]
     assert lines[2].startswith("option name Level type combo default Max")
-    assert lines[3] == "uciok"
+    assert lines[3] == "option name OwnBook type check default false"
+    assert lines[4] == "uciok"
     assert "readyok" in lines
     (best,) = _bestmoves(lines)
     gs = GameState()

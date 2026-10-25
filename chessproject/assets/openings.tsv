@@ -1,0 +1,368 @@
+# Livre d'ouvertures (J8.3) : une ligne par variante, champs séparés par une tabulation.
+# ECO <tab> nom français <tab> coups en notation SAN depuis la position initiale.
+# Le nom désigne la position atteinte après le dernier coup ; chaque ligne compte aussi
+# comme un « vote » pour chacun de ses coups (le livre joue les coups les plus suivis).
+# Lignes vides et lignes commençant par « # » ignorées. Légalité vérifiée par
+# tests/test_book.py.
+#
+# --- 1.e4 e5 ---------------------------------------------------------------
+C20	Partie du pion roi	e4 e5
+C44	Partie du cavalier du roi	e4 e5 Nf3
+C44	Partie du cavalier du roi	e4 e5 Nf3 Nc6
+C60	Partie espagnole	e4 e5 Nf3 Nc6 Bb5
+C68	Partie espagnole : variante d'échange	e4 e5 Nf3 Nc6 Bb5 a6 Bxc6
+C68	Partie espagnole : variante d'échange	e4 e5 Nf3 Nc6 Bb5 a6 Bxc6 dxc6 O-O
+C65	Partie espagnole : défense berlinoise	e4 e5 Nf3 Nc6 Bb5 Nf6
+C67	Partie espagnole : défense berlinoise, finale	e4 e5 Nf3 Nc6 Bb5 Nf6 O-O Nxe4 d4 Nd6 Bxc6 dxc6 dxe5 Nf5 Qxd8+ Kxd8
+C65	Partie espagnole : défense berlinoise, variante anti-berlinoise	e4 e5 Nf3 Nc6 Bb5 Nf6 d3
+C64	Partie espagnole : défense classique	e4 e5 Nf3 Nc6 Bb5 Bc5
+C63	Partie espagnole : gambit Schliemann	e4 e5 Nf3 Nc6 Bb5 f5
+C62	Partie espagnole : défense Steinitz	e4 e5 Nf3 Nc6 Bb5 d6
+C70	Partie espagnole : défense Morphy	e4 e5 Nf3 Nc6 Bb5 a6 Ba4
+C78	Partie espagnole : défense Morphy	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O
+C84	Partie espagnole : variante fermée	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7
+C88	Partie espagnole : variante fermée	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3
+C92	Partie espagnole : variante fermée, système Zaïtsev	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3 Bb7
+C96	Partie espagnole : variante fermée, défense Tchigorine	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3 Na5 Bc2
+C95	Partie espagnole : variante fermée, défense Breyer	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 d6 c3 O-O h3 Nb8
+C89	Partie espagnole : attaque Marshall	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O c3 d5
+C88	Partie espagnole : anti-Marshall	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Be7 Re1 b5 Bb3 O-O a4
+C80	Partie espagnole : variante ouverte	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Nxe4
+C80	Partie espagnole : variante ouverte	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O Nxe4 d4 b5 Bb3 d5 dxe5 Be6
+C78	Partie espagnole : variante Arkhangelsk	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O b5 Bb3 Bb7
+C78	Partie espagnole : variante néo-Arkhangelsk	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 O-O b5 Bb3 Bc5
+C77	Partie espagnole : variante Anderssen	e4 e5 Nf3 Nc6 Bb5 a6 Ba4 Nf6 d3
+C50	Partie italienne	e4 e5 Nf3 Nc6 Bc4
+C50	Partie italienne : Giuoco piano	e4 e5 Nf3 Nc6 Bc4 Bc5
+C54	Partie italienne : Giuoco pianissimo	e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3
+C54	Partie italienne : Giuoco pianissimo	e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d3 d6 O-O O-O
+C50	Partie italienne : Giuoco pianissimo	e4 e5 Nf3 Nc6 Bc4 Bc5 d3 Nf6 O-O
+C54	Partie italienne : variante principale	e4 e5 Nf3 Nc6 Bc4 Bc5 c3 Nf6 d4 exd4 cxd4 Bb4+
+C51	Partie italienne : gambit Evans	e4 e5 Nf3 Nc6 Bc4 Bc5 b4
+C52	Partie italienne : gambit Evans accepté	e4 e5 Nf3 Nc6 Bc4 Bc5 b4 Bxb4 c3 Ba5
+C50	Partie italienne : défense hongroise	e4 e5 Nf3 Nc6 Bc4 Be7
+C55	Défense des deux cavaliers	e4 e5 Nf3 Nc6 Bc4 Nf6
+C55	Défense des deux cavaliers : variante moderne	e4 e5 Nf3 Nc6 Bc4 Nf6 d3
+C55	Défense des deux cavaliers : variante moderne	e4 e5 Nf3 Nc6 Bc4 Nf6 d3 Be7 O-O O-O
+C57	Défense des deux cavaliers : attaque 4.Ng5	e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5
+C58	Défense des deux cavaliers : variante principale	e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 d5 exd5 Na5 Bb5+ c6 dxc6 bxc6
+C57	Défense des deux cavaliers : contre-attaque Traxler	e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 Bc5
+C56	Défense des deux cavaliers : gambit écossais	e4 e5 Nf3 Nc6 Bc4 Nf6 d4 exd4 O-O
+C45	Partie écossaise	e4 e5 Nf3 Nc6 d4 exd4 Nxd4
+C45	Partie écossaise : variante classique	e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5
+C45	Partie écossaise : variante classique	e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Bc5 Nxc6 Qf6 Qd2
+C45	Partie écossaise : variante Mieses	e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Nf6 Nxc6 bxc6 e5
+C45	Partie écossaise : variante Steinitz	e4 e5 Nf3 Nc6 d4 exd4 Nxd4 Qh4
+C44	Gambit écossais	e4 e5 Nf3 Nc6 d4 exd4 Bc4
+C47	Partie des quatre cavaliers	e4 e5 Nf3 Nc6 Nc3 Nf6
+C48	Partie des quatre cavaliers : variante espagnole	e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5
+C49	Partie des quatre cavaliers : variante symétrique	e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5 Bb4
+C47	Partie des quatre cavaliers : variante écossaise	e4 e5 Nf3 Nc6 Nc3 Nf6 d4
+C46	Partie des trois cavaliers	e4 e5 Nf3 Nc6 Nc3
+C44	Ouverture Ponziani	e4 e5 Nf3 Nc6 c3
+C42	Défense Petrov	e4 e5 Nf3 Nf6
+C42	Défense Petrov : variante classique	e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 d4 d5 Bd3
+C42	Défense Petrov : attaque Nimzowitsch	e4 e5 Nf3 Nf6 Nxe5 d6 Nf3 Nxe4 Nc3
+C43	Défense Petrov : attaque Steinitz	e4 e5 Nf3 Nf6 d4
+C41	Défense Philidor	e4 e5 Nf3 d6
+C41	Défense Philidor : variante Hanham	e4 e5 Nf3 d6 d4 Nd7
+C41	Défense Philidor : variante d'échange	e4 e5 Nf3 d6 d4 exd4 Nxd4 Nf6 Nc3
+C40	Contre-gambit letton	e4 e5 Nf3 f5
+C40	Contre-gambit de l'éléphant	e4 e5 Nf3 d5
+C25	Partie viennoise	e4 e5 Nc3
+C27	Partie viennoise	e4 e5 Nc3 Nf6
+C29	Partie viennoise : gambit viennois	e4 e5 Nc3 Nf6 f4
+C26	Partie viennoise : variante fianchetto	e4 e5 Nc3 Nf6 g3
+C25	Partie viennoise	e4 e5 Nc3 Nc6
+C30	Gambit du roi	e4 e5 f4
+C33	Gambit du roi accepté	e4 e5 f4 exf4
+C34	Gambit du roi accepté : gambit du cavalier	e4 e5 f4 exf4 Nf3
+C37	Gambit du roi accepté : variante Kieseritzky	e4 e5 f4 exf4 Nf3 g5 h4
+C36	Gambit du roi accepté : défense moderne	e4 e5 f4 exf4 Nf3 d5
+C33	Gambit du roi accepté : gambit du fou	e4 e5 f4 exf4 Bc4
+C30	Gambit du roi refusé : défense classique	e4 e5 f4 Bc5
+C31	Contre-gambit Falkbeer	e4 e5 f4 d5
+C23	Ouverture du fou	e4 e5 Bc4
+C24	Ouverture du fou : défense berlinoise	e4 e5 Bc4 Nf6
+C22	Partie du centre	e4 e5 d4 exd4 Qxd4
+C21	Gambit danois	e4 e5 d4 exd4 c3
+C20	Ouverture Alapin	e4 e5 Ne2
+C20	Attaque Parham	e4 e5 Qh5
+#
+# --- Défense sicilienne -----------------------------------------------------
+B20	Défense sicilienne	e4 c5
+B27	Défense sicilienne	e4 c5 Nf3
+B50	Défense sicilienne	e4 c5 Nf3 d6
+B54	Défense sicilienne : variante ouverte	e4 c5 Nf3 d6 d4 cxd4 Nxd4
+B56	Défense sicilienne : variante ouverte	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3
+B90	Défense sicilienne : variante Najdorf	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6
+B90	Défense sicilienne : Najdorf, attaque anglaise	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e5 Nb3 Be6 f3
+B90	Défense sicilienne : Najdorf, attaque anglaise	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be3 e6 f3
+B92	Défense sicilienne : Najdorf, variante Opočenský	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Be2 e5 Nb3 Be7
+B96	Défense sicilienne : Najdorf, variante principale	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5 e6 f4
+B97	Défense sicilienne : Najdorf, variante du pion empoisonné	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 Bg5 e6 f4 Qb6
+B90	Défense sicilienne : Najdorf, variante Adams	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 h3
+B93	Défense sicilienne : Najdorf, variante 6.f4	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 a6 f4
+B70	Défense sicilienne : variante du dragon	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6
+B76	Défense sicilienne : dragon, attaque yougoslave	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be3 Bg7 f3 O-O Qd2 Nc6
+B72	Défense sicilienne : dragon, variante classique	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 g6 Be2 Bg7 O-O O-O
+B80	Défense sicilienne : variante Scheveningen	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6
+B81	Défense sicilienne : Scheveningen, attaque Keres	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 g4
+B84	Défense sicilienne : Scheveningen, variante classique	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 e6 Be2 a6
+B57	Défense sicilienne : variante Sozine	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bc4
+B60	Défense sicilienne : attaque Richter-Rauzer	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6 Bg5
+B56	Défense sicilienne : variante classique	e4 c5 Nf3 d6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6
+B51	Défense sicilienne : attaque Moscou	e4 c5 Nf3 d6 Bb5+
+B52	Défense sicilienne : attaque Moscou	e4 c5 Nf3 d6 Bb5+ Bd7 Bxd7+ Qxd7
+B53	Défense sicilienne : variante Tchekhover	e4 c5 Nf3 d6 d4 cxd4 Qxd4
+B30	Défense sicilienne	e4 c5 Nf3 Nc6
+B32	Défense sicilienne : variante ouverte	e4 c5 Nf3 Nc6 d4 cxd4 Nxd4
+B33	Défense sicilienne : variante Svechnikov	e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5 Ndb5 d6
+B33	Défense sicilienne : variante Svechnikov	e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 Nf6 Nc3 e5 Ndb5 d6 Bg5 a6 Na3 b5
+B32	Défense sicilienne : variante Kalachnikov	e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 e5 Nb5 d6
+B34	Défense sicilienne : dragon accéléré	e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 g6
+B36	Défense sicilienne : dragon accéléré, étau de Maroczy	e4 c5 Nf3 Nc6 d4 cxd4 Nxd4 g6 c4
+B31	Défense sicilienne : variante Rossolimo	e4 c5 Nf3 Nc6 Bb5
+B31	Défense sicilienne : variante Rossolimo	e4 c5 Nf3 Nc6 Bb5 g6 O-O Bg7
+B30	Défense sicilienne : variante Rossolimo	e4 c5 Nf3 Nc6 Bb5 e6 O-O Nge7
+B40	Défense sicilienne	e4 c5 Nf3 e6
+B41	Défense sicilienne : variante Kan	e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6
+B42	Défense sicilienne : variante Kan	e4 c5 Nf3 e6 d4 cxd4 Nxd4 a6 Bd3
+B47	Défense sicilienne : variante Taïmanov	e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Qc7
+B45	Défense sicilienne : variante Taïmanov	e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6
+B48	Défense sicilienne : variante Taïmanov	e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nc6 Nc3 Qc7 Be3 a6
+B40	Défense sicilienne : variante des quatre cavaliers	e4 c5 Nf3 e6 d4 cxd4 Nxd4 Nf6 Nc3 Nc6
+B27	Défense sicilienne : variante Hyperaccélérée	e4 c5 Nf3 g6
+B22	Défense sicilienne : variante Alapin	e4 c5 c3
+B22	Défense sicilienne : variante Alapin	e4 c5 c3 Nf6 e5 Nd5 d4 cxd4 Nf3
+B22	Défense sicilienne : variante Alapin	e4 c5 c3 d5 exd5 Qxd5 d4
+B23	Défense sicilienne : variante fermée	e4 c5 Nc3
+B25	Défense sicilienne : variante fermée	e4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 d3 d6
+B23	Défense sicilienne : attaque Grand Prix	e4 c5 Nc3 Nc6 f4
+B21	Défense sicilienne : gambit Smith-Morra	e4 c5 d4 cxd4 c3
+B21	Défense sicilienne : gambit Smith-Morra accepté	e4 c5 d4 cxd4 c3 dxc3 Nxc3
+B20	Défense sicilienne : gambit de l'aile	e4 c5 b4
+#
+# --- Défense française ------------------------------------------------------
+C00	Défense française	e4 e6
+C00	Défense française	e4 e6 d4 d5
+C02	Défense française : variante d'avance	e4 e6 d4 d5 e5
+C02	Défense française : variante d'avance	e4 e6 d4 d5 e5 c5 c3 Nc6 Nf3 Qb6
+C01	Défense française : variante d'échange	e4 e6 d4 d5 exd5 exd5
+C03	Défense française : variante Tarrasch	e4 e6 d4 d5 Nd2
+C07	Défense française : Tarrasch, variante ouverte	e4 e6 d4 d5 Nd2 c5
+C05	Défense française : Tarrasch, variante fermée	e4 e6 d4 d5 Nd2 Nf6 e5 Nfd7
+C04	Défense française : Tarrasch, variante Guimard	e4 e6 d4 d5 Nd2 Nc6
+C10	Défense française : variante Rubinstein	e4 e6 d4 d5 Nc3 dxe4 Nxe4
+C11	Défense française : variante classique	e4 e6 d4 d5 Nc3 Nf6
+C11	Défense française : variante Steinitz	e4 e6 d4 d5 Nc3 Nf6 e5 Nfd7 f4 c5 Nf3 Nc6 Be3
+C13	Défense française : variante classique	e4 e6 d4 d5 Nc3 Nf6 Bg5 Be7
+C12	Défense française : variante MacCutcheon	e4 e6 d4 d5 Nc3 Nf6 Bg5 Bb4
+C15	Défense française : variante Winawer	e4 e6 d4 d5 Nc3 Bb4
+C18	Défense française : Winawer, variante principale	e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3 Ne7
+C18	Défense française : Winawer, variante du pion empoisonné	e4 e6 d4 d5 Nc3 Bb4 e5 c5 a3 Bxc3+ bxc3 Ne7 Qg4
+C00	Défense française : attaque est-indienne	e4 e6 d3
+#
+# --- Caro-Kann --------------------------------------------------------------
+B10	Défense Caro-Kann	e4 c6
+B12	Défense Caro-Kann	e4 c6 d4 d5
+B12	Défense Caro-Kann : variante d'avance	e4 c6 d4 d5 e5
+B12	Défense Caro-Kann : variante d'avance	e4 c6 d4 d5 e5 Bf5 Nf3 e6 Be2
+B12	Défense Caro-Kann : variante d'avance, attaque Van der Wiel	e4 c6 d4 d5 e5 Bf5 Nc3
+B13	Défense Caro-Kann : variante d'échange	e4 c6 d4 d5 exd5 cxd5 Bd3
+B14	Défense Caro-Kann : attaque Panov	e4 c6 d4 d5 exd5 cxd5 c4
+B18	Défense Caro-Kann : variante classique	e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5
+B19	Défense Caro-Kann : variante classique	e4 c6 d4 d5 Nc3 dxe4 Nxe4 Bf5 Ng3 Bg6 h4 h6 Nf3 Nd7
+B17	Défense Caro-Kann : variante Steinitz	e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nd7
+B15	Défense Caro-Kann : variante Bronstein-Larsen	e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Nxf6+ gxf6
+B11	Défense Caro-Kann : variante des deux cavaliers	e4 c6 Nc3 d5 Nf3
+B10	Défense Caro-Kann : attaque est-indienne	e4 c6 d3
+#
+# --- Autres réponses à 1.e4 -------------------------------------------------
+B01	Défense scandinave	e4 d5
+B01	Défense scandinave	e4 d5 exd5 Qxd5
+B01	Défense scandinave : variante principale	e4 d5 exd5 Qxd5 Nc3 Qa5
+B01	Défense scandinave : variante Gubinsky-Melts	e4 d5 exd5 Qxd5 Nc3 Qd6
+B01	Défense scandinave : variante moderne	e4 d5 exd5 Nf6
+B07	Défense Pirc	e4 d6 d4 Nf6 Nc3 g6
+B09	Défense Pirc : attaque autrichienne	e4 d6 d4 Nf6 Nc3 g6 f4
+B08	Défense Pirc : système classique	e4 d6 d4 Nf6 Nc3 g6 Nf3 Bg7 Be2
+B07	Défense Pirc : attaque 150	e4 d6 d4 Nf6 Nc3 g6 Be3 c6 Qd2
+B06	Défense moderne	e4 g6
+B06	Défense moderne	e4 g6 d4 Bg7 Nc3 d6
+B02	Défense Alekhine	e4 Nf6
+B03	Défense Alekhine : attaque des quatre pions	e4 Nf6 e5 Nd5 d4 d6 c4 Nb6 f4
+B04	Défense Alekhine : variante moderne	e4 Nf6 e5 Nd5 d4 d6 Nf3
+B03	Défense Alekhine : variante d'échange	e4 Nf6 e5 Nd5 d4 d6 c4 Nb6 exd6
+B00	Défense Nimzowitsch	e4 Nc6
+B00	Défense Owen	e4 b6
+B00	Défense St. George	e4 a6
+#
+# --- 1.d4 d5 ----------------------------------------------------------------
+D00	Partie du pion dame	d4 d5
+D02	Partie du pion dame	d4 d5 Nf3
+D02	Système de Londres	d4 d5 Nf3 Nf6 Bf4
+D00	Système de Londres	d4 d5 Bf4
+D00	Système de Londres	d4 d5 Bf4 Nf6 e3 c5 c3 Nc6 Nd2
+D05	Système Colle	d4 d5 Nf3 Nf6 e3 e6 Bd3
+D00	Attaque Veresov	d4 d5 Nc3 Nf6 Bg5
+D00	Gambit Blackmar-Diemer	d4 d5 e4 dxe4 Nc3
+D03	Attaque Torre	d4 d5 Nf3 Nf6 Bg5
+D06	Gambit dame	d4 d5 c4
+D20	Gambit dame accepté	d4 d5 c4 dxc4
+D27	Gambit dame accepté : variante classique	d4 d5 c4 dxc4 Nf3 Nf6 e3 e6 Bxc4 c5
+D20	Gambit dame accepté : variante centrale	d4 d5 c4 dxc4 e4
+D30	Gambit dame refusé	d4 d5 c4 e6
+D35	Gambit dame refusé	d4 d5 c4 e6 Nc3 Nf6
+D37	Gambit dame refusé : variante 5.Bf4	d4 d5 c4 e6 Nc3 Nf6 Nf3 Be7 Bf4
+D53	Gambit dame refusé : variante orthodoxe	d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7
+D63	Gambit dame refusé : variante orthodoxe	d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 Nbd7 Rc1
+D58	Gambit dame refusé : système Tartakover	d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4 b6
+D56	Gambit dame refusé : défense Lasker	d4 d5 c4 e6 Nc3 Nf6 Bg5 Be7 e3 O-O Nf3 h6 Bh4 Ne4
+D35	Gambit dame refusé : variante d'échange	d4 d5 c4 e6 Nc3 Nf6 cxd5 exd5 Bg5
+D38	Gambit dame refusé : variante Ragozine	d4 d5 c4 e6 Nc3 Nf6 Nf3 Bb4
+D32	Gambit dame refusé : défense Tarrasch	d4 d5 c4 e6 Nc3 c5
+D34	Gambit dame refusé : défense Tarrasch	d4 d5 c4 e6 Nc3 c5 cxd5 exd5 Nf3 Nc6 g3
+D31	Gambit dame refusé : défense semi-slave	d4 d5 c4 e6 Nc3 c6
+D41	Gambit dame refusé : défense semi-Tarrasch	d4 d5 c4 e6 Nc3 Nf6 Nf3 c5 cxd5 Nxd5
+D10	Défense slave	d4 d5 c4 c6
+D11	Défense slave	d4 d5 c4 c6 Nf3 Nf6
+D15	Défense slave	d4 d5 c4 c6 Nf3 Nf6 Nc3
+D17	Défense slave : variante tchèque	d4 d5 c4 c6 Nf3 Nf6 Nc3 dxc4 a4 Bf5
+D15	Défense slave : variante Chebanenko	d4 d5 c4 c6 Nf3 Nf6 Nc3 a6
+D13	Défense slave : variante d'échange	d4 d5 c4 c6 cxd5 cxd5
+D11	Défense slave : variante avec e3	d4 d5 c4 c6 Nf3 Nf6 e3 Bf5
+D43	Défense semi-slave	d4 d5 c4 c6 Nf3 Nf6 Nc3 e6
+D45	Défense semi-slave : variante Meran	d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Bd3 dxc4 Bxc4 b5
+D44	Défense semi-slave : variante Botvinnik	d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 Bg5 dxc4 e4 b5
+D43	Défense semi-slave : variante de Moscou	d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 Bg5 h6
+D45	Défense semi-slave : anti-Meran	d4 d5 c4 c6 Nf3 Nf6 Nc3 e6 e3 Nbd7 Qc2
+D07	Défense Tchigorine	d4 d5 c4 Nc6
+D08	Contre-gambit Albin	d4 d5 c4 e5
+D00	Partie du pion dame : attaque Stonewall	d4 d5 e3 Nf6 Bd3
+#
+# --- 1.d4 Nf6 : défenses indiennes -----------------------------------------
+A45	Défense indienne	d4 Nf6
+A46	Défense indienne	d4 Nf6 Nf3
+A46	Défense indienne : système de Londres	d4 Nf6 Nf3 e6 Bf4
+A48	Défense indienne : système de Londres	d4 Nf6 Nf3 g6 Bf4
+A46	Défense indienne : attaque Torre	d4 Nf6 Nf3 e6 Bg5
+A45	Attaque Trompowsky	d4 Nf6 Bg5
+A45	Attaque Trompowsky	d4 Nf6 Bg5 Ne4
+A45	Attaque Trompowsky	d4 Nf6 Bg5 e6 e4
+A50	Défense indienne	d4 Nf6 c4
+E20	Défense nimzo-indienne	d4 Nf6 c4 e6 Nc3 Bb4
+E32	Défense nimzo-indienne : variante classique	d4 Nf6 c4 e6 Nc3 Bb4 Qc2
+E34	Défense nimzo-indienne : variante classique	d4 Nf6 c4 e6 Nc3 Bb4 Qc2 d5
+E32	Défense nimzo-indienne : variante classique	d4 Nf6 c4 e6 Nc3 Bb4 Qc2 O-O a3 Bxc3+ Qxc3
+E40	Défense nimzo-indienne : variante Rubinstein	d4 Nf6 c4 e6 Nc3 Bb4 e3
+E46	Défense nimzo-indienne : variante Rubinstein	d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O
+E48	Défense nimzo-indienne : variante Rubinstein	d4 Nf6 c4 e6 Nc3 Bb4 e3 O-O Bd3 d5
+E43	Défense nimzo-indienne : variante Fischer	d4 Nf6 c4 e6 Nc3 Bb4 e3 b6
+E21	Défense nimzo-indienne : variante des trois cavaliers	d4 Nf6 c4 e6 Nc3 Bb4 Nf3
+E24	Défense nimzo-indienne : variante Sämisch	d4 Nf6 c4 e6 Nc3 Bb4 a3 Bxc3+ bxc3
+E30	Défense nimzo-indienne : variante Leningrad	d4 Nf6 c4 e6 Nc3 Bb4 Bg5
+E20	Défense nimzo-indienne : variante Kmoch	d4 Nf6 c4 e6 Nc3 Bb4 f3
+E12	Défense ouest-indienne	d4 Nf6 c4 e6 Nf3 b6
+E15	Défense ouest-indienne : variante fianchetto	d4 Nf6 c4 e6 Nf3 b6 g3
+E15	Défense ouest-indienne : variante Nimzowitsch	d4 Nf6 c4 e6 Nf3 b6 g3 Ba6
+E12	Défense ouest-indienne : variante Petrossian	d4 Nf6 c4 e6 Nf3 b6 a3
+E11	Défense bogo-indienne	d4 Nf6 c4 e6 Nf3 Bb4+
+E11	Défense bogo-indienne	d4 Nf6 c4 e6 Nf3 Bb4+ Bd2 Qe7
+E10	Défense indienne	d4 Nf6 c4 e6 Nf3
+E01	Ouverture catalane	d4 Nf6 c4 e6 g3
+E04	Ouverture catalane : variante ouverte	d4 Nf6 c4 e6 g3 d5 Bg2 dxc4
+E04	Ouverture catalane : variante ouverte	d4 Nf6 c4 e6 g3 d5 Nf3 dxc4 Bg2
+E06	Ouverture catalane : variante fermée	d4 Nf6 c4 e6 g3 d5 Bg2 Be7 Nf3 O-O O-O
+E06	Ouverture catalane : variante fermée	d4 Nf6 c4 e6 g3 d5 Nf3 Be7 Bg2 O-O O-O
+E60	Défense est-indienne	d4 Nf6 c4 g6
+E61	Défense est-indienne	d4 Nf6 c4 g6 Nc3 Bg7
+E70	Défense est-indienne	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6
+E90	Défense est-indienne : variante classique	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O
+E92	Défense est-indienne : variante classique	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5
+E97	Défense est-indienne : variante Mar del Plata	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7
+E94	Défense est-indienne : variante orthodoxe	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nbd7
+E92	Défense est-indienne : variante Petrossian	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 d5 a5
+E80	Défense est-indienne : variante Sämisch	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3
+E81	Défense est-indienne : variante Sämisch	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f3 O-O Be3
+E76	Défense est-indienne : attaque des quatre pions	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 f4
+E73	Défense est-indienne : variante Averbakh	d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Be2 O-O Bg5
+E62	Défense est-indienne : variante fianchetto	d4 Nf6 c4 g6 Nf3 Bg7 g3 O-O Bg2 d6 O-O
+D80	Défense Grünfeld	d4 Nf6 c4 g6 Nc3 d5
+D85	Défense Grünfeld : variante d'échange	d4 Nf6 c4 g6 Nc3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 Bg7
+D87	Défense Grünfeld : variante d'échange, système classique	d4 Nf6 c4 g6 Nc3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 Bg7 Bc4
+D85	Défense Grünfeld : variante d'échange moderne	d4 Nf6 c4 g6 Nc3 d5 cxd5 Nxd5 e4 Nxc3 bxc3 Bg7 Nf3 c5 Rb1
+D97	Défense Grünfeld : système russe	d4 Nf6 c4 g6 Nc3 d5 Nf3 Bg7 Qb3 dxc4 Qxc4 O-O e4
+D91	Défense Grünfeld : variante 5.Bg5	d4 Nf6 c4 g6 Nc3 d5 Nf3 Bg7 Bg5
+D82	Défense Grünfeld : variante 4.Bf4	d4 Nf6 c4 g6 Nc3 d5 Bf4
+A56	Défense Benoni	d4 Nf6 c4 c5
+A60	Défense Benoni moderne	d4 Nf6 c4 c5 d5 e6
+A70	Défense Benoni moderne : variante classique	d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6 e4 g6 Nf3 Bg7
+A65	Défense Benoni moderne : variante 6.e4	d4 Nf6 c4 c5 d5 e6 Nc3 exd5 cxd5 d6 e4
+A57	Gambit Benko	d4 Nf6 c4 c5 d5 b5
+A58	Gambit Benko accepté	d4 Nf6 c4 c5 d5 b5 cxb5 a6 bxa6
+A57	Gambit Benko : variante 5.e3	d4 Nf6 c4 c5 d5 b5 cxb5 a6 e3
+A56	Défense Benoni tchèque	d4 Nf6 c4 c5 d5 e5
+A51	Gambit de Budapest	d4 Nf6 c4 e5
+A52	Gambit de Budapest	d4 Nf6 c4 e5 dxe5 Ng4
+A53	Vieille défense indienne	d4 Nf6 c4 d6
+A55	Vieille défense indienne	d4 Nf6 c4 d6 Nc3 Nbd7 e4 e5 Nf3
+#
+# --- Autres réponses à 1.d4 -------------------------------------------------
+A80	Défense hollandaise	d4 f5
+A87	Défense hollandaise : variante Leningrad	d4 f5 c4 Nf6 g3 g6 Bg2 Bg7 Nf3 O-O
+A90	Défense hollandaise : variante Stonewall	d4 f5 c4 Nf6 g3 e6 Bg2 d5
+A96	Défense hollandaise : variante classique	d4 f5 c4 Nf6 g3 e6 Bg2 Be7 Nf3 O-O O-O d6
+A83	Défense hollandaise : gambit Staunton	d4 f5 e4
+A40	Défense moderne	d4 g6
+A41	Partie du pion dame	d4 d6
+A40	Défense anglaise	d4 e6 c4 b6
+A43	Vieille défense Benoni	d4 c5
+A40	Défense Englund	d4 e5
+#
+# --- Ouverture anglaise -----------------------------------------------------
+A10	Ouverture anglaise	c4
+A20	Ouverture anglaise : défense sicilienne inversée	c4 e5
+A22	Ouverture anglaise : défense sicilienne inversée	c4 e5 Nc3 Nf6
+A25	Ouverture anglaise : sicilienne inversée fermée	c4 e5 Nc3 Nc6 g3 g6 Bg2 Bg7
+A28	Ouverture anglaise : variante des quatre cavaliers	c4 e5 Nc3 Nf6 Nf3 Nc6
+A29	Ouverture anglaise : quatre cavaliers, fianchetto	c4 e5 Nc3 Nf6 Nf3 Nc6 g3
+A22	Ouverture anglaise : variante Bremen	c4 e5 Nc3 Nf6 g3
+A30	Ouverture anglaise : variante symétrique	c4 c5
+A34	Ouverture anglaise : variante symétrique	c4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7
+A35	Ouverture anglaise : symétrique, variante des quatre cavaliers	c4 c5 Nc3 Nc6 Nf3 Nf6
+A36	Ouverture anglaise : symétrique, système Botvinnik	c4 c5 Nc3 Nc6 g3 g6 Bg2 Bg7 e4
+A15	Ouverture anglaise : défense anglo-indienne	c4 Nf6
+A16	Ouverture anglaise : anglo-Grünfeld	c4 Nf6 Nc3 d5 cxd5 Nxd5
+A17	Ouverture anglaise : anglo-indienne	c4 Nf6 Nc3 e6
+A18	Ouverture anglaise : variante Mikenas-Carls	c4 Nf6 Nc3 e6 e4
+A15	Ouverture anglaise : anglo-indienne, fianchetto	c4 Nf6 Nf3 g6 g3 Bg7 Bg2 O-O O-O
+A13	Ouverture anglaise : variante Agincourt	c4 e6
+A11	Ouverture anglaise : défense Caro-Kann	c4 c6
+A10	Ouverture anglaise : défense hollandaise	c4 f5
+#
+# --- 1.Nf3 et ouvertures de flanc -------------------------------------------
+A04	Ouverture Réti	Nf3
+A06	Ouverture Réti	Nf3 d5
+A09	Ouverture Réti : gambit Réti	Nf3 d5 c4
+A09	Ouverture Réti : gambit Réti accepté	Nf3 d5 c4 dxc4
+A07	Attaque est-indienne inversée	Nf3 d5 g3
+A07	Attaque est-indienne inversée	Nf3 d5 g3 Nf6 Bg2 c6 O-O Bg4
+A05	Ouverture Réti	Nf3 Nf6
+A05	Ouverture Réti : attaque est-indienne	Nf3 Nf6 g3 g6 Bg2 Bg7 O-O O-O d3
+A04	Ouverture Réti : défense sicilienne	Nf3 c5
+A04	Ouverture Réti : défense hollandaise	Nf3 f5
+A01	Ouverture Larsen	b3
+A01	Ouverture Larsen	b3 e5 Bb2 Nc6
+A02	Ouverture Bird	f4
+A03	Ouverture Bird	f4 d5
+A02	Ouverture Bird : gambit From	f4 e5
+A00	Ouverture Sokolsky	b4
+A00	Ouverture hongroise	g3
+A00	Ouverture hongroise	g3 d5 Bg2
+A00	Ouverture van Geet	Nc3
+A00	Ouverture van Geet	Nc3 d5 e4
+A00	Ouverture Saragosse	c3
+A00	Ouverture Mieses	d3
+A00	Ouverture Anderssen	a3
+A00	Ouverture Grob	g4

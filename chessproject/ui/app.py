@@ -27,7 +27,7 @@ import pygame as p
 
 from chessproject import __version__, paths, serialization
 from chessproject import settings as settings_module
-from chessproject.ai import levels, search
+from chessproject.ai import book, levels, search
 from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation, pgn
 from chessproject.settings import Settings
@@ -53,6 +53,10 @@ DIMENSION = engine.DIMENSION
 MAX_FPS = 60
 # Garde-fous du processus d'IA (B33) : au-delà, il est arrêté et un coup de repli est joué.
 AI_MAX_THINK_SECONDS = 30.0
+# Pause avant un coup du livre d'ouvertures (J8.3), pour que l'IA ne réponde pas
+# instantanément ; plus courte avec une pendule, le temps étant décompté.
+BOOK_MOVE_DELAY_SECONDS = 0.45
+BOOK_MOVE_DELAY_CLOCK_SECONDS = 0.15
 AI_RESULT_TIMEOUT_SECONDS = 1.0
 # Surcoût d'un coup de l'IA hors réflexion (lancement du processus, transmission du
 # résultat, dépassement de l'échéance) : estimé au départ, puis mesuré en jeu.
@@ -286,6 +290,7 @@ class GameController:
         self.ai_started_at = 0.0
         self.ai_overhead_ms = AI_INITIAL_OVERHEAD_MS
         self._ai_requested_ms = None
+        self._ai_book_move: engine.Move | None = None  # coup du livre en attente
         self.ai_level = level or levels.DEFAULT_LEVEL.name
         self.move_finder_process: Any = None
         self.return_queue: Any = None
@@ -375,9 +380,10 @@ class GameController:
         self._right_start = self._right_end = None
 
     def _stop_ai(self):
-        if self.ai_thinking and self.move_finder_process:
+        if self.ai_thinking and self.move_finder_process and self._ai_book_move is None:
             self.move_finder_process.terminate()
         self.ai_thinking = False
+        self._ai_book_move = None
 
     def _notify(self, text, kind="info"):
         self.notice = (text, kind, self._now_ms() + NOTICE_MS)
@@ -800,6 +806,9 @@ class GameController:
         }
         if not self.time_control.is_unlimited:
             headers["TimeControl"] = self.time_control.pgn_tag
+        opening = book.identify(self.game_state)
+        if opening is not None:
+            headers["ECO"], headers["Opening"] = opening.eco, opening.name
         text = pgn.export_pgn(self.game_state, result=self.result, headers=headers)
         path = paths.pgn_file()
         try:
@@ -893,21 +902,25 @@ class GameController:
         if not self.ai_thinking:
             self.ai_thinking = True
             self.ai_started_at = time.monotonic()
-            self._ai_requested_ms = self._ai_think_time_ms()
-            self.return_queue = Queue()
-            # daemon : le processus est tué avec l'application au lieu d'être attendu.
-            self.move_finder_process = Process(
-                target=search.find_best_move,
-                args=(
-                    self.game_state,
-                    valid_moves,
-                    self.return_queue,
-                    self.ai_level,
-                    self._ai_requested_ms,
-                ),
-                daemon=True,
+            # Livre d'ouvertures (J8.3) : lu ici, sans lancer de processus de recherche.
+            self._ai_book_move = levels.book_choice(
+                self.game_state, levels.LEVELS_BY_NAME[self.ai_level]
             )
-            self.move_finder_process.start()
+            if self._ai_book_move is None:
+                self._start_ai_search(valid_moves)
+        if self._ai_book_move is not None:
+            delay = (
+                BOOK_MOVE_DELAY_SECONDS
+                if self.chess_clock.is_unlimited
+                else BOOK_MOVE_DELAY_CLOCK_SECONDS
+            )
+            if time.monotonic() - self.ai_started_at < delay:
+                return
+            book_move, self._ai_book_move = self._ai_book_move, None
+            self.ai_thinking = False
+            self._play(book_move, animate=True)
+            logger.info("Coup du livre joué par l'IA : %s", book_move)
+            return
         if self.move_finder_process is None:
             return
         if self.move_finder_process.is_alive():
@@ -926,6 +939,23 @@ class GameController:
         self.ai_thinking = False
         self._play(ai_move, animate=True)
         logger.info("Coup joué par l'IA : %s", ai_move)
+
+    def _start_ai_search(self, valid_moves):
+        self._ai_requested_ms = self._ai_think_time_ms()
+        self.return_queue = Queue()
+        # daemon : le processus est tué avec l'application au lieu d'être attendu.
+        self.move_finder_process = Process(
+            target=search.find_best_move,
+            args=(
+                self.game_state,
+                valid_moves,
+                self.return_queue,
+                self.ai_level,
+                self._ai_requested_ms,
+            ),
+            daemon=True,
+        )
+        self.move_finder_process.start()
 
     def _ai_think_time_ms(self):
         """Plafond de réflexion de l'IA selon sa pendule (None sans cadence, J4.2)."""
@@ -1090,6 +1120,15 @@ class GameController:
             pending_arrow=pending,
         )
 
+    def _opening_label(self, state, ply):
+        """Ouverture de la position affichée (« B90 · Défense sicilienne… »), ou None."""
+        key = (self._key(), ply)
+        if getattr(self, "_opening_key", None) != key:
+            opening = book.identify(state)
+            self._opening_key = key
+            self._opening_cache = opening.label if opening else None
+        return self._opening_cache
+
     def _eval(self, state, ply):
         key = (self._key(), ply)
         if key not in self._eval_cache:
@@ -1247,6 +1286,7 @@ class GameController:
             status=status,
             status_kind=kind,
             eval_text=eval_label,
+            opening=self._opening_label(state, ply),
             can_undo=bool(self.game_state.move_log),
             can_draw=can_act,
             can_resign=can_act,

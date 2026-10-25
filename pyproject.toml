@@ -45,6 +45,7 @@ chessproject = [
     "assets/fonts/OFL.txt",
     "assets/sounds/*.wav",
     "assets/icon.png",
+    "assets/openings.tsv",
 ]
 
 # --------------------------------------------------------------------------

@@ -14,7 +14,10 @@ Commandes reconnues :
   coups par ``core.notation.parse_uci``) ;
 - ``go`` avec ``depth N``, ``movetime MS``, ``wtime/btime/winc/binc/movestogo``,
   ``infinite`` → ``bestmove <uci>`` (``bestmove 0000`` s'il n'existe aucun coup légal) ;
-- ``stop``, ``quit``.
+- ``stop``, ``quit`` ;
+- ``setoption name Level value <niveau>`` (``Max`` : pleine force, limites de ``go``) et
+  ``setoption name OwnBook value true|false`` (livre d'ouvertures, désactivé par
+  défaut : les outils de mesure évaluent la recherche seule).
 
 Toute entrée invalide est ignorée et signalée par une ligne ``info string ...`` : le
 programme ne s'arrête jamais sur une erreur de l'interface. Chaque écriture est suivie
@@ -35,7 +38,7 @@ import contextlib
 import sys
 from typing import TextIO
 
-from chessproject.ai import levels, search
+from chessproject.ai import book, levels, search
 from chessproject.ai.search import SearchLimits, SearchResult
 from chessproject.core.engine import GameState, Move
 from chessproject.core.fen import FenError, load_fen
@@ -75,18 +78,24 @@ def _think(
     movetime_ms: int | None,
     nodes: int | None = None,
     level: levels.Level | None = None,
+    own_book: bool = False,
 ) -> tuple[Move | None, SearchResult | None]:
     """Unique point d'entrée vers l'IA : coup choisi (None sans coup légal) et, hors
     niveau de difficulté, le résultat détaillé de la recherche.
 
     Avec ``level`` (option UCI ``Level``), l'IA joue à ce niveau (temps et bruit du
     niveau). Sinon, recherche limitée par ``depth`` / ``movetime_ms`` / ``nodes`` ; sans
-    aucune limite, profondeur par défaut de l'IA.
+    aucune limite, profondeur par défaut de l'IA. Avec ``own_book``, un coup du livre est
+    joué tant que la position y figure (dans la limite du niveau, s'il y en a un).
     """
     if not game_state.get_valid_moves():
         return None, None
     if level is not None:
-        return levels.choose_move(game_state, level), None
+        return levels.choose_move(game_state, level, use_book=own_book), None
+    if own_book:
+        move = book.book_move(game_state)
+        if move is not None:
+            return move, None
     if depth is None and movetime_ms is None and nodes is None:
         depth = search.DEPTH
     result = search.think(
@@ -105,6 +114,7 @@ class UciEngine:
         self.pending_info: str | None = None  # ligne info retenue avec le bestmove (infinite)
         # Niveau de difficulté (option UCI Level) ; None = pleine force, limites de go.
         self.level: levels.Level | None = None
+        self.own_book = False
 
     # -- sortie -----------------------------------------------------------
     def send(self, line: str) -> None:
@@ -141,6 +151,7 @@ class UciEngine:
                     f"option name Level type combo default {FULL_STRENGTH} "
                     f"var {FULL_STRENGTH} {names}"
                 )
+                self.send("option name OwnBook type check default false")
                 self.send("uciok")
             elif command == "isready":
                 self.send("readyok")
@@ -195,16 +206,22 @@ class UciEngine:
         self.game_state = game_state
 
     def _setoption(self, args: list[str]) -> None:
-        # setoption name <nom> [value <valeur>] ; seule l'option Level est reconnue.
+        # setoption name <nom> [value <valeur>] ; options Level et OwnBook.
         text = " ".join(args)
         if not text.startswith("name "):
             self.info(f"setoption mal formé : {text}")
             return
         name, _, value = text[len("name ") :].partition(" value ")
+        value = value.strip()
+        if name.strip().lower() == "ownbook":
+            if value.lower() in ("true", "false"):
+                self.own_book = value.lower() == "true"
+            else:
+                self.info(f"OwnBook : true ou false attendu : {value!r}")
+            return
         if name.strip().lower() != "level":
             self.info(f"option inconnue ignorée : {name.strip()}")
             return
-        value = value.strip()
         if value == FULL_STRENGTH:
             self.level = None
         elif value in levels.LEVELS_BY_NAME:
@@ -253,7 +270,9 @@ class UciEngine:
         if infinite:
             depth, movetime = None, None
 
-        move, result = _think(self.game_state, depth, movetime, params.get("nodes"), self.level)
+        move, result = _think(
+            self.game_state, depth, movetime, params.get("nodes"), self.level, self.own_book
+        )
         info: str | None = None
         if result is not None and result.move is not None:
             pv = " ".join(to_uci(m) for m in result.pv)

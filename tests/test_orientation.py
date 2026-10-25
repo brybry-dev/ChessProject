@@ -6,6 +6,7 @@ position standard et la vue applique une rotation de 180° (rangées et colonnes
 
 import os
 import unittest
+from unittest import mock
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -23,6 +24,17 @@ from chessproject.core import engine
 from chessproject.ui import app
 
 START_BOARD = engine.GameState().board
+
+# L'IA doit passer par son processus de recherche : livre d'ouvertures neutralisé (J8.3).
+_no_book = mock.patch.object(app.levels, "book_choice", return_value=None)
+
+
+def setUpModule():
+    _no_book.start()
+
+
+def tearDownModule():
+    _no_book.stop()
 
 
 BOARD = p.Rect(100, 60, 512, 512)
