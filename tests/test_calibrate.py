@@ -24,6 +24,8 @@ def test_parse_rung_accepts_names_and_specs() -> None:
     assert rung.command.endswith("--level Facile")
     custom = calibrate.parse_rung("base=Moyen,nodes=3000")
     assert custom.level.max_nodes == 3000
+    assert custom.label == "Moyen*"
+    assert calibrate.parse_rung("name=M2,base=Moyen").label == "M2"
     assert custom.command.endswith("--level-spec base=Moyen,nodes=3000")
     with pytest.raises(ValueError):
         calibrate.parse_rung("Inconnu")

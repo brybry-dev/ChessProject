@@ -50,14 +50,18 @@ _SATURATED_ELO = 800.0
 
 @dataclass
 class Rung:
-    label: str
+    spec: str  # nom de niveau ou description --level-spec, telle que donnée
     level: levels.Level
 
     @property
+    def label(self) -> str:
+        return self.level.name
+
+    @property
     def command(self) -> str:
-        if self.label in levels.LEVELS_BY_NAME:
-            return f"{ENGINE} --level {shlex.quote(self.label)}"
-        return f"{ENGINE} --level-spec {shlex.quote(self.label)}"
+        if self.spec in levels.LEVELS_BY_NAME:
+            return f"{ENGINE} --level {shlex.quote(self.spec)}"
+        return f"{ENGINE} --level-spec {shlex.quote(self.spec)}"
 
 
 @dataclass
@@ -220,7 +224,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json:
         payload = {
             "games_per_pair": args.games,
-            "rungs": [{"label": r.label, "level": asdict(r.level)} for r in rungs],
+            "rungs": [{"spec": r.spec, "level": asdict(r.level)} for r in rungs],
             "pairs": [asdict(p) for p in pairs],
             "ratings": [asdict(r) for r in ratings],
         }
