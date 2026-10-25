@@ -853,6 +853,20 @@ J0 à J6 sont réalisés et fusionnés. Le même principe s'applique pour la sui
 | J8.2 | Elo de chaque niveau contre Stockfish bridé (`UCI_LimitStrength`), affiché dans l'écran « Nouvelle partie » | Elo publié avec intervalle de confiance | M |
 | J8.3 | Petit livre d'ouvertures (quelques centaines de lignes) et nom de l'ouverture dans l'historique | L'IA varie ses débuts ; nom affiché pour les ouvertures courantes | M |
 
+**Plan détaillé (2026-10-25).** Mesures de départ : environ 10 à 13 k nœuds/s sur la
+machine de développement (8 cœurs) ; Stockfish 19 accepte `UCI_Elo` de 1320 à 3190.
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J8.0 | Outillage de calibration. Budget de **nœuds** par niveau (`Level.max_nodes`) : la force ne dépend plus de la vitesse de la machine ni du nombre de parties en parallèle, le temps reste un plafond. `--level-spec` pour le moteur UCI (essayer un réglage sans toucher au code). Options UCI par moteur dans `tools/match.py` (`--option-b UCI_Elo=1500`). `tools/calibrate.py` : échelle des niveaux voisins, Elo chaîné avec intervalle de confiance, sortie JSON | Tests unitaires des nouveaux paramètres et du chaînage des intervalles | S |
+| J8.1 | Recalibrage par itérations sur l'échelle (100 parties par paire) : budgets de nœuds, profondeur, bruit et erreurs. Expert reste la pleine force ; l'écart total se resserre (environ 4 × 150 Elo au lieu de plus de 2 000) | 60 à 75 % des points pour le plus fort de chaque paire voisine, résultats consignés ici | M |
+| J8.2 | Ancrage contre Stockfish bridé. Les niveaux au-dessus de 1320 sont mesurés directement, les autres par chaînage depuis l'échelle. `Level.elo` affiché sur la carte du niveau (« ≈ 1450 Elo ») ; README | Elo de chaque niveau avec IC 95 % dans ce rapport ; même chiffre dans l'interface | M |
+| J8.3 | Livre d'ouvertures : `assets/openings.tsv` (ECO, nom français, coups SAN, environ 250 lignes), `ai/book.py` (arbre des suites de coups depuis la position initiale, coup tiré au hasard pondéré par le nombre de lignes). Profondeur de livre par niveau (`Level.book_plies`), option UCI `OwnBook`. Nom de l'ouverture dans le panneau d'historique, en-têtes PGN `ECO` / `Opening` | Toutes les lignes sont légales (test) ; l'IA varie ses débuts (test statistique sur graine) ; nom affiché pour les ouvertures courantes | M |
+| J8.4 | Publication `v1.1.0` : version, CHANGELOG, README, rapport | CI verte, release créée | S |
+
+Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent des FEN de
+`tools/openings.txt`, les mesures de J8.1 et J8.2 n'en dépendent donc pas.
+
 #### J9 — v1.2 : mode analyse (2–3 j)
 
 | # | Tâche | Critère d'acceptation | Taille |
