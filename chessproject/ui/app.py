@@ -27,7 +27,7 @@ import pygame as p
 
 from chessproject import __version__, paths, serialization
 from chessproject import settings as settings_module
-from chessproject.ai import book, levels, search
+from chessproject.ai import analysis, book, levels, review, search
 from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation, pgn
 from chessproject.settings import Settings
@@ -42,6 +42,7 @@ from chessproject.ui.overlays import (
     EndGameOverlay,
     Overlay,
     PromotionPopup,
+    ReviewOverlay,
     ShortcutsOverlay,
 )
 from chessproject.ui.panel import Header, MoveRow, PanelModel, PlayerCard, SidePanel
@@ -294,6 +295,12 @@ class GameController:
         self.ai_level = level or levels.DEFAULT_LEVEL.name
         self.move_finder_process: Any = None
         self.return_queue: Any = None
+        # Variante principale de la position affichée (J9.1), en arrière-plan.
+        self.analyzer = analysis.Analyzer()
+        # Indice demandé par le joueur (J9.2) : meilleur coup de la position actuelle.
+        self.hinter = analysis.Analyzer(limits=analysis.HINT_LIMITS)
+        # Bilan de la partie (J9.3) : évaluation de chaque position, en arrière-plan.
+        self.reviewer = review.Reviewer()
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
@@ -439,6 +446,9 @@ class GameController:
     def handle_event(self, e):
         if e.type == p.QUIT:
             self._stop_ai()  # ne pas attendre la fin de la recherche (B45)
+            self.analyzer.stop()
+            self.hinter.stop()
+            self.reviewer.stop()
             p.quit()
             sys.exit()
         if self.promotion_popup:
@@ -477,6 +487,9 @@ class GameController:
                 self._navigate(action[1])
             elif kind == "goto":
                 self._view(action[1])
+            elif kind == "review_goto":
+                self.overlay = None
+                self._view(action[1])
             elif kind == "setting":
                 self.set_setting(action[1], action[2])
             return
@@ -487,6 +500,8 @@ class GameController:
             "export": self._export_pgn,
             "import": self._import_pgn,
             "flip": self._flip,
+            "hint": self._hint,
+            "game_review": self._open_review,
             "appearance": lambda: self._open(AppearanceOverlay(self.settings)),
             "shortcuts": lambda: self._open(ShortcutsOverlay()),
             "undo": self._undo,
@@ -656,6 +671,9 @@ class GameController:
             p.K_n: self._offer_draw,
             p.K_f: self._flip,
             p.K_c: lambda: self._open(AppearanceOverlay(self.settings)),
+            p.K_v: lambda: self.set_setting("show_analysis", not self.settings.show_analysis),
+            p.K_b: self._hint,
+            p.K_g: self._open_review,
             p.K_h: lambda: self._open(ShortcutsOverlay()),
             p.K_LEFT: lambda: self._navigate("prev"),
             p.K_RIGHT: lambda: self._navigate("next"),
@@ -748,6 +766,60 @@ class GameController:
     def _restart(self):
         self._new_game(engine.GameState())
         logger.info("Partie réinitialisée")
+
+    # -- indice (J9.2) -------------------------------------------------
+    def _can_hint(self):
+        if self.game_over or self.mode == "CvC" or not self.human_turn():
+            return False
+        if self.promotion_popup or self.ai_thinking:
+            return False
+        return self.mode != "PvC" or self.settings.hints_vs_ai
+
+    def _hint(self):
+        """Cherche le meilleur coup de la position actuelle ; update() le dessine."""
+        if not self._can_hint():
+            return
+        self.view_ply = None
+        self._reset_selection()
+        self.hinter.start(copy.deepcopy(self.game_state), self._key())
+
+    def _update_hint(self):
+        if self.hinter.key is None:
+            return
+        if self.hinter.key != self._key() or not self._can_hint():
+            self.hinter.stop()  # coup joué ou annulé entre-temps : indice périmé
+            return
+        line = self.hinter.poll()
+        if self.hinter.running:
+            return
+        self.hinter.stop()
+        if line is None or not line.pv:
+            return
+        move = notation.parse_san(self.game_state, line.pv[0])
+        self.arrows.add(((move.start_row, move.start_col), (move.end_row, move.end_col)))
+        self._notify(f"Indice : {line.pv[0]}", "accent")
+        logger.info("Indice : %s", line.pv[0])
+
+    # -- bilan (J9.3) ---------------------------------------------------
+    def _open_review(self):
+        if not self.game_state.move_log:
+            self._notify("Aucun coup à analyser")
+            return
+        self.reviewer.start(self.state_at(0), list(self.game_state.move_log), self._key())
+        self._open(ReviewOverlay(self.reviewer, eval_text))
+
+    def _update_review(self):
+        if self.reviewer.key is None:
+            return
+        if self.reviewer.key != self._key():
+            self.reviewer.stop()  # coup joué ou annulé : le bilan ne correspond plus
+            return
+        self.reviewer.poll()
+
+    def _review_symbols(self):
+        """Symbole (« ?! », « ? », « ?? ») de chaque coup, si le bilan est prêt."""
+        result = self.reviewer.result() if self.reviewer.key == self._key() else None
+        return [m.symbol for m in result.moves] if result else None
 
     def _flip(self):
         self.renderer.flip_board = not self.renderer.flip_board
@@ -1033,6 +1105,9 @@ class GameController:
 
         if not frozen:
             self.update_ai()
+        self._update_analysis()
+        self._update_hint()
+        self._update_review()
 
         if (
             self.game_over
@@ -1043,6 +1118,24 @@ class GameController:
             self.overlay = self._end_game_overlay()
         if self.notice is not None and now >= self.notice[2]:
             self.notice = None
+
+    def _update_analysis(self):
+        """Analyse la position affichée tant que l'option est active (J9.1)."""
+        if not self.settings.show_analysis:
+            self.analyzer.stop()
+            return
+        ply = self.current_ply
+        self.analyzer.start(self.state_at(ply), (self._key(), ply))
+        self.analyzer.poll()
+
+    def _analysis_text(self):
+        """(variante, « +0,4 · prof. 9 ») pour le panneau, ou None."""
+        if not self.settings.show_analysis:
+            return None
+        line = self.analyzer.line
+        if line is None:
+            return ("Analyse…", "") if self.analyzer.running else None
+        return analysis.format_pv(line), f"{eval_text(line.score)} · prof. {line.depth}"
 
     def _end_game_overlay(self):
         result = self.result
@@ -1066,6 +1159,8 @@ class GameController:
         mouse = p.mouse.get_pos()
         self.screen.fill(t.bg)
         logo = self.pieces.get_image("wN", 30)
+        hint = next(b for b in self.header.buttons if b.action == "hint")
+        hint.enabled = self._can_hint() and self.hinter.key is None
         self.header.draw(self.screen, self.layout.header, t, logo, self._info_text(), mouse, now)
         state = self.state_at(self.current_ply)
         if self.layout.eval_bar is not None:
@@ -1131,6 +1226,10 @@ class GameController:
 
     def _eval(self, state, ply):
         key = (self._key(), ply)
+        # L'analyse en cours, plus profonde, remplace l'évaluation rapide (J9.1).
+        line = self.analyzer.line
+        if self.settings.show_analysis and line is not None and self.analyzer.key == key:
+            return line.score
         if key not in self._eval_cache:
             if len(self._eval_cache) > 512:
                 self._eval_cache.clear()
@@ -1213,6 +1312,9 @@ class GameController:
 
     def _move_rows(self):
         sans = self._sans()
+        symbols = self._review_symbols()
+        if symbols is not None and len(symbols) == len(sans):
+            sans = [san + symbol for san, symbol in zip(sans, symbols, strict=True)]
         rows: list[MoveRow] = []
         start_white = self.game_state.white_to_move == (len(sans) % 2 == 0)
         number = self.game_state.start_fullmove
@@ -1254,6 +1356,8 @@ class GameController:
             return f"Les {proposer} proposent la nulle · N pour accepter", "accent"
         if self.ai_thinking:
             return "L'IA réfléchit…", "info"
+        if self.hinter.key is not None:
+            return "Recherche d'un indice…", "info"
         prefix = "Échec ! " if self.game_state.king_in_check() else ""
         if self.mode == "PvC" and self.human_turn():
             return prefix + "À vous de jouer", "warning" if prefix else "accent"
@@ -1287,6 +1391,7 @@ class GameController:
             status_kind=kind,
             eval_text=eval_label,
             opening=self._opening_label(state, ply),
+            analysis=self._analysis_text(),
             can_undo=bool(self.game_state.move_log),
             can_draw=can_act,
             can_resign=can_act,
@@ -1385,6 +1490,9 @@ class App:
         if e.type == p.QUIT:
             if self.game is not None:
                 self.game._stop_ai()  # ne pas attendre la fin de la recherche (B45)
+                self.game.analyzer.stop()
+                self.game.hinter.stop()
+                self.game.reviewer.stop()
             p.quit()
             sys.exit()
         if e.type == p.VIDEORESIZE:

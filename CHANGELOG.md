@@ -5,6 +5,26 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.2.0] - 2026-10-28
+
+Mode analyse : variante principale, indice et bilan de la partie.
+
+### Ajouté
+
+- **Variante principale** (touche `V`, ou option dans « Apparence ») : le moteur analyse
+  en arrière-plan la position affichée, y compris pendant la revue de la partie. La
+  meilleure suite s'affiche au-dessus de l'historique avec son évaluation et sa
+  profondeur, et se met à jour pendant la réflexion. La barre d'évaluation reprend
+  alors ce score. Désactivée par défaut.
+- **Indice** (ampoule dans l'en-tête, touche `B`) : le meilleur coup s'affiche en
+  flèche. Option « Indices contre l'IA » pour le désactiver dans les parties contre
+  l'IA.
+- **Bilan de la partie** (bouton « Bilan » en fin de partie, touche `G`) : courbe
+  d'évaluation cliquable pour revoir une position, imprécisions `?!`, erreurs `?` et
+  gaffes `??` de chaque camp, perte moyenne par coup. Les symboles s'ajoutent aussi aux
+  coups de l'historique. Les seuils, fixés sur des parties de référence, sont
+  expliqués dans le rapport d'analyse.
+
 ## [1.1.1] - 2026-10-28
 
 ### Corrigé

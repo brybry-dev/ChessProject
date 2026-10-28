@@ -31,6 +31,7 @@ class Header:
             w.Button("load", icon="folder", variant="ghost", tooltip="Charger (L)"),
             w.Button("export", icon="download", variant="ghost", tooltip="Exporter en PGN (E)"),
             w.Button("import", icon="upload", variant="ghost", tooltip="Importer un PGN (I)"),
+            w.Button("hint", icon="bulb", variant="ghost", tooltip="Indice (B)"),
             w.Button("flip", icon="flip", variant="ghost", tooltip="Retourner l'échiquier (F)"),
             w.Button("appearance", icon="contrast", variant="ghost", tooltip="Apparence (C)"),
             w.Button("shortcuts", icon="keyboard", variant="ghost", tooltip="Raccourcis (H)"),
@@ -125,6 +126,8 @@ class PanelModel:
     status_kind: str = "info"  # info, accent, warning
     eval_text: str | None = None
     opening: str | None = None  # « ECO · nom » de l'ouverture (J8.3)
+    # Analyse (J9.1) : (variante numérotée, « +0,4 · prof. 9 »), None si désactivée.
+    analysis: tuple[str, str] | None = None
     can_undo: bool = True
     can_draw: bool = True
     can_resign: bool = True
@@ -291,6 +294,26 @@ class SidePanel:
                 w.ellipsize(model.opening, f, band.width - 32),
                 f,
                 t.muted,
+                (band.x + 16, band.centery),
+                "midleft",
+            )
+            p.draw.line(surface, t.border, (rect.x, band.bottom), (rect.right - 1, band.bottom))
+            top = band.bottom
+        if model.analysis:
+            line, info = model.analysis
+            band = p.Rect(rect.x, top, rect.width, OPENING_HEIGHT)
+            info_font = th.font(12, "medium", mono=True)
+            info_w = info_font.size(info)[0] if info else 0
+            if info:
+                w.text(
+                    surface, info, info_font, t.muted, (band.right - 16, band.centery), "midright"
+                )
+            f = th.font(12, "medium", mono=True)
+            w.text(
+                surface,
+                w.ellipsize(line, f, band.width - 32 - info_w - (12 if info else 0)),
+                f,
+                t.text,
                 (band.x + 16, band.centery),
                 "midleft",
             )

@@ -5,9 +5,11 @@ pygame au contrôleur et on vérifie l'état de la partie, pas les pixels.
 """
 
 import os
+import queue
 import random
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -24,7 +26,7 @@ except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
 from chessproject import settings as settings_module
-from chessproject.ai import levels
+from chessproject.ai import analysis, levels, review, search
 from chessproject.core import clock, engine, notation
 from chessproject.core.fen import load_fen
 from chessproject.settings import Settings
@@ -89,6 +91,7 @@ class SettingsTests(unittest.TestCase):
             theme="clair",
             board="Noyer",
             show_eval=False,
+            show_analysis=True,
             mode="PvP",
             level="Expert",
             time_control=clock.RAPID_10_5.pgn_tag,
@@ -360,6 +363,244 @@ class PanelContentTests(unittest.TestCase):
         self.assertEqual(gc._status()[0], "À vous de jouer")
         gc._notify("Partie sauvegardée", "accent")
         self.assertEqual(gc._status(), ("Partie sauvegardée", "accent"))
+
+
+class _InlineProcess:
+    """Faux multiprocessing.Process : exécute la cible au démarrage."""
+
+    def __init__(self, target, args=(), daemon=False):
+        self._target, self._args = target, args
+
+    def start(self):
+        self._target(*self._args)
+
+    def is_alive(self):
+        return False
+
+    def terminate(self):
+        pass
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class AnalysisTests(unittest.TestCase):
+    """J9.1 : variante principale de la position affichée, désactivée par défaut."""
+
+    def setUp(self):
+        self.gc = _controller()
+        self.gc.analyzer = analysis.Analyzer(
+            process=_InlineProcess, make_queue=queue.Queue, limits=search.SearchLimits(depth=2)
+        )
+        for san in ["e4", "e5", "Nf3"]:
+            self.gc.game_state.make_move(notation.parse_san(self.gc.game_state, san))
+        self.gc.move_made = True
+
+    def _analysis(self):
+        self.gc.update()
+        return self.gc._panel_model(self.gc.state_at(self.gc.current_ply)).analysis
+
+    def test_off_by_default(self):
+        self.assertFalse(Settings().show_analysis)
+        self.assertIsNone(self._analysis())
+        self.assertIsNone(self.gc.analyzer.key)
+
+    def test_v_shows_the_line_of_the_current_position(self):
+        changes: list[Settings] = []
+        self.gc.on_settings_change = changes.append
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_v))
+        self.assertTrue(changes[-1].show_analysis)
+        line, info = self._analysis()
+        self.assertTrue(line.startswith("2... "), line)  # les noirs au trait
+        self.assertIn("prof. 2", info)
+        self.gc.draw()
+
+    def test_the_evaluation_comes_from_the_analysis(self):
+        self.gc.set_setting("show_analysis", True)
+        self._analysis()
+        ply = self.gc.current_ply
+        self.gc.analyzer.line = replace(self.gc.analyzer.line, score=-321)
+        self.assertEqual(self.gc._eval(self.gc.state_at(ply), ply), -321)
+        self.gc._navigate("first")  # autre position : pas encore analysée
+        self.assertNotEqual(self.gc._eval(self.gc.state_at(0), 0), -321)
+
+    def test_the_line_follows_the_reviewed_position(self):
+        self.gc.set_setting("show_analysis", True)
+        self._analysis()
+        self.gc._navigate("first")
+        line, _ = self._analysis()
+        self.assertTrue(line.startswith("1. "), line)
+        self.assertEqual(self.gc.live_ply, 3)  # la partie n'a pas bougé
+
+    def test_turning_it_off_stops_the_analysis(self):
+        self.gc.set_setting("show_analysis", True)
+        self._analysis()
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_v))
+        self.assertIsNone(self._analysis())
+        self.assertIsNone(self.gc.analyzer.key)
+
+    def test_finished_game_has_no_line(self):
+        self.gc._new_game(load_fen("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1"))
+        self.gc.set_setting("show_analysis", True)
+        self.assertIsNone(self._analysis())
+
+
+class _IdleProcess(_InlineProcess):
+    """Faux processus qui ne rend jamais rien (recherche en cours)."""
+
+    def start(self):
+        pass
+
+    def is_alive(self):
+        return True
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class HintTests(unittest.TestCase):
+    """J9.2 : bouton « Indice », meilleur coup en flèche."""
+
+    def _controller(self, *args, process=_InlineProcess, **kwargs):
+        gc = _controller(*args, **kwargs)
+        gc.hinter = analysis.Analyzer(
+            process=process, make_queue=queue.Queue, limits=search.SearchLimits(depth=2)
+        )
+        return gc
+
+    def _hint_button(self, gc):
+        gc.draw()
+        return next(b for b in gc.header.buttons if b.action == "hint")
+
+    def test_b_draws_the_best_move_as_an_arrow(self):
+        gc = self._controller()
+        gc._new_game(load_fen("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"))
+        gc.handle_event(_event(p.KEYDOWN, key=p.K_b))
+        gc.update()
+        self.assertEqual(gc.arrows, {((7, 0), (0, 0))})  # Ra8#
+        self.assertEqual(gc._status()[0], "Indice : Ra8#")
+        self.assertEqual(gc.live_ply, 0)  # l'indice ne joue pas le coup
+
+    def test_the_header_button_asks_for_a_hint(self):
+        gc = self._controller()
+        button = self._hint_button(gc)
+        self.assertTrue(button.enabled)
+        gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=button.rect.center, button=1))
+        gc.update()
+        self.assertEqual(len(gc.arrows), 1)
+        ((start, end),) = gc.arrows
+        legal = {((m.start_row, m.start_col), (m.end_row, m.end_col)) for m in gc.valid_moves}
+        self.assertIn((start, end), legal)
+
+    def test_hint_from_the_review_comes_back_to_the_game(self):
+        gc = self._controller()
+        gc.game_state.make_move(notation.parse_san(gc.game_state, "e4"))
+        gc._navigate("first")
+        gc._hint()
+        self.assertIsNone(gc.view_ply)
+
+    def test_status_while_searching_and_a_move_cancels_the_hint(self):
+        gc = self._controller(process=_IdleProcess)
+        gc._hint()
+        gc.update()
+        self.assertEqual(gc._status()[0], "Recherche d'un indice…")
+        gc.game_state.make_move(notation.parse_san(gc.game_state, "e4"))
+        gc.move_made = True
+        gc.update()
+        self.assertIsNone(gc.hinter.key)
+        self.assertFalse(gc.arrows)
+        self.assertNotEqual(gc._status()[0], "Recherche d'un indice…")
+
+    def test_not_available_on_the_ai_turn_or_after_the_game(self):
+        gc = self._controller("PvC", False, True)  # l'IA a les blancs et le trait
+        self.assertFalse(gc._can_hint())
+        gc = self._controller("CvC", False, False)
+        self.assertFalse(gc._can_hint())
+        gc = self._controller()
+        gc._resign()
+        self.assertFalse(self._hint_button(gc).enabled)
+
+    def test_can_be_turned_off_against_the_ai(self):
+        gc = self._controller("PvC", True, False, settings=Settings(hints_vs_ai=False))
+        self.assertFalse(self._hint_button(gc).enabled)
+        gc.handle_event(_event(p.KEYDOWN, key=p.K_b))
+        gc.update()
+        self.assertFalse(gc.arrows)
+        self.assertIsNone(gc.hinter.key)
+        # Entre deux joueurs, l'option ne s'applique pas.
+        gc = self._controller(settings=Settings(hints_vs_ai=False))
+        self.assertTrue(gc._can_hint())
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class GameReviewTests(unittest.TestCase):
+    """J9.3 : courbe d'évaluation et bilan de la partie."""
+
+    def setUp(self):
+        self.gc = _controller()
+        self.gc.reviewer = review.Reviewer(
+            process=_InlineProcess, make_queue=queue.Queue, nodes=2000
+        )
+
+    def _play(self, sans):
+        for san in sans:
+            self.gc.game_state.make_move(notation.parse_san(self.gc.game_state, san))
+        self.gc.move_made = True
+        self.gc.update()
+
+    def test_nothing_to_review_before_the_first_move(self):
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.assertIsNone(self.gc.overlay)
+        self.assertEqual(self.gc._status()[0], "Aucun coup à analyser")
+
+    def test_end_card_opens_the_review_and_marks_the_moves(self):
+        self._play(["f3", "e5", "g4", "Qh4#"])
+        self.gc.draw()
+        self.assertIsInstance(self.gc.overlay, app.EndGameOverlay)
+        button = next(b for b in self.gc.overlay.buttons if b.action == "game_review")
+        self.gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=button.rect.center, button=1))
+        self.assertIsInstance(self.gc.overlay, app.ReviewOverlay)
+        self.gc.update()
+        result = self.gc.reviewer.result()
+        assert result is not None
+        self.assertEqual(result.white.blunders, 1)
+        rows = self.gc._move_rows()
+        self.assertEqual(rows[1].white, ("g4??", 3))
+        for theme in ("sombre", "clair"):
+            self.gc.set_setting("theme", theme)
+            self.gc.draw()
+
+    def test_clicking_the_curve_shows_that_position(self):
+        self._play(["e4", "e5", "Nf3", "Nc6"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.gc.draw()
+        chart = self.gc.overlay.chart
+        x = chart.x + chart.width // 2  # demi-coup 2 sur 4
+        self.gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=(x, chart.centery), button=1))
+        self.assertIsNone(self.gc.overlay)
+        self.assertEqual(self.gc.view_ply, 2)
+        self.assertEqual(self.gc.live_ply, 4)
+
+    def test_progress_is_drawn_while_the_review_runs(self):
+        self.gc.reviewer = review.Reviewer(process=_IdleProcess, make_queue=queue.Queue)
+        self._play(["e4"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.gc.draw()
+        self.assertEqual(self.gc._move_rows()[0].white, ("e4", 1))
+
+    def test_a_new_move_makes_the_review_stale(self):
+        self._play(["f3", "e5", "g4"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.assertEqual(self.gc._move_rows()[1].white, ("g4??", 3))
+        self.gc.overlay = None
+        self._undo_and_update()
+        self.assertEqual(
+            [(r.white, r.black) for r in self.gc._move_rows()], [(("f3", 1), ("e5", 2))]
+        )
+        self.assertIsNone(self.gc.reviewer.key)
+
+    def _undo_and_update(self):
+        self.gc._undo()
+        self.gc.update()
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
