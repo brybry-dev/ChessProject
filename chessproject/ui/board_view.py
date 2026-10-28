@@ -163,6 +163,7 @@ class BoardScene:
     arrows: Iterable[tuple[Square, Square]] = ()
     marks: Iterable[Square] = ()
     pending_arrow: tuple[Square, Square] | None = None
+    cursor: Square | None = None  # curseur de case au clavier (J12.3)
 
 
 class Renderer:
@@ -278,6 +279,12 @@ class Renderer:
         if animation:
             self._draw_animation(animation, now_ms)
         self._draw_annotations(scene)
+        if scene.cursor is not None:
+            # Cadre sombre (3:1 sur toutes les cases) et liseré clair à l'intérieur.
+            rect = self.square_rect(*scene.cursor)
+            width = max(3, size // 20)
+            p.draw.rect(self.screen, th.CURSOR, rect, width)
+            p.draw.rect(self.screen, th.CURSOR_INNER, rect.inflate(-2 * width, -2 * width), 2)
         if scene.drag and scene.drag.active:
             hover = self.square_from_pixel(scene.drag.pos)
             if hover is not None:

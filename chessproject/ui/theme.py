@@ -38,6 +38,9 @@ class Theme:
     # choisie, interrupteur, champ de saisie) : assez foncé en thème clair pour le
     # contraste non textuel de 3:1 (WCAG 1.4.11, J11.4).
     accent_ink: RGB
+    # Anneau de focus clavier (J12.2) : couleur du texte, distincte du cadre d'une
+    # option choisie (accent).
+    focus: RGB
     current: RGBA  # coup courant dans l'historique
     hover: RGBA  # survol d'un bouton discret
     scrim: RGBA  # voile derrière une fenêtre modale
@@ -59,6 +62,7 @@ THEMES: dict[str, Theme] = {
         accent=ACCENT,
         on_accent=(22, 24, 29),
         accent_ink=ACCENT,
+        focus=(236, 234, 229),
         current=(227, 169, 83, 56),
         hover=(255, 255, 255, 18),
         scrim=(10, 11, 14, 165),
@@ -76,6 +80,7 @@ THEMES: dict[str, Theme] = {
         accent=ACCENT,
         on_accent=(22, 24, 29),
         accent_ink=(158, 112, 44),
+        focus=(27, 29, 33),
         current=(227, 169, 83, 82),
         hover=(0, 0, 0, 14),
         scrim=(20, 22, 26, 120),
@@ -125,6 +130,10 @@ CHECK: RGBA = (214, 69, 65, 170)
 CHECK_RING: RGB = (92, 20, 12)  # liseré du halo d'échec, lisible sur les cases foncées
 ARROW: RGBA = (76, 139, 214, 200)
 MARK: RGBA = (76, 139, 214, 210)
+# Curseur de case au clavier (J12.3) : cadre sombre (3:1 sur toutes les cases) doublé
+# d'un liseré clair à l'intérieur.
+CURSOR: RGB = (20, 22, 26)
+CURSOR_INNER: RGB = (255, 255, 255)
 EVAL_WHITE: RGB = (236, 234, 229)
 EVAL_BLACK: RGB = (42, 45, 51)
 # Bilan de partie (J9.3) : imprécision, erreur, gaffe (palette Okabe-Ito, lisible par

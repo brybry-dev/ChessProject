@@ -21,6 +21,7 @@ from chessproject.ui.theme import Theme
 
 SHORTCUTS: list[tuple[str, str]] = [
     ("Entrée", "Taper un coup (e4, Nf3, O-O)"),
+    ("K", "Échiquier au clavier (flèches, Entrée)"),
     ("Z", "Annuler le dernier coup"),
     ("N", "Proposer / accepter la nulle"),
     ("A", "Abandonner"),
@@ -38,24 +39,42 @@ SHORTCUTS: list[tuple[str, str]] = [
     ("← →", "Coup précédent / suivant"),
     ("Orig. Fin", "Début / position actuelle"),
     ("Échap", "Annuler la sélection, fermer"),
+    ("Tab", "Fenêtres : bouton suivant (Entrée)"),
     ("Clic droit", "Flèche (glisser) ou marque"),
 ]
 
 
 class Overlay:
     pauses_clock = True
+    # Espace active le bouton qui a le focus (sauf là où il s'écrit : nom de fichier).
+    space_activates = True
 
     def __init__(self) -> None:
         self.buttons: list[w.Button] = []
         self.card = p.Rect(0, 0, 0, 0)
+        self.focus = w.Focus()
 
     def handle_event(self, e: p.event.Event):
+        """Focus clavier d'abord (J12.2) : ``Tab`` le déplace, ``Entrée`` ou ``Espace``
+        activent le bouton qui l'a ; sinon l'événement va à :meth:`on_event`."""
+        focused = self.focus.handle(e, self.buttons, self.space_activates)
+        if focused is True:
+            return None
+        if focused is not None:
+            return self.press(focused)
+        return self.on_event(e)
+
+    def press(self, button: w.Button):
+        """Effet d'un bouton, cliqué ou activé au clavier."""
+        return button.action
+
+    def on_event(self, e: p.event.Event):
         if e.type == p.KEYDOWN and e.key == p.K_ESCAPE:
             return "close"
         if e.type == p.MOUSEBUTTONDOWN and e.button == 1:
             button = w.hovered_button(self.buttons, e.pos)
             if button is not None:
-                return button.action
+                return self.press(button)
             if not self.card.collidepoint(e.pos):
                 return "close"
         return None
@@ -92,10 +111,10 @@ def _close_button(card: p.Rect) -> w.Button:
 
 # --------------------------------------------------------------------------
 class ShortcutsOverlay(Overlay):
-    def handle_event(self, e):
+    def on_event(self, e):
         if e.type == p.KEYDOWN and e.key in (p.K_h, p.K_RETURN):
             return "close"
-        return super().handle_event(e)
+        return super().on_event(e)
 
     def draw(self, surface, t, mouse, now_ms):
         rows = (len(SHORTCUTS) + 1) // 2
@@ -145,10 +164,10 @@ class AppearanceOverlay(Overlay):
         super().__init__()
         self.settings = settings
 
-    def handle_event(self, e):
+    def on_event(self, e):
         if e.type == p.KEYDOWN and e.key in (p.K_c, p.K_RETURN):
             return "close"
-        return super().handle_event(e)
+        return super().on_event(e)
 
     def draw(self, surface, t, mouse, now_ms):
         s = self.settings
@@ -244,10 +263,10 @@ class ConfirmOverlay(Overlay):
         self.title, self.message = title, message
         self.confirm_label, self.action = confirm_label, action
 
-    def handle_event(self, e):
+    def on_event(self, e):
         if e.type == p.KEYDOWN and e.key in (p.K_RETURN, p.K_KP_ENTER):
             return self.action
-        return super().handle_event(e)
+        return super().on_event(e)
 
     def draw(self, surface, t, mouse, now_ms):
         self._frame(surface, t, (460, 210))
@@ -275,12 +294,12 @@ class EndGameOverlay(Overlay):
         self.title, self.subtitle, self.piece, self.pieces = title, subtitle, piece, pieces
         self.description = description  # motif de fin seul (``GameResult.description``)
 
-    def handle_event(self, e):
+    def on_event(self, e):
         if e.type == p.KEYDOWN and e.key == p.K_ESCAPE:
             return "review"
         if e.type == p.KEYDOWN and e.key in (p.K_RETURN, p.K_KP_ENTER):
             return "rematch"
-        action = super().handle_event(e)
+        action = super().on_event(e)
         return "review" if action == "close" else action
 
     def draw(self, surface, t, mouse, now_ms):
@@ -338,12 +357,12 @@ class ReviewOverlay(Overlay):
         y = self.chart.bottom - round(self.chart.height * review.expected_score(cp))
         return x, y
 
-    def handle_event(self, e):
+    def on_event(self, e):
         if e.type == p.KEYDOWN and e.key in (p.K_g, p.K_RETURN):
             return "close"
         if e.type == p.MOUSEBUTTONDOWN and e.button == 1 and self.chart.collidepoint(e.pos):
             return ("review_goto", self.ply_at(e.pos[0]))
-        return super().handle_event(e)
+        return super().on_event(e)
 
     def draw(self, surface, t, mouse, now_ms):
         width = min(720, surface.get_width() - 48)
@@ -452,7 +471,8 @@ PROMOTION_KEYS = {
 
 class PromotionPopup:
     """Choix de la pièce de promotion, ouvert sur la case d'arrivée : dame, tour, fou,
-    cavalier, vers le centre de l'échiquier. Échap ou clic ailleurs : annulation."""
+    cavalier, vers le centre de l'échiquier. Échap ou clic ailleurs : annulation.
+    Au clavier : la lettre de la pièce, ou flèches (ou Tab) puis Entrée (J12.2)."""
 
     pieces_order: Sequence[str] = ("Q", "R", "B", "N")
 
@@ -470,12 +490,21 @@ class PromotionPopup:
         cancel_y = last.bottom if downward else last.y - cancel_h
         self.cancel = p.Rect(square_rect.x, cancel_y, size, cancel_h)
         self.rect = self.cancel.unionall([b.rect for b in self.buttons])
+        self.focus = w.Focus()
 
     def choice_for(self, e: p.event.Event) -> str | None:
         """Pièce choisie, ``"cancel"`` ou None (événement sans effet)."""
+        focused = self.focus.handle(e, self.buttons)
+        if focused is True:
+            return None
+        if focused is not None:
+            return focused.label
         if e.type == p.KEYDOWN:
             if e.key == p.K_ESCAPE:
                 return "cancel"
+            if e.key in (p.K_UP, p.K_DOWN):
+                self.focus.move(self.buttons, -1 if e.key == p.K_UP else 1)
+                return None
             return PROMOTION_KEYS.get(e.key)
         if e.type == p.MOUSEBUTTONDOWN:
             for b in self.buttons:
@@ -487,9 +516,12 @@ class PromotionPopup:
     def draw(self, surface: p.Surface, t: Theme, mouse: tuple[int, int]) -> None:
         w.shadow(surface, self.rect, 8, 20)
         p.draw.rect(surface, th.PROMOTION_BG, self.rect, border_radius=8)
+        focused = self.focus.current(self.buttons)
         for b in self.buttons:
-            if b.rect.collidepoint(mouse):
+            if b.rect.collidepoint(mouse) or b is focused:
                 p.draw.rect(surface, th.PROMOTION_HOVER, b.rect, border_radius=6)
+            if b is focused:
+                p.draw.rect(surface, th.CURSOR, b.rect, 3, border_radius=6)
             image = self.pieces.get_image(self.color + b.label, int(b.rect.width * 0.86))
             surface.blit(image, image.get_rect(center=b.rect.center))
         hovered = self.cancel.collidepoint(mouse)

@@ -291,6 +291,8 @@ class GameController:
         self._start_clock()
 
         self.square_selected: tuple[int, int] | tuple[()] = ()
+        # Curseur de case au clavier (J12.3) : None hors du mode « échiquier ».
+        self.cursor: tuple[int, int] | None = None
         # Coup tapé au clavier (J11.2) : None tant que la saisie n'est pas ouverte.
         self.move_input: str | None = None
         self.move_input_error: str | None = None
@@ -704,6 +706,8 @@ class GameController:
 
     # -- clavier -------------------------------------------------------
     def _handle_keydown(self, e):
+        if self.cursor is not None and self._handle_cursor_key(e):
+            return
         keys = {
             p.K_z: self._undo,
             p.K_r: self._ask_restart,
@@ -719,6 +723,7 @@ class GameController:
             p.K_b: self._hint,
             p.K_g: self._open_review,
             p.K_h: lambda: self._open(ShortcutsOverlay()),
+            p.K_k: self._toggle_cursor,
             p.K_LEFT: lambda: self._navigate("prev"),
             p.K_RIGHT: lambda: self._navigate("next"),
             p.K_UP: lambda: self._navigate("first"),
@@ -802,6 +807,63 @@ class GameController:
             self._clear_annotations()
         elif self.view_ply is not None:
             self.view_ply = None
+        elif self.cursor is not None:
+            self.cursor = None
+
+    # -- échiquier au curseur (J12.3) ----------------------------------------
+    def _toggle_cursor(self):
+        """K : mode « échiquier ». Les flèches déplacent le curseur de case (dans le sens
+        de l'échiquier affiché), Entrée ou Espace prennent puis posent la pièce."""
+        if self.cursor is not None:
+            self.cursor = None
+            return
+        if self.square_selected:
+            self.cursor = self.square_selected
+        else:  # roi du camp au trait : toujours présent, et proche des pièces à jouer
+            state = self.game_state
+            self.cursor = (
+                state.white_king_location if state.white_to_move else (state.black_king_location)
+            )
+
+    def _handle_cursor_key(self, e):
+        """Touches du mode « échiquier » ; renvoie True si la touche est consommée."""
+        assert self.cursor is not None
+        steps = {p.K_UP: (-1, 0), p.K_DOWN: (1, 0), p.K_LEFT: (0, -1), p.K_RIGHT: (0, 1)}
+        if e.key in steps:
+            d_row, d_col = steps[e.key]
+            if self.flip_board:  # échiquier retourné : « haut » est vers la rangée 1
+                d_row, d_col = -d_row, -d_col
+            row, col = self.cursor
+            self.cursor = (max(0, min(7, row + d_row)), max(0, min(7, col + d_col)))
+            return True
+        if e.key in (p.K_RETURN, p.K_KP_ENTER, p.K_SPACE):
+            self._cursor_press()
+            return True
+        return False
+
+    def _cursor_press(self):
+        """Entrée sur la case du curseur : comme un clic sur cette case (prendre une
+        pièce, la reposer pour annuler, ou jouer la pièce prise vers cette case)."""
+        assert self.cursor is not None
+        self._clear_annotations()
+        if self.view_ply is not None:
+            self.view_ply = None
+            return
+        if self.game_over:
+            self._notify(tr("La partie est terminée"))
+            return
+        if not self.human_turn():
+            self._notify(tr("Ce n'est pas à vous de jouer"))
+            return
+        square = self.cursor
+        piece = self.game_state.board[square[0]][square[1]]
+        my_color = "w" if self.game_state.white_to_move else "b"
+        if piece != "--" and piece[0] == my_color:
+            self.square_selected = () if self.square_selected == square else square
+            return
+        if self.square_selected and not self._try_move(self.square_selected, square, True):
+            # Coup illégal : la pièce reste prise, le joueur choisit une autre case.
+            self._notify(tr("Coup impossible"), "warning")
 
     # -- historique (J5.5) ---------------------------------------------
     def _view(self, ply):
@@ -1387,6 +1449,7 @@ class GameController:
             self.promotion_popup.draw(self.screen, t, mouse)
         if self.overlay is not None:
             self.overlay.draw(self.screen, t, mouse, now)
+            self.overlay.focus.draw(self.screen, t, self.overlay.buttons)
 
     def _info_text(self):
         mode = {"PvC": "Joueur vs IA", "PvP": "Joueur vs Joueur", "CvC": "IA vs IA"}[self.mode]
@@ -1418,6 +1481,7 @@ class GameController:
             pending = (self._right_start, self._right_end)
         return BoardScene(
             board=state.board,
+            cursor=self.cursor,
             last_move=last,
             selected=selected,
             targets=targets,

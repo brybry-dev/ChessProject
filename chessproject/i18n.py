@@ -235,6 +235,7 @@ EN: dict[str, str] = {
     # Notifications
     "La partie est terminée": "The game is over",
     "Ce n'est pas à vous de jouer": "It is not your turn",
+    "Coup impossible": "Illegal move",
     "Coup ambigu : {options} ?": "Ambiguous move: {options}?",
     " ou ": " or ",
     "Coup illégal : {text}": "Illegal move: {text}",
@@ -292,7 +293,10 @@ EN: dict[str, str] = {
     "Orig. Fin": "Home End",
     "Début / position actuelle": "Start / current position",
     "Échap": "Esc",
+    "Tab": "Tab",
     "Annuler la sélection, fermer": "Cancel the selection, close",
+    "Échiquier au clavier (flèches, Entrée)": "Board from the keyboard (arrows, Enter)",
+    "Fenêtres : bouton suivant (Entrée)": "Windows: next button (Enter)",
     "Clic droit": "Right-click",
     "Flèche (glisser) ou marque": "Arrow (drag) or mark",
     # Apparence

@@ -184,6 +184,7 @@ class FileDialog(Overlay):
         self.name = default_name
         self.confirm_label = confirm_label or ("Enregistrer" if mode == "save" else "Ouvrir")
         self.allow_delete = allow_delete
+        self.space_activates = mode != "save"
         self.list = _ScrollList()
         self.entries: list[Entry] = []
         self.message: tuple[str, str] | None = None  # (texte, info | warning)
@@ -279,9 +280,10 @@ class FileDialog(Overlay):
             self.list.selected = min(files, key=lambda i: abs(i - index))
 
     # -- événements ------------------------------------------------------
-    def handle_event(self, e):
+    def on_event(self, e):
         count = len(self.entries)
         if e.type == p.TEXTINPUT and self.mode == "save":
+            self.focus.clear()  # on écrit : le focus revient au nom du fichier
             typed = "".join(c for c in e.text if c not in FORBIDDEN_CHARS and c.isprintable())
             self.name = (self.name + typed)[:MAX_NAME_LENGTH]
             self.list.selected = None
@@ -291,6 +293,7 @@ class FileDialog(Overlay):
             if e.key in (p.K_RETURN, p.K_KP_ENTER):
                 return self._confirm()
             if e.key in (p.K_UP, p.K_DOWN):
+                self.focus.clear()
                 self.list.move(-1 if e.key == p.K_UP else 1, count)
                 self._select(self.list.selected)
                 return None
@@ -318,18 +321,19 @@ class FileDialog(Overlay):
                     return self._confirm()
                 self._select(index)
                 return None
-            button = w.hovered_button(self.buttons, e.pos)
-            if button is not None:
-                action = button.action
-                if action == "confirm":
-                    return self._confirm()
-                if action == "delete":
-                    self._delete()
-                    return None
-                if isinstance(action, tuple) and action[0] == "place":
-                    self.open_directory(action[1])
-                    return None
-        return super().handle_event(e)
+        return super().on_event(e)
+
+    def press(self, button):
+        action = button.action
+        if action == "confirm":
+            return self._confirm()
+        if action == "delete":
+            self._delete()
+            return None
+        if isinstance(action, tuple) and action[0] == "place":
+            self.open_directory(action[1])
+            return None
+        return action
 
     # -- dessin ----------------------------------------------------------
     def draw(self, surface, t, mouse, now_ms):
@@ -468,16 +472,14 @@ class GamePickerOverlay(Overlay):
         self.list = _ScrollList()
         self.list.selected = 0
 
-    def handle_event(self, e):
+    def on_event(self, e):
         count = len(self.labels)
         if e.type == p.KEYDOWN:
             if e.key in (p.K_RETURN, p.K_KP_ENTER) and self.list.selected is not None:
                 return ("pgn_game", self.list.selected)
-            if e.key == p.K_UP:
-                self.list.move(-1, count)
-                return None
-            if e.key == p.K_DOWN:
-                self.list.move(1, count)
+            if e.key in (p.K_UP, p.K_DOWN):
+                self.focus.clear()
+                self.list.move(-1 if e.key == p.K_UP else 1, count)
                 return None
             if e.key in (p.K_HOME, p.K_END):
                 self.list.selected = 0 if e.key == p.K_HOME else count - 1
@@ -493,10 +495,12 @@ class GamePickerOverlay(Overlay):
                     return ("pgn_game", index)
                 self.list.selected = index
                 return None
-            button = w.hovered_button(self.buttons, e.pos)
-            if button is not None and button.action == "confirm":
-                return ("pgn_game", self.list.selected)
-        return super().handle_event(e)
+        return super().on_event(e)
+
+    def press(self, button):
+        if button.action == "confirm":
+            return ("pgn_game", self.list.selected)
+        return button.action
 
     def draw(self, surface, t, mouse, now_ms):
         width = min(760, surface.get_width() - 48)
