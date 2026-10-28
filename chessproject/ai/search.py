@@ -44,7 +44,7 @@ EXACT: int = 0
 LOWER: int = 1
 UPPER: int = 2
 TT_MAX_ENTRIES: int = 1 << 20  # au-delà, la table est vidée (remplacement simple)
-# Nœuds entre deux lectures de l'horloge : ~25 ms à ~10 k nœuds/s, assez fin pour le bullet.
+# Nœuds entre deux lectures de l'horloge : ~13 ms à ~19 k nœuds/s, assez fin pour le bullet.
 TIME_CHECK_INTERVAL: int = 256
 QUIESCENCE_MAX_PLY: int = 16  # garde-fou : la quiescence s'arrête au-delà
 
@@ -198,19 +198,22 @@ class Searcher:
     def negamax(
         self,
         game_state: engine.GameState,
-        valid_moves: list[engine.Move],
+        valid_moves: list[engine.Move] | None,
         depth: int,
         alpha: int,
         beta: int,
         ply: int,
     ) -> tuple[int, engine.Move | None]:
         """Score du point de vue du camp au trait. ``valid_moves`` = ``get_valid_moves()``
-        de la position courante (qui positionne ``checkmate`` / nulles, lus si vide)."""
+        de la position courante (qui positionne ``checkmate`` / nulles, lus si vide), ou
+        ``None`` : ils sont alors générés seulement si besoin (J10.1)."""
         self._tick()
-        if not valid_moves:
-            return (-MATE + ply if game_state.checkmate else 0), None
         if depth <= 0:
             return self.quiescence(game_state, valid_moves, alpha, beta, ply), None
+        if valid_moves is None:
+            valid_moves = game_state.get_valid_moves()
+        if not valid_moves:
+            return (-MATE + ply if game_state.checkmate else 0), None
 
         key = game_state.zobrist_key
         entry = self.tt.get(key)
@@ -234,9 +237,7 @@ class Searcher:
         for move in ordered:
             game_state.make_move(move, validate=False)
             try:
-                score, _ = self.negamax(
-                    game_state, game_state.get_valid_moves(), depth - 1, -beta, -alpha, ply + 1
-                )
+                score, _ = self.negamax(game_state, None, depth - 1, -beta, -alpha, ply + 1)
             finally:
                 game_state.undo_move()
             score = -score
@@ -261,14 +262,22 @@ class Searcher:
     def quiescence(
         self,
         game_state: engine.GameState,
-        valid_moves: list[engine.Move],
+        valid_moves: list[engine.Move] | None,
         alpha: int,
         beta: int,
         ply: int,
     ) -> int:
         """Prolonge la recherche sur les captures et promotions pour n'évaluer que des
-        positions calmes (effet d'horizon, J3.5). En échec, tous les coups sont examinés."""
-        if not valid_moves:
+        positions calmes (effet d'horizon, J3.5). En échec, tous les coups sont examinés.
+
+        ``valid_moves`` peut être ``None`` : hors échec, la plupart des positions
+        s'arrêtent sur l'évaluation statique, et il suffit alors de savoir qu'un coup
+        légal existe ; la liste n'est générée qu'ensuite (J10.1)."""
+        if valid_moves is None and not game_state.has_legal_moves():
+            # Sans coup légal hors échec : pat ou nulle ; en échec, has_legal_moves a
+            # généré les coups et positionné ``checkmate``.
+            return -MATE + ply if game_state.checkmate else 0
+        if valid_moves is not None and not valid_moves:
             return -MATE + ply if game_state.checkmate else 0
         in_check = game_state.in_check
         if not in_check:
@@ -277,17 +286,17 @@ class Searcher:
             if stand_pat >= beta or ply >= QUIESCENCE_MAX_PLY:
                 return stand_pat
             alpha = max(alpha, stand_pat)
+            if valid_moves is None:
+                valid_moves = game_state.get_valid_moves()
             candidates = [m for m in valid_moves if m.is_capture or m.is_pawn_promotion]
         else:
-            candidates = valid_moves
+            candidates = game_state.get_valid_moves() if valid_moves is None else valid_moves
         best = alpha if not in_check else -INF
         for move in sorted(candidates, key=self._capture_order, reverse=True):
             self._tick()
             game_state.make_move(move, validate=False)
             try:
-                score = -self.quiescence(
-                    game_state, game_state.get_valid_moves(), -beta, -alpha, ply + 1
-                )
+                score = -self.quiescence(game_state, None, -beta, -alpha, ply + 1)
             finally:
                 game_state.undo_move()
             if score > best:

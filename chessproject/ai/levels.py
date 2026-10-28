@@ -47,7 +47,8 @@ class Level:
 # Calibrés en J8.1 (cf. RAPPORT_ANALYSE.md) : environ 1,8 fois plus de nœuds d'un niveau
 # au suivant, un peu de bruit en bas pour varier le jeu, aucune « erreur » (elles creusent
 # des écarts de 90 % et plus entre voisins). Le temps n'est qu'un plafond pour les
-# machines lentes ; sur la machine de mesure (~10 k nœuds/s), Expert réfléchit ~4 s.
+# machines lentes ; sur la machine de mesure (~19 k nœuds/s depuis J10.1, ~10 k avant),
+# Expert réfléchit ~2 s. Bornée en nœuds, la force ne dépend pas de cette vitesse.
 # Elo (J8.2) : Expert contre Stockfish 19 bridé (UCI_Elo 1900, 1 s par coup), les autres
 # par chaînage de l'échelle ; arrondis à 50, IC 95 % dans elo_margin (peu de parties).
 LEVELS: tuple[Level, ...] = (

@@ -128,37 +128,115 @@ ROOK_SEMI_OPEN_FILE: tuple[int, int] = (10, 5)
 KING_SHELTER_PAWN: int = 10  # milieu de partie, par pion ami devant le roi
 
 
+def _signed_tables(piece: str, eg: bool) -> tuple[int, ...]:
+    """Valeur + table positionnelle de ``piece`` (« wN », « bp »…), signée du point de vue
+    des Blancs, indexée par case (rangée × 8 + colonne)."""
+    color, kind = piece[0], piece[1]
+    sign = 1 if color == "w" else -1
+    table = TABLES[kind][1 if eg else 0]
+    return tuple(
+        sign * (PIECE_VALUES[kind] + table[r if color == "w" else 7 - r][c])
+        for r in range(8)
+        for c in range(8)
+    )
+
+
+# Tables fusionnées (J10.1) : une lecture par pièce au lieu de quatre.
+_PIECES: tuple[str, ...] = tuple(color + kind for color in "wb" for kind in TABLES)
+_MG: dict[str, tuple[int, ...]] = {piece: _signed_tables(piece, eg=False) for piece in _PIECES}
+_EG: dict[str, tuple[int, ...]] = {piece: _signed_tables(piece, eg=True) for piece in _PIECES}
+_PHASE: dict[str, int] = {piece: PHASE_WEIGHTS.get(piece[1], 0) for piece in _PIECES}
+
+
+# Cache de la structure de pions (J10.1) : elle ne change qu'aux coups de pion et aux
+# captures de pion, et revient sans cesse pendant une recherche. Clé de Zobrist des seuls
+# pions ; vidé au-delà de PAWN_CACHE_MAX_ENTRIES.
+PAWN_CACHE_MAX_ENTRIES: int = 1 << 16
+# Clé des pions -> (mg, eg, colonnes des pions blancs, colonnes des pions noirs), les
+# colonnes en masque de 8 bits (bit c = au moins un pion sur la colonne c).
+_PawnInfo = tuple[int, int, int, int]
+_pawn_cache: dict[int, _PawnInfo] = {}
+_PAWN_KEYS: dict[str, tuple[int, ...]] = {
+    "wp": engine.ZOBRIST_PIECES["wp"],
+    "bp": engine.ZOBRIST_PIECES["bp"],
+}
+
+
 def evaluate(game_state: engine.GameState) -> int:
     board = game_state.board
     mg = eg = 0
     phase = 0
-    # Colonnes des pions par camp, pour la structure de pions et les tours.
+    pawn_key = 0
+    white_bishops = black_bishops = 0
+    rooks: list[tuple[str, int]] = []
+    mg_tables, eg_tables, phase_weights = _MG, _EG, _PHASE
+
+    square = -1
+    for row in board:
+        for piece in row:
+            square += 1
+            if piece == "--":
+                continue
+            mg += mg_tables[piece][square]
+            eg += eg_tables[piece][square]
+            phase += phase_weights[piece]
+            kind = piece[1]
+            if kind == "p":
+                pawn_key ^= _PAWN_KEYS[piece][square]
+            elif kind == "B":
+                if piece[0] == "w":
+                    white_bishops += 1
+                else:
+                    black_bishops += 1
+            elif kind == "R":
+                rooks.append((piece[0], square & 7))
+
+    pawns = _pawn_cache.get(pawn_key)
+    if pawns is None:
+        pawns = _pawn_structure(board)
+        if len(_pawn_cache) >= PAWN_CACHE_MAX_ENTRIES:
+            _pawn_cache.clear()
+        _pawn_cache[pawn_key] = pawns
+    pawn_mg, pawn_eg, white_files, black_files = pawns
+    mg += pawn_mg
+    eg += pawn_eg
+
+    if white_bishops >= 2:
+        mg += BISHOP_PAIR[0]
+        eg += BISHOP_PAIR[1]
+    if black_bishops >= 2:
+        mg -= BISHOP_PAIR[0]
+        eg -= BISHOP_PAIR[1]
+
+    for color, c in rooks:
+        own, enemy = (white_files, black_files) if color == "w" else (black_files, white_files)
+        bit = 1 << c
+        if not own & bit:
+            bonus = ROOK_OPEN_FILE if not enemy & bit else ROOK_SEMI_OPEN_FILE
+            sign = 1 if color == "w" else -1
+            mg += sign * bonus[0]
+            eg += sign * bonus[1]
+
+    mg += _king_shelter(board, game_state.white_king_location, "w")
+    mg -= _king_shelter(board, game_state.black_king_location, "b")
+
+    phase = min(phase, MAX_PHASE)
+    blended = mg * phase + eg * (MAX_PHASE - phase)
+    # Arrondi vers zéro (et non vers -∞ comme //) : garde l'antisymétrie exacte.
+    return blended // MAX_PHASE if blended >= 0 else -(-blended // MAX_PHASE)
+
+
+def _pawn_structure(board: list[list[str]]) -> _PawnInfo:
+    """Pions doublés, isolés et passés des deux camps, et colonnes occupées par des pions."""
     pawn_rows: dict[str, list[list[int]]] = {
         "w": [[] for _ in range(8)],
         "b": [[] for _ in range(8)],
     }
-    bishops = {"w": 0, "b": 0}
-    rooks: list[tuple[str, int]] = []
-
     for r, row in enumerate(board):
         for c, piece in enumerate(row):
-            if piece == "--":
-                continue
-            color, kind = piece[0], piece[1]
-            sign = 1 if color == "w" else -1
-            table_row = r if color == "w" else 7 - r
-            mg_table, eg_table = TABLES[kind]
-            value = PIECE_VALUES[kind]
-            mg += sign * (value + mg_table[table_row][c])
-            eg += sign * (value + eg_table[table_row][c])
-            phase += PHASE_WEIGHTS.get(kind, 0)
-            if kind == "p":
-                pawn_rows[color][c].append(r)
-            elif kind == "B":
-                bishops[color] += 1
-            elif kind == "R":
-                rooks.append((color, c))
-
+            if piece[1:] == "p":
+                pawn_rows[piece[0]][c].append(r)
+    mg = eg = 0
     for color, sign in (("w", 1), ("b", -1)):
         enemy = "b" if color == "w" else "w"
         own_files, enemy_files = pawn_rows[color], pawn_rows[enemy]
@@ -179,25 +257,9 @@ def evaluate(game_state: engine.GameState) -> int:
                     advance = (6 - r) if color == "w" else (r - 1)
                     mg += sign * PASSED_PAWN_MG[advance]
                     eg += sign * PASSED_PAWN_EG[advance]
-        if bishops[color] >= 2:
-            mg += sign * BISHOP_PAIR[0]
-            eg += sign * BISHOP_PAIR[1]
-
-    for color, c in rooks:
-        sign = 1 if color == "w" else -1
-        enemy = "b" if color == "w" else "w"
-        if not pawn_rows[color][c]:
-            bonus = ROOK_OPEN_FILE if not pawn_rows[enemy][c] else ROOK_SEMI_OPEN_FILE
-            mg += sign * bonus[0]
-            eg += sign * bonus[1]
-
-    mg += _king_shelter(board, game_state.white_king_location, "w")
-    mg -= _king_shelter(board, game_state.black_king_location, "b")
-
-    phase = min(phase, MAX_PHASE)
-    blended = mg * phase + eg * (MAX_PHASE - phase)
-    # Arrondi vers zéro (et non vers -∞ comme //) : garde l'antisymétrie exacte.
-    return blended // MAX_PHASE if blended >= 0 else -(-blended // MAX_PHASE)
+    white_files = sum(1 << c for c in range(8) if pawn_rows["w"][c])
+    black_files = sum(1 << c for c in range(8) if pawn_rows["b"][c])
+    return mg, eg, white_files, black_files
 
 
 def _is_passed(color: str, row: int, col: int, enemy_files: list[list[int]]) -> bool:

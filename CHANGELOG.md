@@ -5,6 +5,14 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [Non publié]
+
+### Modifié
+
+- **Moteur environ 1,8 fois plus rapide** (19 k nœuds par seconde au lieu de 10 k sur
+  la machine de mesure), sans changer ses coups : les niveaux gardent leur force et
+  réfléchissent deux fois moins longtemps.
+
 ## [1.2.0] - 2026-10-28
 
 Mode analyse : variante principale, indice et bilan de la partie.

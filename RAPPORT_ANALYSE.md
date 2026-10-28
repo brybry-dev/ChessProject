@@ -991,6 +991,34 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 
 Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffisent pas.
 
+> **J10.1 ✅ (2026-10-28)** : `tools/bench.py`, recherche à profondeur 4 sur cinq
+> positions (départ, Kiwipete, Italienne, deux finales), avec profil `--profile`. Le
+> **nombre de nœuds** (110 534) est la signature de l'arbre : il n'a pas bougé, seule
+> la vitesse change. `tests/test_optimizations.py` fige les valeurs d'avant J10
+> (nœuds à profondeur 3, évaluation de 2 312 positions de parties aléatoires) et compare
+> `has_legal_moves` à la génération complète.
+>
+> | Étape | Nœuds/s | Gain cumulé |
+> |---|---|---|
+> | Départ (1.2.0) | 10 700 | — |
+> | Rayons, sauts et pas de roi précalculés (`square_under_attack`, pièces glissantes, cavalier) | 11 200 | +5 % |
+> | Constructeur de `Move` sur variables locales (4,3 M appels pour 110 k nœuds) | 11 900 | +11 % |
+> | Évaluation : valeur, table et signe fusionnés par pièce | 12 100 | +13 % |
+> | Génération paresseuse en quiescence : `has_legal_moves()` s'arrête au premier coup légal, la liste n'est générée que si le *stand pat* ne coupe pas | 16 000 | +50 % |
+> | Cache de la structure de pions (clé de Zobrist des pions) | 19 300 | **+81 %** |
+>
+> - Le profil de départ : 60 % du temps dans la génération des coups (environ 39 `Move`
+>   créés par nœud, même aux feuilles de la quiescence, qui s'arrêtent pour la plupart
+>   sur l'évaluation statique), 27 % dans l'évaluation.
+> - Écarté : garder les clouages calculés par `has_legal_moves` pour `get_valid_moves`
+>   (environ 4 %) ; l'interface et des tests modifient le plateau puis remettent
+>   seulement `_valid_moves` à zéro, le cache serait fragile.
+> - Les niveaux sont bornés en nœuds : leur force est inchangée, ils jouent environ
+>   deux fois plus vite (Expert ≈ 2 s au lieu de 4). La suite rapide passe de 55 à 40 s.
+> - Au passage : `test_random_games_long` (lent) échouait depuis J4.4 sur 10 parties
+>   finies par la règle des 50 coups : la relecture PGN suit les règles FIDE strictes
+>   (nulle à réclamer). Le test compare maintenant à règles égales.
+
 #### J11 — v1.4 : confort (2–3 j)
 
 | # | Tâche | Critère d'acceptation | Taille |
