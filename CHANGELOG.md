@@ -5,6 +5,26 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.5.0] - 2026-10-28
+
+Qualité et accessibilité au clavier.
+
+### Ajouté
+
+- **Fenêtres au clavier** : dans chaque fenêtre (apparence, raccourcis, confirmation,
+  fin de partie, bilan, choix de fichier, choix d'une partie) et sur l'écran « Nouvelle
+  partie », `Tab` / `Maj+Tab` passent d'un bouton à l'autre dans l'ordre de lecture,
+  `Entrée` ou `Espace` l'activent. Le bouton qui a le focus est entouré d'un anneau bien
+  visible, distinct du cadre d'une option choisie. Promotion : flèches puis `Entrée`, en
+  plus des lettres.
+- **Échiquier au clavier** : `K` affiche un curseur de case ; les flèches le déplacent
+  (dans le sens de l'échiquier affiché), `Entrée` ou `Espace` prennent la pièce puis la
+  posent. Un coup impossible est signalé et la pièce reste en main ; `Échap` la repose,
+  puis quitte le mode.
+- **Couverture des tests en CI** : publiée par paquet dans le résumé de chaque exécution,
+  badge dans le README, seuil bloquant de 90 % sur le moteur de règles (`core`).
+  `tools/coverage_report.py`.
+
 ## [1.4.0] - 2026-10-28
 
 Confort : fichiers, clavier, anglais, contrastes.

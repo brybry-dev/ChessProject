@@ -123,6 +123,10 @@ def theme_pairs(t: th.Theme) -> list[Pair]:
         Pair(where, "saisie refusée (cadre)", th.WARNING_DOT, t.surface, UI),
         Pair(where, "ligne d'état : pastille d'alerte", th.WARNING_DOT, t.surface, UI),
         Pair(where, "infobulle", t.text, t.surface2, TEXT),
+        # Anneau de focus clavier (J12.2, critères 2.4.7 et 1.4.11), écarté du bouton.
+        Pair(where, "focus clavier sur une carte", t.focus, t.surface, UI),
+        Pair(where, "focus clavier sur une zone secondaire", t.focus, t.surface2, UI),
+        Pair(where, "focus clavier sur le fond", t.focus, t.bg, UI),
     ]
     return pairs
 
@@ -138,6 +142,7 @@ def board_pairs(palette: th.BoardPalette) -> list[Pair]:
             Pair(where, f"coordonnée sur {name}", ink, square, TEXT),
             Pair(where, f"coup possible sur {name}", over(th.HINT, square), square, UI),
             Pair(where, f"roi en échec (liseré) sur {name}", th.CHECK_RING, square, UI),
+            Pair(where, f"curseur clavier sur {name}", th.CURSOR, square, UI),
         ]
     return pairs
 
@@ -148,6 +153,7 @@ def other_pairs() -> list[Pair]:
         for kind, color in th.JUDGEMENT_COLORS.items()
     ]
     return pairs + [
+        Pair("promotion", "pièce choisie au clavier (cadre)", th.CURSOR, th.PROMOTION_HOVER, UI),
         Pair("barre d'évaluation", "avantage blanc / noir", th.EVAL_WHITE, th.EVAL_BLACK, UI),
         Pair(
             "promotion", "bouton annuler (×)", th.PROMOTION_CANCEL_TEXT, th.PROMOTION_CANCEL, TEXT

@@ -348,6 +348,69 @@ def draw_buttons(
         b.draw(surface, t, hovered=b.hit(mouse), font=font_for(b))
 
 
+class Focus:
+    """Focus clavier d'une fenêtre (J12.2, WCAG 2.1.1 et 2.4.7).
+
+    ``Tab`` / ``Maj+Tab`` parcourent les boutons actifs dans l'ordre de lecture (de haut
+    en bas, puis de gauche à droite) ; ``Entrée`` ou ``Espace`` activent le bouton qui a
+    le focus. Les boutons étant recréés à chaque image, le focus retient l'action du
+    bouton et son libellé, pas l'objet. Il n'est visible qu'une fois ``Tab`` pressé : tant qu'il ne
+    l'est pas, ``Entrée`` garde son effet habituel dans chaque fenêtre.
+    """
+
+    def __init__(self) -> None:
+        self.key: object = None
+        self.visible = False
+
+    @staticmethod
+    def _key(button: Button) -> object:
+        # Le × et « Fermer » ont la même action : le libellé et l'icône les distinguent.
+        return (button.action, button.label, button.icon)
+
+    @staticmethod
+    def order(buttons: Sequence[Button]) -> list[Button]:
+        return sorted((b for b in buttons if b.enabled), key=lambda b: (b.rect.y, b.rect.x))
+
+    def current(self, buttons: Sequence[Button]) -> Button | None:
+        if not self.visible:
+            return None
+        return next((b for b in self.order(buttons) if self._key(b) == self.key), None)
+
+    def move(self, buttons: Sequence[Button], step: int) -> None:
+        order = self.order(buttons)
+        if not order:
+            return
+        current = self.current(buttons)
+        if current is None:
+            index = 0 if step > 0 else len(order) - 1
+        else:
+            index = (order.index(current) + step) % len(order)
+        self.key, self.visible = self._key(order[index]), True
+
+    def clear(self) -> None:
+        self.visible = False
+
+    def handle(self, e: p.event.Event, buttons: Sequence[Button], space: bool = True):
+        """``Tab`` déplace le focus (renvoie True) ; ``Entrée`` (et ``Espace`` si
+        ``space``) renvoie le bouton qui a le focus ; sinon None."""
+        if e.type != p.KEYDOWN:
+            return None
+        if e.key == p.K_TAB:
+            self.move(buttons, -1 if getattr(e, "mod", 0) & p.KMOD_SHIFT else 1)
+            return True
+        activate = (p.K_RETURN, p.K_KP_ENTER, p.K_SPACE) if space else (p.K_RETURN, p.K_KP_ENTER)
+        if e.key in activate:
+            return self.current(buttons)
+        return None
+
+    def draw(self, surface: p.Surface, t: Theme, buttons: Sequence[Button]) -> None:
+        """Anneau de focus autour du bouton qui a le focus, écarté de 3 px : son
+        contraste se lit contre le fond de la carte (3:1, ``tools/contrast.py``)."""
+        button = self.current(buttons)
+        if button is not None:
+            rounded(surface, t.focus, button.rect.inflate(8, 8), 12, 2)
+
+
 def tooltip(surface: p.Surface, t: Theme, value: str, anchor: p.Rect) -> None:
     """Infobulle sous ``anchor`` (gardée dans la fenêtre)."""
     f = th.font(12, "medium")

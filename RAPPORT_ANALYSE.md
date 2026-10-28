@@ -1154,14 +1154,109 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 > **Publication `v1.4.0` (2026-10-28)** : J11 terminé ; version, CHANGELOG, README et
 > TESTS.md à jour. Suite rapide : 662 tests ; tests longs : 68.
 
+Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11. Les cinq jalons sont livrés (v1.4.0).
+
+### 4.8 Suite : feuille de route après la 1.4 (2026-10-28)
+
+Ce qui reste ouvert après J11 : la couverture des tests n'est pas mesurée, l'interface
+ne se pilote pas entièrement au clavier (pas de focus dans les fenêtres), la calibration
+de J8 repose sur peu de parties (IC de ± 276 à ± 905 Elo), aucun niveau ne convient aux
+grands débutants, et les techniques de J10.2 n'ont été mesurées qu'ensemble. Côté
+joueur, le bilan signale les fautes sans montrer le meilleur coup.
+
+#### J12 — v1.5 : qualité et accessibilité au clavier (2 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J12.1 | Couverture en CI (`pytest-cov`), badge dans le README | Couverture publiée à chaque push ; seuil bloquant sur `core` (≥ 90 %) | S |
+| J12.2 | Toutes les fenêtres utilisables au clavier : `Tab` / `Maj+Tab` entre les boutons, focus visible, `Entrée` ou `Espace` pour activer (WCAG 2.1.1 et 2.4.7) | Chaque fenêtre et l'écran « Nouvelle partie » parcourus sans souris dans un test ; focus à 3:1 dans `tools/contrast.py` | M |
+| J12.3 | Échiquier au clavier sans taper la notation : curseur de case (flèches en mode « échiquier »), `Entrée` pour prendre puis poser | Une partie complète jouée au curseur dans un test | M |
+
+> **J12.1 ✅ (2026-10-28)** : `pytest-cov` dans l'extra `dev`, mesure sur une seule
+> combinaison de la matrice (Ubuntu, Python 3.13) pour ne pas allonger les autres.
+> `tools/coverage_report.py` lit le rapport JSON, ajoute un tableau par paquet au résumé
+> de l'exécution (à chaque push et sur les PR) et échoue si `core` passe sous 90 %. Sur
+> `master`, une tâche publie le fichier du badge sur une branche `badges` à un seul
+> commit, réécrite à chaque fois ; le README le lit par shields.io (badge « endpoint »),
+> sans service tiers ni jeton. Couverture des instructions au moment de la mesure :
+>
+> | Paquet | Instructions | Couverture |
+> |---|---:|---:|
+> | `core` | 1 617 | 98,0 % |
+> | `ai` | 926 | 97,7 % |
+> | `ui` | 3 112 | 92,5 % |
+> | racine (`uci`, `settings`, `paths`…) | 549 | 86,0 % |
+> | **Total** | 6 204 | **94,1 %** |
+>
+> Les processus d'IA et d'analyse lancés par `multiprocessing` ne sont pas comptés (le
+> code qu'ils exécutent l'est par les tests qui l'appellent directement). Le point le
+> plus faible est `uci.py` (76 %) : boucle d'entrée et options rares.
+>
+> **J12.2 ✅ (2026-10-28)** : `widgets.Focus`, partagé par toutes les fenêtres
+> (`Overlay`), l'écran « Nouvelle partie » et le choix de promotion. `Tab` / `Maj+Tab`
+> parcourent les boutons actifs dans l'ordre de lecture (tri par position : il suit la
+> mise en page, y compris quand elle change avec le mode de jeu) ; `Entrée` ou `Espace`
+> font exactement ce que ferait un clic (`press`, commun aux deux). Les boutons étant
+> recréés à chaque image, le focus retient l'action et le libellé du bouton. Il n'apparaît
+> qu'au premier `Tab` : avant, `Entrée` garde son effet habituel (commencer, confirmer,
+> rejouer). Dans le choix de fichier, taper un nom ou se déplacer dans la liste rend la
+> main au champ ou à la liste, et `Espace` s'écrit dans le nom au lieu d'activer un
+> bouton.
+>
+> - **Focus visible** (2.4.7) : anneau de 2 px écarté de 3 px du bouton, couleur du texte
+>   du thème (`Theme.focus`), donc distinct du cadre accent d'une option choisie. Ajouté
+>   à `tools/contrast.py` sur les trois fonds possibles : 11,8 à 16,9:1 (seuil 3:1).
+> - `tests/test_keyboard.py` : chaque fenêtre (8) et l'écran « Nouvelle partie » dans
+>   ses trois modes parcourus avec `Tab` puis `Maj+Tab` (chaque bouton actif une fois,
+>   ordre de lecture vérifié), anneau relu dans les pixels, activation au clavier des
+>   boutons qui changent le dialogue (dossier, ouvrir), et un parcours sans souris :
+>   réglages, partie, Apparence, mat, carte de fin, retour à l'écran « Nouvelle partie ».
+>
+> **J12.3 ✅ (2026-10-28)** : `K` passe en mode « échiquier » : un curseur de case
+> apparaît sur le roi du camp au trait (ou sur la pièce déjà choisie). Les flèches le
+> déplacent dans le sens de l'échiquier affiché (inversé quand il est retourné) ;
+> `Entrée` ou `Espace` font ce que ferait un clic sur la case : prendre une pièce, la
+> reposer, ou jouer vers cette case (la promotion ouvre le choix habituel, qui se règle
+> aussi aux flèches). Un coup illégal est signalé (« Coup impossible ») et la pièce reste
+> en main. `Échap` repose la pièce, puis quitte le mode ; hors de ce mode, les flèches
+> parcourent toujours l'historique et `Entrée` ouvre la saisie du coup (J11.2). Le
+> curseur est un cadre sombre doublé d'un liseré blanc : 5,2 à 15,1:1 sur toutes les
+> cases des quatre échiquiers. Testé : partie complète (mat du lion) jouée au curseur
+> jusqu'à la carte de fin, orientation retournée, bords, coup impossible, tour de l'IA.
+>
+> `tools/contrast.py` compte maintenant 101 paires, sans écart.
+>
+> **Publication `v1.5.0` (2026-10-28)** : J12 terminé ; version, CHANGELOG, README et
+> TESTS.md à jour. Suite rapide : 680 tests ; tests longs : 68.
+
+#### J13 — v1.6 : apprendre en jouant (3 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J13.1 | Bilan : pour chaque faute, le meilleur coup en flèche et la variante, au clic sur la pastille | Variante légale ; position et flèche affichées depuis la fenêtre de bilan | M |
+| J13.2 | Export PGN annoté : symboles (`$2`, `$4`, `$6`) et évaluations en commentaires `{[%eval 0.42]}` | Relu par python-chess (NAG et commentaires) ; réimporté sans erreur | S |
+| J13.3 | Mode problèmes : positions de `tests/data/tactics.epd` (et suivantes), « trouvez le meilleur coup », indice, solution, score de la série | Chaque problème a une solution unique vérifiée par le moteur ; parcours testé sans écran | L |
+
+#### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J14.1 | Calibration refaite sur 100 parties par paire (`tools/calibrate.py --book-openings 50 --games 100`) | IC 95 % ≤ ± 150 Elo par niveau ; Elo affichés mis à jour | M |
+| J14.2 | Sixième niveau « Initiation » (≈ 800–1000) pour les grands débutants | Perd nettement contre Débutant (≥ 75 %) ; ne laisse pas une pièce en prise à chaque coup | M |
+| J14.3 | Chaque technique de J10.2 seule à 400 ms (environ 400 parties chacune), puis élagage pour les niveaux s'il gagne | Décision chiffrée ; si les niveaux changent, recalibrage (J14.1) | L |
+
+Le budget de calcul de J14 (plusieurs heures) est à fixer par le propriétaire, comme
+pour J10.2.
+
 #### En continu
 
-- Couverture des tests mesurée en CI, avec un badge.
 - Paquet AppImage pour Linux.
 - Signature des exécutables Windows et notarisation macOS : nécessite des certificats
   payants, décision du propriétaire du projet.
 
-Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11. Les cinq jalons sont livrés (v1.4.0).
+Ordre proposé : J12 (court, et il termine le travail d'accessibilité de J11.4), puis
+J13 (ce qui se voit le plus pour le joueur), puis J14 quand du temps de calcul est
+disponible.
 
 ---
 

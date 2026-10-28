@@ -78,6 +78,7 @@ class NewGameMenu:
         self.can_cancel = can_cancel
         self.pieces = pieces
         self.buttons: list[w.Button] = []
+        self.focus = w.Focus()  # J12.2 : Tab, Maj+Tab, Entrée ou Espace
 
     # -- état ------------------------------------------------------------
     def choose(self, field: str, value) -> None:
@@ -107,6 +108,11 @@ class NewGameMenu:
 
     # -- événements ------------------------------------------------------
     def handle_event(self, e: p.event.Event):
+        focused = self.focus.handle(e, self.buttons)
+        if focused is True:
+            return None
+        if focused is not None:
+            return self.press(focused)
         if e.type == p.KEYDOWN:
             if e.key in (p.K_RETURN, p.K_KP_ENTER):
                 return ("start", self.config())
@@ -119,18 +125,18 @@ class NewGameMenu:
             return None
         if e.type == p.MOUSEBUTTONDOWN and e.button == 1:
             button = w.hovered_button(self.buttons, e.pos)
-            if button is None:
-                return None
-            action = button.action
-            if isinstance(action, tuple) and action[0] == "choose":
-                self.choose(action[1], action[2])
-                return None
-            if isinstance(action, tuple) and action[0] == "language":
-                return action
-            if action == "start":
-                return ("start", self.config())
-            return action
+            return None if button is None else self.press(button)
         return None
+
+    def press(self, button: w.Button):
+        """Effet d'un bouton, cliqué ou activé au clavier."""
+        action = button.action
+        if isinstance(action, tuple) and action[0] == "choose":
+            self.choose(action[1], action[2])
+            return None
+        if action == "start":
+            return ("start", self.config())
+        return action
 
     # -- dessin ----------------------------------------------------------
     def draw(self, surface: p.Surface, t: Theme, mouse: tuple[int, int], now_ms: int) -> None:
@@ -274,6 +280,7 @@ class NewGameMenu:
         w.draw_buttons(surface, t, buttons, mouse)
         for kind, data in decorations:
             self._decorate(surface, t, kind, data)
+        self.focus.draw(surface, t, buttons)
 
     def _decorate(self, surface, t: Theme, kind: str, data) -> None:
         if kind == "color":
