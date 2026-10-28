@@ -11,19 +11,22 @@ from collections.abc import Callable, Sequence
 
 import pygame as p
 
+from chessproject import i18n
 from chessproject.ai import review
+from chessproject.i18n import tr
 from chessproject.settings import Settings
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.theme import Theme
 
 SHORTCUTS: list[tuple[str, str]] = [
+    ("Entrée", "Taper un coup (e4, Nf3, O-O)"),
     ("Z", "Annuler le dernier coup"),
     ("N", "Proposer / accepter la nulle"),
     ("A", "Abandonner"),
     ("R", "Rejouer avec les mêmes réglages"),
     ("S", "Sauvegarder la partie"),
-    ("L", "Charger la partie"),
+    ("L", "Charger une sauvegarde"),
     ("E", "Exporter en PGN"),
     ("I", "Importer un PGN"),
     ("F", "Retourner l'échiquier"),
@@ -98,10 +101,11 @@ class ShortcutsOverlay(Overlay):
         rows = (len(SHORTCUTS) + 1) // 2
         width = min(820, surface.get_width() - 48)
         self._frame(surface, t, (width, 158 + rows * 40))
-        y0 = self._title(surface, t, "Raccourcis clavier")
+        y0 = self._title(surface, t, tr("Raccourcis clavier"))
         col_w = (self.card.width - 64 - 24) // 2
         kbd_font = th.font(13, "medium", mono=True)
         for i, (keys, label) in enumerate(SHORTCUTS):
+            keys, label = tr(keys), tr(label)
             x = self.card.x + 32 + (i // rows) * (col_w + 24)
             y = y0 + (i % rows) * 40
             chip_w = max(36, kbd_font.size(keys)[0] + 16)
@@ -149,24 +153,36 @@ class AppearanceOverlay(Overlay):
     def draw(self, surface, t, mouse, now_ms):
         s = self.settings
         self._frame(surface, t, (560, 620))
-        y = self._title(surface, t, "Apparence")
+        y = self._title(surface, t, tr("Apparence"))
         x = self.card.x + 32
         inner = self.card.width - 64
         label_font = th.font(12, "semibold")
         buttons: list[w.Button] = []
 
-        w.text(surface, "THÈME", label_font, t.muted, (x, y))
-        y += 24
         half = (inner - 10) // 2
+        w.text(surface, tr("THÈME"), label_font, t.muted, (x, y))
+        w.text(surface, tr("LANGUE"), label_font, t.muted, (x + half + 10, y))
+        y += 24
+        quarter = (half - 10) // 2
         for i, (value, label) in enumerate((("sombre", "Sombre"), ("clair", "Clair"))):
             b = w.Button(
                 ("setting", "theme", value), label, variant="choice", selected=s.theme == value
             )
-            b.rect = p.Rect(x + i * (half + 10), y, half, 48)
+            b.rect = p.Rect(x + i * (quarter + 10), y, quarter, 48)
+            buttons.append(b)
+        # Chaque langue est nommée dans sa langue (J11.3).
+        for i, code in enumerate(i18n.LANGUAGES):
+            b = w.Button(
+                ("setting", "language", code),
+                i18n.LANGUAGE_NAMES[code],
+                variant="choice",
+                selected=s.language == code,
+            )
+            b.rect = p.Rect(x + half + 10 + i * (quarter + 10), y, quarter, 48)
             buttons.append(b)
         y += 48 + 24
 
-        w.text(surface, "ÉCHIQUIER", label_font, t.muted, (x, y))
+        w.text(surface, tr("ÉCHIQUIER"), label_font, t.muted, (x, y))
         y += 24
         quarter = (inner - 30) // 4
         swatches = []
@@ -181,14 +197,14 @@ class AppearanceOverlay(Overlay):
             swatches.append((b.rect, palette))
         y += 92 + 24
 
-        w.text(surface, "AFFICHAGE", label_font, t.muted, (x, y))
+        w.text(surface, tr("AFFICHAGE"), label_font, t.muted, (x, y))
         y += 20
         toggles = []
         for name, label in TOGGLES:
             b = w.Button(("setting", name, not getattr(s, name)), variant="ghost")
             b.rect = p.Rect(x - 8, y, inner + 16, 40)
             buttons.append(b)
-            toggles.append((b.rect, label, bool(getattr(s, name))))
+            toggles.append((b.rect, tr(label), bool(getattr(s, name))))
             y += 40
 
         close = _close_button(self.card)
@@ -204,7 +220,7 @@ class AppearanceOverlay(Overlay):
                     p.draw.rect(surface, color, (board.x + c * 22, board.y + r * 22, 22, 22))
             w.text(
                 surface,
-                palette.name,
+                tr(palette.name),
                 th.font(13, "medium"),
                 t.text,
                 (rect.centerx, rect.bottom - 12),
@@ -214,7 +230,7 @@ class AppearanceOverlay(Overlay):
             w.text(surface, label, th.font(14), t.text, (rect.x + 8, rect.centery), "midleft")
             switch = p.Rect(0, 0, 40, 22)
             switch.midright = (rect.right - 8, rect.centery)
-            w.rounded(surface, t.accent if on else t.surface2, switch, 11)
+            w.rounded(surface, t.accent_ink if on else t.surface2, switch, 11)
             if not on:
                 w.rounded(surface, t.border, switch, 11, 1)
             knob_x = switch.right - 11 if on else switch.x + 11
@@ -336,10 +352,14 @@ class ReviewOverlay(Overlay):
         result = reviewer.result()
         evaluated = len(reviewer.evals)
         if result is None:
-            subtitle = f"Analyse des positions… {evaluated} / {reviewer.total}"
+            subtitle = tr(
+                "Analyse des positions… {done} / {total}", done=evaluated, total=reviewer.total
+            )
         else:
-            subtitle = "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position."
-        y = self._title(surface, t, "Bilan de la partie", subtitle)
+            subtitle = tr(
+                "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position."
+            )
+        y = self._title(surface, t, tr("Bilan de la partie"), subtitle)
         self.chart = p.Rect(card.x + 32, y + 26, card.width - 64, 180)
         self._draw_chart(surface, t, mouse, result)
         self._draw_summary(surface, t, self.chart.bottom + 28, result)
@@ -366,19 +386,19 @@ class ReviewOverlay(Overlay):
                 if move.judgement:
                     color = th.JUDGEMENT_COLORS[move.judgement]
                     center = self._point(move.ply, result.evals[move.ply])
-                    p.draw.circle(surface, t.surface, center, 6)
+                    p.draw.circle(surface, th.JUDGEMENT_RING, center, 7)
                     p.draw.circle(surface, color, center, 5)
         if chart.collidepoint(mouse) and evals:
             ply = min(self.ply_at(mouse[0]), len(evals) - 1)
             x, y = self._point(ply, evals[ply])
-            p.draw.line(surface, t.accent, (x, chart.y), (x, chart.bottom - 1))
-            p.draw.circle(surface, t.accent, (x, y), 4)
-            label = "Position de départ"
+            p.draw.line(surface, t.accent_ink, (x, chart.y), (x, chart.bottom - 1))
+            p.draw.circle(surface, t.accent_ink, (x, y), 4)
+            label = tr("Position de départ")
             if result is not None and ply > 0:
                 move = result.moves[ply - 1]
                 label = move.label + move.symbol
             elif ply > 0:
-                label = f"Demi-coup {ply}"
+                label = tr("Demi-coup {n}", n=ply)
             text = f"{label} · {self.eval_text(evals[ply])}"
             w.text(
                 surface, text, th.font(13, "medium"), t.text, (chart.x, chart.y - 8), "bottomleft"
@@ -390,23 +410,26 @@ class ReviewOverlay(Overlay):
         x = self.chart.x
         col = (self.chart.width - 200) // 2
         head = th.font(12, "semibold")
-        w.text(surface, "BLANCS", head, t.muted, (x + 200 + col // 2, y), "midtop")
-        w.text(surface, "NOIRS", head, t.muted, (x + 200 + col + col // 2, y), "midtop")
+        w.text(surface, tr("BLANCS"), head, t.muted, (x + 200 + col // 2, y), "midtop")
+        w.text(surface, tr("NOIRS"), head, t.muted, (x + 200 + col + col // 2, y), "midtop")
         y += 26
         rows: list[tuple[str, str | None, str, str]] = [
             (
-                f"{review.LABELS[kind]} {review.SYMBOLS[kind]}",
+                f"{tr(review.LABELS[kind])} {review.SYMBOLS[kind]}",
                 kind,
                 str(result.white.count(kind)),
                 str(result.black.count(kind)),
             )
             for kind in (review.INACCURACY, review.MISTAKE, review.BLUNDER)
         ]
-        rows.append(("Perte moyenne (cp)", None, str(result.white.acpl), str(result.black.acpl)))
+        rows.append(
+            (tr("Perte moyenne (cp)"), None, str(result.white.acpl), str(result.black.acpl))
+        )
         f = th.font(14)
         value_font = th.font(14, "semibold", mono=True)
         for label, kind, white, black in rows:
             if kind is not None:
+                p.draw.circle(surface, th.JUDGEMENT_RING, (x + 5, y + 10), 7)
                 p.draw.circle(surface, th.JUDGEMENT_COLORS[kind], (x + 5, y + 10), 5)
             w.text(surface, label, f, t.text, (x + 18, y + 10), "midleft")
             w.text(surface, white, value_font, t.text, (x + 200 + col // 2, y + 10), "center")

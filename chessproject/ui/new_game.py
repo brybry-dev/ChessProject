@@ -11,8 +11,10 @@ from dataclasses import dataclass, replace
 
 import pygame as p
 
+from chessproject import i18n
 from chessproject.ai import levels
 from chessproject.core import clock
+from chessproject.i18n import tr
 from chessproject.settings import Settings
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
@@ -63,14 +65,13 @@ def config_from(settings: Settings, rng: random.Random | None = None) -> GameCon
 def _strength_label(level: levels.Level) -> str:
     """Force du niveau (« ≈ 1450 Elo », J8.2), ou à défaut son temps de réflexion."""
     if level.elo is not None:
-        return f"≈ {level.elo} Elo"
-    seconds = level.movetime_ms / 1000
-    return f"{seconds:g}".replace(".", ",") + " s"
+        return tr("≈ {elo} Elo", elo=level.elo)
+    return tr("{seconds} s", seconds=i18n.decimal(level.movetime_ms / 1000, -1))
 
 
 class NewGameMenu:
     """Scène de configuration. ``handle_event`` renvoie ``("start", GameConfig)``,
-    ``"load"``, ``"import"``, ``"cancel"`` ou None."""
+    ``"load"``, ``"import"``, ``"cancel"``, ``("language", code)`` ou None."""
 
     def __init__(self, settings: Settings, can_cancel: bool, pieces) -> None:
         self.settings = settings
@@ -88,13 +89,21 @@ class NewGameMenu:
     def summary(self) -> str:
         s = self.settings
         control = s.control
-        cadence = "sans pendule" if control.is_unlimited else f"cadence {control.label}"
+        if control.is_unlimited:
+            cadence = tr("sans pendule")
+        else:
+            cadence = tr("cadence {control}", control=control.label)
+        level = tr(s.level)
         if s.mode == "PvP":
-            return f"Deux joueurs sur le même écran, {cadence}."
+            return tr("Deux joueurs sur le même écran, {cadence}.", cadence=cadence)
         if s.mode == "CvC":
-            return f"L'IA {s.level} joue contre elle-même, {cadence}."
+            return tr(
+                "L'IA {level} joue contre elle-même, {cadence}.", level=level, cadence=cadence
+            )
         color = {"w": "les blancs", "b": "les noirs", "r": "une couleur tirée au sort"}[s.color]
-        return f"Vous jouez {color} contre l'IA {s.level}, {cadence}."
+        return tr(
+            "Vous jouez " + color + " contre l'IA {level}, {cadence}.", level=level, cadence=cadence
+        )
 
     # -- événements ------------------------------------------------------
     def handle_event(self, e: p.event.Event):
@@ -116,6 +125,8 @@ class NewGameMenu:
             if isinstance(action, tuple) and action[0] == "choose":
                 self.choose(action[1], action[2])
                 return None
+            if isinstance(action, tuple) and action[0] == "language":
+                return action
             if action == "start":
                 return ("start", self.config())
             return action
@@ -137,10 +148,10 @@ class NewGameMenu:
         y = card.y + 34
         logo = self.pieces.get_image("wN", 44)
         surface.blit(logo, (x, y))
-        w.text(surface, "Nouvelle partie", th.font(24, "semibold"), t.text, (x + 58, y - 2))
+        w.text(surface, tr("Nouvelle partie"), th.font(24, "semibold"), t.text, (x + 58, y - 2))
         w.text(
             surface,
-            "Tous les réglages sur un seul écran, modifiables avant de commencer.",
+            tr("Tous les réglages sur un seul écran, modifiables avant de commencer."),
             th.font(14),
             t.muted,
             (x + 58, y + 30),
@@ -149,7 +160,7 @@ class NewGameMenu:
         label = th.font(12, "semibold")
         buttons: list[w.Button] = []
 
-        w.text(surface, "MODE", label, t.muted, (x, y))
+        w.text(surface, tr("MODE"), label, t.muted, (x, y))
         y += 24
         third = (inner - 20) // 3
         for i, (value, text) in enumerate(MODES):
@@ -164,7 +175,7 @@ class NewGameMenu:
         color_w = min(300, (inner - 28) * 2 // 5)
         level_x = x
         if s.mode == "PvC":
-            w.text(surface, "VOUS JOUEZ", label, t.muted, (x, y))
+            w.text(surface, tr("VOUS JOUEZ"), label, t.muted, (x, y))
             cw = (color_w - 20) // 3
             for i, (value, text) in enumerate(COLORS):
                 b = w.Button(
@@ -176,7 +187,7 @@ class NewGameMenu:
             level_x = x + color_w + 28
         if s.mode != "PvP":
             level_w = x + inner - level_x
-            w.text(surface, "NIVEAU DE L'IA", label, t.muted, (level_x, y))
+            w.text(surface, tr("NIVEAU DE L'IA"), label, t.muted, (level_x, y))
             lw = (level_w - 4 * 8) // 5
             for i, level in enumerate(levels.LEVELS):
                 b = w.Button(
@@ -192,7 +203,7 @@ class NewGameMenu:
             w.rounded(surface, t.surface2, box, 10)
             w.text(
                 surface,
-                "Deux joueurs se partagent l'écran : l'échiquier reste côté blancs.",
+                tr("Deux joueurs se partagent l'écran : l'échiquier reste côté blancs."),
                 th.font(14),
                 t.muted,
                 box.center,
@@ -200,7 +211,7 @@ class NewGameMenu:
             )
         y += 24 + 92 + 26
 
-        w.text(surface, "CADENCE", label, t.muted, (x, y))
+        w.text(surface, tr("CADENCE"), label, t.muted, (x, y))
         y += 24
         sixth = (inner - 5 * 8) // 6
         current = s.control
@@ -227,11 +238,25 @@ class NewGameMenu:
         load.rect = p.Rect(0, y, 170, 44)
         load.rect.right = imp.rect.left - 10
         buttons += [load, imp, start]
+        right = card.right - 24
         if self.can_cancel:
             back = w.Button("cancel", "Retour à la partie", variant="ghost")
             back.rect = p.Rect(card.x + 24, card.y + 20, 170, 40)
-            back.rect.right = card.right - 24
+            back.rect.right = right
             buttons.append(back)
+            right = back.rect.left - 8
+        # Langue (J11.3) : chaque langue est nommée dans sa langue.
+        for code in reversed(i18n.LANGUAGES):
+            b = w.Button(
+                ("language", code),
+                i18n.LANGUAGE_NAMES[code],
+                variant="choice",
+                selected=s.language == code,
+            )
+            b.rect = p.Rect(0, card.y + 20, 96, 40)
+            b.rect.right = right
+            right = b.rect.left - 6
+            buttons.append(b)
         summary_w = load.rect.left - x - 16
         f = th.font(14)
         lines = w.wrap(self.summary(), f, summary_w)[:2]
@@ -263,7 +288,7 @@ class NewGameMenu:
                 surface.blit(image, image.get_rect(center=(rect.centerx, rect.y + 34)))
             w.text(
                 surface,
-                text,
+                tr(text),
                 th.font(14, "medium"),
                 t.text,
                 (rect.centerx, rect.bottom - 12),
@@ -273,17 +298,17 @@ class NewGameMenu:
             rect, index, level = data
             for k in range(5):
                 bar = p.Rect(rect.x + 12 + k * 13, rect.y + 14, 10, 4)
-                w.rounded(surface, t.accent if k <= index else t.border, bar, 2)
+                w.rounded(surface, t.accent_ink if k <= index else t.border, bar, 2)
             name_font = th.font(15 if rect.width > 96 else 13, "semibold")
             w.text(
                 surface,
-                w.ellipsize(level.name, name_font, rect.width - 20),
+                w.ellipsize(tr(level.name), name_font, rect.width - 20),
                 name_font,
                 t.text,
                 (rect.x + 12, rect.y + 26),
             )
             f = th.font(12)
-            hint = LEVEL_HINTS.get(level.name, "")
+            hint = tr(LEVEL_HINTS.get(level.name, ""))
             w.text(
                 surface,
                 w.ellipsize(hint, f, rect.width - 20),
@@ -302,7 +327,7 @@ class NewGameMenu:
         elif kind == "cadence":
             rect, control = data
             value = "∞" if control.is_unlimited else control.label
-            name = control.name.split(" ")[0] if not control.is_unlimited else "Sans limite"
+            name = tr(control.name.split(" ")[0] if not control.is_unlimited else "Sans limite")
             w.text(
                 surface,
                 value,

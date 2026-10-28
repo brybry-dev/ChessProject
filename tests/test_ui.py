@@ -273,6 +273,123 @@ class BoardInteractionTests(unittest.TestCase):
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class TypedMoveTests(unittest.TestCase):
+    """J11.2 : Entrée (ou Espace) ouvre la saisie, le coup tapé est joué à Entrée."""
+
+    def setUp(self):
+        self.gc = _controller()
+
+    def _key(self, key):
+        self.gc.handle_event(_event(p.KEYDOWN, key=key, mod=0, unicode=""))
+
+    def _type(self, text):
+        # Comme au clavier : une touche (KEYDOWN) puis le caractère (TEXTINPUT).
+        for char in text:
+            self.gc.handle_event(_event(p.KEYDOWN, key=ord(char.lower()), mod=0, unicode=char))
+            self.gc.handle_event(_event(p.TEXTINPUT, text=char))
+
+    def _play(self, text):
+        self._key(p.K_RETURN)
+        self._type(text)
+        self._key(p.K_RETURN)
+
+    def _sans(self):
+        return notation.san_history(self.gc.game_state)
+
+    def test_typed_moves_are_played(self):
+        for text in ("e4", "e5", "nf3", "Cc6", "Bb5", "a6", "O-O"):
+            self._play(text)
+        self.assertEqual(self._sans(), ["e4", "e5", "Nf3", "Nc6", "Bb5", "a6", "O-O"])
+        self.assertIsNone(self.gc.move_input)
+
+    def test_space_opens_the_input_too(self):
+        self._key(p.K_SPACE)
+        self.gc.handle_event(_event(p.TEXTINPUT, text=" "))
+        self.assertEqual(self.gc.move_input, "")
+        self._type("d4")
+        self._key(p.K_RETURN)
+        self.assertEqual(self._sans(), ["d4"])
+
+    def test_shortcut_letters_are_typed_not_run(self):
+        self._key(p.K_RETURN)
+        self._type("bfeacn")  # B indice, F retourner, E exporter, A abandon, N nulle…
+        self.assertFalse(self.gc.flip_board)
+        self.assertIsNone(self.gc.overlay)
+        self.assertIsNone(self.gc.draw_offer)
+        self.assertEqual(self.gc.move_input, "bfeacn")
+
+    def test_illegal_move_is_reported_and_can_be_corrected(self):
+        self._play("e5")
+        self.assertEqual(self.gc.game_state.move_log, [])
+        self.assertEqual(self.gc.move_input, "e5", "la saisie reste ouverte")
+        self.assertEqual(self.gc.move_input_error, "Coup illégal : e5")
+        model = self.gc._panel_model(self.gc.game_state)
+        self.assertEqual(model.move_input, ("e5", "Coup illégal : e5"))
+        self._key(p.K_BACKSPACE)
+        self.assertIsNone(self.gc.move_input_error)
+        self._type("4")
+        self._key(p.K_RETURN)
+        self.assertEqual(self._sans(), ["e4"])
+
+    def test_unreadable_and_ambiguous_moves_are_explained(self):
+        self._play("xyz")
+        self.assertEqual(self.gc.move_input_error, "Notation non reconnue : xyz")
+        self.gc._close_move_input()
+        self.gc._new_game(load_fen("4k3/8/8/8/8/8/8/1N1K1N2 w - - 0 1"))
+        self._play("Nd2")
+        self.assertEqual(self.gc.move_input_error, "Coup ambigu : Nbd2 ou Nfd2 ?")
+
+    def test_promotion_without_a_piece_opens_the_choice(self):
+        self.gc._new_game(load_fen("7k/P7/8/8/8/8/8/K7 w - - 0 1"))
+        self._play("a8")
+        self.assertIsNotNone(self.gc.promotion_popup)
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_n, mod=0, unicode="n"))
+        self.assertEqual(self.gc.game_state.board[0][0], "wN")
+
+    def test_promotion_with_a_piece_is_played_directly(self):
+        self.gc._new_game(load_fen("7k/P7/8/8/8/8/8/K7 w - - 0 1"))
+        self._play("a8=R")
+        self.assertIsNone(self.gc.promotion_popup)
+        self.assertEqual(self.gc.game_state.board[0][0], "wR")
+
+    def test_escape_backspace_or_a_click_close_the_input(self):
+        self._key(p.K_RETURN)
+        self._key(p.K_ESCAPE)
+        self.assertIsNone(self.gc.move_input)
+        self._key(p.K_RETURN)
+        self._key(p.K_BACKSPACE)
+        self.assertIsNone(self.gc.move_input, "effacer une saisie vide la ferme")
+        self._key(p.K_RETURN)
+        center = self.gc.renderer.square_rect(6, 4).center
+        self.gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=center, button=1))
+        self.assertIsNone(self.gc.move_input)
+        self.assertEqual(self.gc.square_selected, (6, 4), "le clic garde son effet")
+
+    def test_input_returns_to_the_live_position(self):
+        self._play("e4")
+        self._play("e5")
+        self._key(p.K_LEFT)
+        self.assertIsNotNone(self.gc.view_ply)
+        self._key(p.K_RETURN)
+        self.assertIsNone(self.gc.view_ply)
+
+    def test_not_available_when_it_is_not_the_players_turn(self):
+        gc = _controller("PvC", True, False)
+        gc.game_state.make_move(notation.parse_san(gc.game_state, "e4"))
+        gc.handle_event(_event(p.KEYDOWN, key=p.K_RETURN, mod=0, unicode=""))
+        self.assertIsNone(gc.move_input)
+        assert gc.notice is not None
+        self.assertEqual(gc.notice[0], "Ce n'est pas à vous de jouer")
+
+    def test_the_panel_draws_the_input(self):
+        self._key(p.K_RETURN)
+        self._type("Nf")
+        self.gc.draw()
+        self.gc.move_input_error = "Coup illégal : Nf"
+        self.gc.draw()
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
 class HistoryNavigationTests(unittest.TestCase):
     MOVES = ["e4", "e5", "Nf3", "Nc6", "Bb5"]
 

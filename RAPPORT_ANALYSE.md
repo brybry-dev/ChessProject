@@ -1082,6 +1082,78 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 | J11.3 | Version anglaise | Toutes les chaînes de l'interface traduites, langue dans les préférences | M |
 | J11.4 | Audit d'accessibilité WCAG avec un outil | Contrastes AA vérifiés, écarts corrigés | S |
 
+> **J11.1 ✅ (2026-10-28)** : `chessproject/ui/files.py`. Un choix de fichier dessiné par
+> le jeu, pas le dialogue du système (tkinter s'entend mal avec pygame sous macOS et dans
+> les exécutables) : le même parcours partout, et testable sans écran.
+>
+> - **Sauvegardes** dans `saves/` du dossier de données : `S` propose
+>   `partie-AAAA-MM-JJ-HHMM`, le nom se tape (caractères interdits sous Windows filtrés) ;
+>   un nom existant demande confirmation. `L` liste les sauvegardes de la plus récente à
+>   la plus ancienne, la première choisie ; `Suppr` deux fois en supprime une. L'ancienne
+>   `saved_game.json` est copiée dans `saves/` (l'original reste en place).
+> - **PGN** : `E` / `I` s'ouvrent dans le dernier dossier utilisé (préférence `pgn_dir`),
+>   avec des raccourcis vers les données du jeu, le dossier personnel, Documents et
+>   Téléchargements. Un PGN de plusieurs parties ouvre la liste des parties (« 3. Blancs –
+>   Noirs · 1-0 », tournoi, date, nombre de coups).
+> - Clavier (flèches, `Entrée`, `Retour arrière` pour le dossier parent) et souris (un
+>   clic ouvre un dossier ou choisit un fichier, un second le valide, molette). La
+>   pendule est arrêtée pendant le choix, comme dans les autres fenêtres.
+> - `tests/test_files.py` (17 tests) envoie de vrais événements (touches, texte tapé,
+>   clics) au contrôleur ; les tests de sauvegarde et de PGN de
+>   `tests/test_game_controller.py` passent maintenant par le dialogue.
+>
+> **J11.2 ✅ (2026-10-28)** : `notation.parse_typed_move`. `Entrée` ou `Espace` ouvre la
+> saisie dans la ligne d'état ; les touches y vont toutes (aucun raccourci ne se
+> déclenche en tapant `b`, `e` ou `f`). Accepté : SAN avec les tolérances de
+> `parse_san`, initiale en minuscule (`nf3` ; `bc4` est d'abord un pion), roque en
+> `O-O`, `0-0`, `oo`, coordonnées (`e2e4`, `e2-e4`, `e7e8q`), initiales françaises
+> (`Cf3`, `Fc4`, `Dh5`, `Td1`, `e8=D`) essayées après l'anglais : `R` reste une tour si
+> le coup de tour est légal, sinon c'est le roi. Une promotion sans pièce (`e8`) ouvre le
+> choix habituel. Refus expliqués : « Coup illégal : e5 », « Coup ambigu : Nbd2 ou
+> Nfd2 ? », « Notation non reconnue : xyz » ; le texte reste à corriger. 7 tests de
+> notation, 11 tests d'interface.
+>
+> **J11.3 ✅ (2026-10-28)** : `chessproject/i18n.py`. Le français reste la langue source :
+> chaque texte passe par `tr()`, qui renvoie l'anglais si cette langue est choisie, au
+> moment du dessin (changement à chaud). Champs nommés (`tr("Indice : {san}", san=…)`),
+> pluriels (`plural`, singulier jusqu'à 1 en français, à 1 seulement en anglais),
+> décimales (« +0,4 » / « +0.4 »), contexte pour les homonymes (`"Annuler|coup"` :
+> *Undo*, `"Annuler"` : *Cancel*). Boutons et infobulles traduisent leur libellé
+> eux-mêmes. Les niveaux et les cadences gardent leurs identifiants français dans les
+> sauvegardes et les préférences, traduits à l'affichage ; les 268 noms d'ouvertures ont
+> leur table (`assets/openings_en.tsv`, noms anglais usuels : *Ruy Lopez*, *Queen's
+> Gambit Declined*…). Un PGN exporté en anglais a ses en-têtes en anglais. Langue au
+> choix sur l'écran « Nouvelle partie » et dans Apparence (préférence `language`) ; au
+> premier lancement, celle du système. Journaux et ligne de commande restent en
+> français.
+>
+> - **Complétude** (`tests/test_i18n.py`) : contrôle statique (chaque littéral passé à
+>   `tr`, chaque libellé de bouton, chaque table affichée, chaque motif de fin, chaque
+>   ouverture) et contrôle au rendu : en anglais, chaque écran et chaque fenêtre est
+>   dessiné dans plusieurs états, tous les textes rendus sont relevés, aucun ne doit
+>   contenir de français. Le même relevé, en français, échoue bien.
+>
+> **J11.4 ✅ (2026-10-28)** : `tools/contrast.py`, audit WCAG 2.2 : formule de luminance
+> relative de la norme, couleurs translucides composées sur leur fond comme à l'écran,
+> seuils AA (texte 4,5:1, grand texte 3:1, non textuel 3:1 au sens du critère 1.4.11).
+> 86 paires : textes et commandes des deux thèmes, coordonnées, coups possibles et échec
+> sur les quatre échiquiers, pastilles du bilan, barre d'évaluation, promotion. Exclus
+> comme le permet la norme : commandes désactivées, décor, annotations du joueur.
+>
+> | Écart relevé | Avant | Correction | Après |
+> |---|---|---|---|
+> | Coordonnées de l'échiquier (texte) | 2,1 à 2,8:1 | Teinte des cases foncées assombrie (42 % sur case claire, 80 % sur case foncée) | 4,9 à 6,5:1 |
+> | Points des coups possibles | 1,6 à 1,8:1 | Opacité 70 → 175 | 3,3 à 5,9:1 |
+> | Halo du roi en échec | 1,3 à 2,4:1 | Liseré rouge sombre `CHECK_RING` | 3,8 à 11,3:1 |
+> | Thème clair : cadre d'une option choisie, carte du camp au trait, interrupteur, champ de saisie, invite du coup | 1,8 à 2,1:1 | `accent_ink` (158, 112, 44) pour les traits ; le fond des boutons principaux garde l'accent clair | 3,7 à 4,4:1 |
+> | Thème clair : pastilles « imprécision » et « erreur » du bilan | 2,3:1 | Contour sombre fixe `JUDGEMENT_RING` | 6,0 et 6,1:1 (gaffe : 3,6:1) |
+>
+> Le thème sombre passait déjà partout. `tests/test_contrast.py` vérifie les formules
+> (valeurs de référence WebAIM) et qu'aucune paire ne repasse sous son seuil.
+>
+> **Publication `v1.4.0` (2026-10-28)** : J11 terminé ; version, CHANGELOG, README et
+> TESTS.md à jour. Suite rapide : 662 tests ; tests longs : 68.
+
 #### En continu
 
 - Couverture des tests mesurée en CI, avec un badge.
@@ -1089,7 +1161,7 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 - Signature des exécutables Windows et notarisation macOS : nécessite des certificats
   payants, décision du propriétaire du projet.
 
-Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11.
+Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11. Les cinq jalons sont livrés (v1.4.0).
 
 ---
 

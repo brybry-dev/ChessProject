@@ -34,6 +34,10 @@ class Theme:
     muted: RGB
     accent: RGB
     on_accent: RGB
+    # Accent des traits, icônes et repères posés sur une carte (cadre d'une option
+    # choisie, interrupteur, champ de saisie) : assez foncé en thème clair pour le
+    # contraste non textuel de 3:1 (WCAG 1.4.11, J11.4).
+    accent_ink: RGB
     current: RGBA  # coup courant dans l'historique
     hover: RGBA  # survol d'un bouton discret
     scrim: RGBA  # voile derrière une fenêtre modale
@@ -54,6 +58,7 @@ THEMES: dict[str, Theme] = {
         muted=(164, 170, 179),
         accent=ACCENT,
         on_accent=(22, 24, 29),
+        accent_ink=ACCENT,
         current=(227, 169, 83, 56),
         hover=(255, 255, 255, 18),
         scrim=(10, 11, 14, 165),
@@ -70,6 +75,7 @@ THEMES: dict[str, Theme] = {
         muted=(90, 96, 105),
         accent=ACCENT,
         on_accent=(22, 24, 29),
+        accent_ink=(158, 112, 44),
         current=(227, 169, 83, 82),
         hover=(0, 0, 0, 14),
         scrim=(20, 22, 26, 120),
@@ -85,6 +91,20 @@ class BoardPalette:
     light: RGB
     dark: RGB
 
+    # Coordonnées : teinte des cases foncées assombrie jusqu'au contraste de 4,5:1 sur
+    # chaque case (WCAG 1.4.3, J11.4 ; vérifié par tools/contrast.py).
+    @property
+    def coord_on_light(self) -> RGB:
+        return mix(self.dark, (0, 0, 0), COORD_DARKEN_ON_LIGHT)
+
+    @property
+    def coord_on_dark(self) -> RGB:
+        return mix(self.dark, (0, 0, 0), COORD_DARKEN_ON_DARK)
+
+
+COORD_DARKEN_ON_LIGHT = 0.42
+COORD_DARKEN_ON_DARK = 0.80
+
 
 PALETTES: dict[str, BoardPalette] = {
     palette.name: palette
@@ -99,8 +119,10 @@ PALETTES: dict[str, BoardPalette] = {
 # Surlignages de l'échiquier (couleur, opacité 0-255).
 LAST_MOVE: RGBA = (227, 169, 83, 105)
 SELECTED: RGBA = (227, 169, 83, 135)
-HINT: RGBA = (20, 22, 26, 70)  # points des coups possibles
+# Repères de l'échiquier : au moins 3:1 sur chaque case (WCAG 1.4.11, J11.4).
+HINT: RGBA = (20, 22, 26, 175)  # points des coups possibles
 CHECK: RGBA = (214, 69, 65, 170)
+CHECK_RING: RGB = (92, 20, 12)  # liseré du halo d'échec, lisible sur les cases foncées
 ARROW: RGBA = (76, 139, 214, 200)
 MARK: RGBA = (76, 139, 214, 210)
 EVAL_WHITE: RGB = (236, 234, 229)
@@ -112,6 +134,8 @@ JUDGEMENT_COLORS: dict[str, RGB] = {
     "mistake": (230, 159, 0),
     "blunder": (223, 83, 83),
 }
+# Contour des pastilles : leur contraste ne dépend plus du thème (J11.4).
+JUDGEMENT_RING: RGB = (42, 45, 51)
 WHITE_PIECE_TILE: RGB = (236, 234, 229)
 BLACK_PIECE_TILE: RGB = (42, 45, 51)
 DROP_TARGET: RGB = (255, 255, 255)  # case survolée pendant un glisser-déposer
@@ -123,6 +147,15 @@ PROMOTION_HOVER: RGB = (235, 203, 143)
 PROMOTION_CANCEL: RGB = (220, 214, 202)
 PROMOTION_CANCEL_HOVER: RGB = (205, 198, 186)
 PROMOTION_CANCEL_TEXT: RGB = (58, 63, 73)
+
+
+def mix(a: RGB, b: RGB, t: float) -> RGB:
+    """Couleur à la proportion ``t`` entre ``a`` (0) et ``b`` (1)."""
+    return (
+        round(a[0] + (b[0] - a[0]) * t),
+        round(a[1] + (b[1] - a[1]) * t),
+        round(a[2] + (b[2] - a[2]) * t),
+    )
 
 
 def theme(name: str) -> Theme:

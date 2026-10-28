@@ -1,0 +1,270 @@
+# Noms anglais des ouvertures (J11.3) : nom français du livre <tab> nom anglais.
+# Chaque nom de openings.tsv doit figurer ici (tests/test_i18n.py).
+Attaque Parham	Parham Attack
+Attaque Torre	Torre Attack
+Attaque Trompowsky	Trompowsky Attack
+Attaque Veresov	Veresov Attack
+Attaque est-indienne inversée	King's Indian Attack
+Contre-gambit Albin	Albin Countergambit
+Contre-gambit Falkbeer	Falkbeer Countergambit
+Contre-gambit de l'éléphant	Elephant Gambit
+Contre-gambit letton	Latvian Gambit
+Défense Alekhine	Alekhine Defense
+Défense Alekhine : attaque des quatre pions	Alekhine Defense: Four Pawns Attack
+Défense Alekhine : variante d'échange	Alekhine Defense: Exchange Variation
+Défense Alekhine : variante moderne	Alekhine Defense: Modern Variation
+Défense Benoni	Benoni Defense
+Défense Benoni moderne	Modern Benoni Defense
+Défense Benoni moderne : variante 6.e4	Modern Benoni Defense: 6.e4 Variation
+Défense Benoni moderne : variante classique	Modern Benoni Defense: Classical Variation
+Défense Benoni tchèque	Czech Benoni Defense
+Défense Caro-Kann	Caro-Kann Defense
+Défense Caro-Kann : attaque Panov	Caro-Kann Defense: Panov Attack
+Défense Caro-Kann : attaque est-indienne	Caro-Kann Defense: King's Indian Attack
+Défense Caro-Kann : variante Bronstein-Larsen	Caro-Kann Defense: Bronstein-Larsen Variation
+Défense Caro-Kann : variante Steinitz	Caro-Kann Defense: Steinitz Variation
+Défense Caro-Kann : variante classique	Caro-Kann Defense: Classical Variation
+Défense Caro-Kann : variante d'avance	Caro-Kann Defense: Advance Variation
+Défense Caro-Kann : variante d'avance, attaque Van der Wiel	Caro-Kann Defense: Advance Variation, Van der Wiel Attack
+Défense Caro-Kann : variante d'échange	Caro-Kann Defense: Exchange Variation
+Défense Caro-Kann : variante des deux cavaliers	Caro-Kann Defense: Two Knights Variation
+Défense Englund	Englund Defense
+Défense Grünfeld	Grünfeld Defense
+Défense Grünfeld : système russe	Grünfeld Defense: Russian System
+Défense Grünfeld : variante 4.Bf4	Grünfeld Defense: 4.Bf4 Variation
+Défense Grünfeld : variante 5.Bg5	Grünfeld Defense: 5.Bg5 Variation
+Défense Grünfeld : variante d'échange	Grünfeld Defense: Exchange Variation
+Défense Grünfeld : variante d'échange moderne	Grünfeld Defense: Modern Exchange Variation
+Défense Grünfeld : variante d'échange, système classique	Grünfeld Defense: Exchange Variation, Classical System
+Défense Nimzowitsch	Nimzowitsch Defense
+Défense Owen	Owen Defense
+Défense Petrov	Petrov Defense
+Défense Petrov : attaque Nimzowitsch	Petrov Defense: Nimzowitsch Attack
+Défense Petrov : attaque Steinitz	Petrov Defense: Steinitz Attack
+Défense Petrov : variante classique	Petrov Defense: Classical Variation
+Défense Philidor	Philidor Defense
+Défense Philidor : variante Hanham	Philidor Defense: Hanham Variation
+Défense Philidor : variante d'échange	Philidor Defense: Exchange Variation
+Défense Pirc	Pirc Defense
+Défense Pirc : attaque 150	Pirc Defense: 150 Attack
+Défense Pirc : attaque autrichienne	Pirc Defense: Austrian Attack
+Défense Pirc : système classique	Pirc Defense: Classical System
+Défense St. George	St. George Defense
+Défense Tchigorine	Chigorin Defense
+Défense anglaise	English Defense
+Défense bogo-indienne	Bogo-Indian Defense
+Défense des deux cavaliers	Two Knights Defense
+Défense des deux cavaliers : attaque 4.Ng5	Two Knights Defense: 4.Ng5 Attack
+Défense des deux cavaliers : contre-attaque Traxler	Two Knights Defense: Traxler Counterattack
+Défense des deux cavaliers : gambit écossais	Two Knights Defense: Scotch Gambit
+Défense des deux cavaliers : variante moderne	Two Knights Defense: Modern Variation
+Défense des deux cavaliers : variante principale	Two Knights Defense: Main Line
+Défense est-indienne	King's Indian Defense
+Défense est-indienne : attaque des quatre pions	King's Indian Defense: Four Pawns Attack
+Défense est-indienne : variante Averbakh	King's Indian Defense: Averbakh Variation
+Défense est-indienne : variante Mar del Plata	King's Indian Defense: Mar del Plata Variation
+Défense est-indienne : variante Petrossian	King's Indian Defense: Petrosian Variation
+Défense est-indienne : variante Sämisch	King's Indian Defense: Sämisch Variation
+Défense est-indienne : variante classique	King's Indian Defense: Classical Variation
+Défense est-indienne : variante fianchetto	King's Indian Defense: Fianchetto Variation
+Défense est-indienne : variante orthodoxe	King's Indian Defense: Orthodox Variation
+Défense française	French Defense
+Défense française : Tarrasch, variante Guimard	French Defense: Tarrasch, Guimard Variation
+Défense française : Tarrasch, variante fermée	French Defense: Tarrasch, Closed Variation
+Défense française : Tarrasch, variante ouverte	French Defense: Tarrasch, Open Variation
+Défense française : Winawer, variante du pion empoisonné	French Defense: Winawer, Poisoned Pawn Variation
+Défense française : Winawer, variante principale	French Defense: Winawer, Main Line
+Défense française : attaque est-indienne	French Defense: King's Indian Attack
+Défense française : variante MacCutcheon	French Defense: MacCutcheon Variation
+Défense française : variante Rubinstein	French Defense: Rubinstein Variation
+Défense française : variante Steinitz	French Defense: Steinitz Variation
+Défense française : variante Tarrasch	French Defense: Tarrasch Variation
+Défense française : variante Winawer	French Defense: Winawer Variation
+Défense française : variante classique	French Defense: Classical Variation
+Défense française : variante d'avance	French Defense: Advance Variation
+Défense française : variante d'échange	French Defense: Exchange Variation
+Défense hollandaise	Dutch Defense
+Défense hollandaise : gambit Staunton	Dutch Defense: Staunton Gambit
+Défense hollandaise : variante Leningrad	Dutch Defense: Leningrad Variation
+Défense hollandaise : variante Stonewall	Dutch Defense: Stonewall Variation
+Défense hollandaise : variante classique	Dutch Defense: Classical Variation
+Défense indienne	Indian Defense
+Défense indienne : attaque Torre	Indian Defense: Torre Attack
+Défense indienne : système de Londres	Indian Defense: London System
+Défense moderne	Modern Defense
+Défense nimzo-indienne	Nimzo-Indian Defense
+Défense nimzo-indienne : variante Fischer	Nimzo-Indian Defense: Fischer Variation
+Défense nimzo-indienne : variante Kmoch	Nimzo-Indian Defense: Kmoch Variation
+Défense nimzo-indienne : variante Leningrad	Nimzo-Indian Defense: Leningrad Variation
+Défense nimzo-indienne : variante Rubinstein	Nimzo-Indian Defense: Rubinstein Variation
+Défense nimzo-indienne : variante Sämisch	Nimzo-Indian Defense: Sämisch Variation
+Défense nimzo-indienne : variante classique	Nimzo-Indian Defense: Classical Variation
+Défense nimzo-indienne : variante des trois cavaliers	Nimzo-Indian Defense: Three Knights Variation
+Défense ouest-indienne	Queen's Indian Defense
+Défense ouest-indienne : variante Nimzowitsch	Queen's Indian Defense: Nimzowitsch Variation
+Défense ouest-indienne : variante Petrossian	Queen's Indian Defense: Petrosian Variation
+Défense ouest-indienne : variante fianchetto	Queen's Indian Defense: Fianchetto Variation
+Défense scandinave	Scandinavian Defense
+Défense scandinave : variante Gubinsky-Melts	Scandinavian Defense: Gubinsky-Melts Variation
+Défense scandinave : variante moderne	Scandinavian Defense: Modern Variation
+Défense scandinave : variante principale	Scandinavian Defense: Main Line
+Défense semi-slave	Semi-Slav Defense
+Défense semi-slave : anti-Meran	Semi-Slav Defense: Anti-Meran
+Défense semi-slave : variante Botvinnik	Semi-Slav Defense: Botvinnik Variation
+Défense semi-slave : variante Meran	Semi-Slav Defense: Meran Variation
+Défense semi-slave : variante de Moscou	Semi-Slav Defense: Moscow Variation
+Défense sicilienne	Sicilian Defense
+Défense sicilienne : Najdorf, attaque anglaise	Sicilian Defense: Najdorf, English Attack
+Défense sicilienne : Najdorf, variante 6.f4	Sicilian Defense: Najdorf, 6.f4 Variation
+Défense sicilienne : Najdorf, variante Adams	Sicilian Defense: Najdorf, Adams Variation
+Défense sicilienne : Najdorf, variante Opočenský	Sicilian Defense: Najdorf, Opočenský Variation
+Défense sicilienne : Najdorf, variante du pion empoisonné	Sicilian Defense: Najdorf, Poisoned Pawn Variation
+Défense sicilienne : Najdorf, variante principale	Sicilian Defense: Najdorf, Main Line
+Défense sicilienne : Scheveningen, attaque Keres	Sicilian Defense: Scheveningen, Keres Attack
+Défense sicilienne : Scheveningen, variante classique	Sicilian Defense: Scheveningen, Classical Variation
+Défense sicilienne : attaque Grand Prix	Sicilian Defense: Grand Prix Attack
+Défense sicilienne : attaque Moscou	Sicilian Defense: Moscow Variation
+Défense sicilienne : attaque Richter-Rauzer	Sicilian Defense: Richter-Rauzer Attack
+Défense sicilienne : dragon accéléré	Sicilian Defense: Accelerated Dragon
+Défense sicilienne : dragon accéléré, étau de Maroczy	Sicilian Defense: Accelerated Dragon, Maróczy Bind
+Défense sicilienne : dragon, attaque yougoslave	Sicilian Defense: Dragon, Yugoslav Attack
+Défense sicilienne : dragon, variante classique	Sicilian Defense: Dragon, Classical Variation
+Défense sicilienne : gambit Smith-Morra	Sicilian Defense: Smith-Morra Gambit
+Défense sicilienne : gambit Smith-Morra accepté	Sicilian Defense: Smith-Morra Gambit Accepted
+Défense sicilienne : gambit de l'aile	Sicilian Defense: Wing Gambit
+Défense sicilienne : variante Alapin	Sicilian Defense: Alapin Variation
+Défense sicilienne : variante Hyperaccélérée	Sicilian Defense: Hyperaccelerated Dragon
+Défense sicilienne : variante Kalachnikov	Sicilian Defense: Kalashnikov Variation
+Défense sicilienne : variante Kan	Sicilian Defense: Kan Variation
+Défense sicilienne : variante Najdorf	Sicilian Defense: Najdorf Variation
+Défense sicilienne : variante Rossolimo	Sicilian Defense: Rossolimo Variation
+Défense sicilienne : variante Scheveningen	Sicilian Defense: Scheveningen Variation
+Défense sicilienne : variante Sozine	Sicilian Defense: Sozin Variation
+Défense sicilienne : variante Svechnikov	Sicilian Defense: Svechnikov Variation
+Défense sicilienne : variante Taïmanov	Sicilian Defense: Taimanov Variation
+Défense sicilienne : variante Tchekhover	Sicilian Defense: Chekhover Variation
+Défense sicilienne : variante classique	Sicilian Defense: Classical Variation
+Défense sicilienne : variante des quatre cavaliers	Sicilian Defense: Four Knights Variation
+Défense sicilienne : variante du dragon	Sicilian Defense: Dragon Variation
+Défense sicilienne : variante fermée	Sicilian Defense: Closed Variation
+Défense sicilienne : variante ouverte	Sicilian Defense: Open Variation
+Défense slave	Slav Defense
+Défense slave : variante Chebanenko	Slav Defense: Chebanenko Variation
+Défense slave : variante avec e3	Slav Defense: e3 Variation
+Défense slave : variante d'échange	Slav Defense: Exchange Variation
+Défense slave : variante tchèque	Slav Defense: Czech Variation
+Gambit Benko	Benko Gambit
+Gambit Benko : variante 5.e3	Benko Gambit: 5.e3 Variation
+Gambit Benko accepté	Benko Gambit Accepted
+Gambit Blackmar-Diemer	Blackmar-Diemer Gambit
+Gambit dame	Queen's Gambit
+Gambit dame accepté	Queen's Gambit Accepted
+Gambit dame accepté : variante centrale	Queen's Gambit Accepted: Central Variation
+Gambit dame accepté : variante classique	Queen's Gambit Accepted: Classical Variation
+Gambit dame refusé	Queen's Gambit Declined
+Gambit dame refusé : défense Lasker	Queen's Gambit Declined: Lasker Defense
+Gambit dame refusé : défense Tarrasch	Queen's Gambit Declined: Tarrasch Defense
+Gambit dame refusé : défense semi-Tarrasch	Queen's Gambit Declined: Semi-Tarrasch Defense
+Gambit dame refusé : défense semi-slave	Queen's Gambit Declined: Semi-Slav Defense
+Gambit dame refusé : système Tartakover	Queen's Gambit Declined: Tartakover System
+Gambit dame refusé : variante 5.Bf4	Queen's Gambit Declined: 5.Bf4 Variation
+Gambit dame refusé : variante Ragozine	Queen's Gambit Declined: Ragozin Variation
+Gambit dame refusé : variante d'échange	Queen's Gambit Declined: Exchange Variation
+Gambit dame refusé : variante orthodoxe	Queen's Gambit Declined: Orthodox Variation
+Gambit danois	Danish Gambit
+Gambit de Budapest	Budapest Gambit
+Gambit du roi	King's Gambit
+Gambit du roi accepté	King's Gambit Accepted
+Gambit du roi accepté : défense moderne	King's Gambit Accepted: Modern Defense
+Gambit du roi accepté : gambit du cavalier	King's Gambit Accepted: King's Knight's Gambit
+Gambit du roi accepté : gambit du fou	King's Gambit Accepted: Bishop's Gambit
+Gambit du roi accepté : variante Kieseritzky	King's Gambit Accepted: Kieseritzky Variation
+Gambit du roi refusé : défense classique	King's Gambit Declined: Classical Defense
+Gambit écossais	Scotch Gambit
+Ouverture Alapin	Alapin Opening
+Ouverture Anderssen	Anderssen Opening
+Ouverture Bird	Bird Opening
+Ouverture Bird : gambit From	Bird Opening: From Gambit
+Ouverture Grob	Grob Opening
+Ouverture Larsen	Larsen Opening
+Ouverture Mieses	Mieses Opening
+Ouverture Ponziani	Ponziani Opening
+Ouverture Réti	Réti Opening
+Ouverture Réti : attaque est-indienne	Réti Opening: King's Indian Attack
+Ouverture Réti : défense hollandaise	Réti Opening: Dutch Defense
+Ouverture Réti : défense sicilienne	Réti Opening: Sicilian Defense
+Ouverture Réti : gambit Réti	Réti Opening: Réti Gambit
+Ouverture Réti : gambit Réti accepté	Réti Opening: Réti Gambit Accepted
+Ouverture Saragosse	Saragossa Opening
+Ouverture Sokolsky	Sokolsky Opening
+Ouverture anglaise	English Opening
+Ouverture anglaise : anglo-Grünfeld	English Opening: Anglo-Grünfeld
+Ouverture anglaise : anglo-indienne	English Opening: Anglo-Indian
+Ouverture anglaise : anglo-indienne, fianchetto	English Opening: Anglo-Indian, Fianchetto
+Ouverture anglaise : défense Caro-Kann	English Opening: Caro-Kann Defense
+Ouverture anglaise : défense anglo-indienne	English Opening: Anglo-Indian Defense
+Ouverture anglaise : défense hollandaise	English Opening: Dutch Defense
+Ouverture anglaise : défense sicilienne inversée	English Opening: Reversed Sicilian
+Ouverture anglaise : quatre cavaliers, fianchetto	English Opening: Four Knights, Fianchetto
+Ouverture anglaise : sicilienne inversée fermée	English Opening: Closed Reversed Sicilian
+Ouverture anglaise : symétrique, système Botvinnik	English Opening: Symmetrical, Botvinnik System
+Ouverture anglaise : symétrique, variante des quatre cavaliers	English Opening: Symmetrical, Four Knights Variation
+Ouverture anglaise : variante Agincourt	English Opening: Agincourt Variation
+Ouverture anglaise : variante Bremen	English Opening: Bremen Variation
+Ouverture anglaise : variante Mikenas-Carls	English Opening: Mikenas-Carls Variation
+Ouverture anglaise : variante des quatre cavaliers	English Opening: Four Knights Variation
+Ouverture anglaise : variante symétrique	English Opening: Symmetrical Variation
+Ouverture catalane	Catalan Opening
+Ouverture catalane : variante fermée	Catalan Opening: Closed Variation
+Ouverture catalane : variante ouverte	Catalan Opening: Open Variation
+Ouverture du fou	Bishop's Opening
+Ouverture du fou : défense berlinoise	Bishop's Opening: Berlin Defense
+Ouverture hongroise	Hungarian Opening
+Ouverture van Geet	Van Geet Opening
+Partie des quatre cavaliers	Four Knights Game
+Partie des quatre cavaliers : variante espagnole	Four Knights Game: Spanish Variation
+Partie des quatre cavaliers : variante symétrique	Four Knights Game: Symmetrical Variation
+Partie des quatre cavaliers : variante écossaise	Four Knights Game: Scotch Variation
+Partie des trois cavaliers	Three Knights Opening
+Partie du cavalier du roi	King's Knight Opening
+Partie du centre	Center Game
+Partie du pion dame	Queen's Pawn Game
+Partie du pion dame : attaque Stonewall	Queen's Pawn Game: Stonewall Attack
+Partie du pion roi	King's Pawn Game
+Partie espagnole	Ruy Lopez
+Partie espagnole : anti-Marshall	Ruy Lopez: Anti-Marshall
+Partie espagnole : attaque Marshall	Ruy Lopez: Marshall Attack
+Partie espagnole : défense Morphy	Ruy Lopez: Morphy Defense
+Partie espagnole : défense Steinitz	Ruy Lopez: Steinitz Defense
+Partie espagnole : défense berlinoise	Ruy Lopez: Berlin Defense
+Partie espagnole : défense berlinoise, finale	Ruy Lopez: Berlin Defense, Endgame
+Partie espagnole : défense berlinoise, variante anti-berlinoise	Ruy Lopez: Berlin Defense, Anti-Berlin Variation
+Partie espagnole : défense classique	Ruy Lopez: Classical Defense
+Partie espagnole : gambit Schliemann	Ruy Lopez: Schliemann Gambit
+Partie espagnole : variante Anderssen	Ruy Lopez: Anderssen Variation
+Partie espagnole : variante Arkhangelsk	Ruy Lopez: Arkhangelsk Variation
+Partie espagnole : variante d'échange	Ruy Lopez: Exchange Variation
+Partie espagnole : variante fermée	Ruy Lopez: Closed Variation
+Partie espagnole : variante fermée, défense Breyer	Ruy Lopez: Closed Variation, Breyer Defense
+Partie espagnole : variante fermée, défense Tchigorine	Ruy Lopez: Closed Variation, Chigorin Defense
+Partie espagnole : variante fermée, système Zaïtsev	Ruy Lopez: Closed Variation, Zaitsev System
+Partie espagnole : variante néo-Arkhangelsk	Ruy Lopez: Neo-Arkhangelsk Variation
+Partie espagnole : variante ouverte	Ruy Lopez: Open Variation
+Partie italienne	Italian Game
+Partie italienne : Giuoco pianissimo	Italian Game: Giuoco Pianissimo
+Partie italienne : Giuoco piano	Italian Game: Giuoco Piano
+Partie italienne : défense hongroise	Italian Game: Hungarian Defense
+Partie italienne : gambit Evans	Italian Game: Evans Gambit
+Partie italienne : gambit Evans accepté	Italian Game: Evans Gambit Accepted
+Partie italienne : variante principale	Italian Game: Main Line
+Partie viennoise	Vienna Game
+Partie viennoise : gambit viennois	Vienna Game: Vienna Gambit
+Partie viennoise : variante fianchetto	Vienna Game: Fianchetto Variation
+Partie écossaise	Scotch Game
+Partie écossaise : variante Mieses	Scotch Game: Mieses Variation
+Partie écossaise : variante Steinitz	Scotch Game: Steinitz Variation
+Partie écossaise : variante classique	Scotch Game: Classical Variation
+Système Colle	Colle System
+Système de Londres	London System
+Vieille défense Benoni	Old Benoni Defense
+Vieille défense indienne	Old Indian Defense

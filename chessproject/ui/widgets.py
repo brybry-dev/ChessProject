@@ -14,6 +14,7 @@ from typing import Any
 
 import pygame as p
 
+from chessproject.i18n import tr
 from chessproject.ui import theme as th
 from chessproject.ui.theme import RGB, RGBA, Theme
 
@@ -159,6 +160,10 @@ ICONS: dict[str, list[Stroke]] = {
         ("line", [(8, 20), (8, 14), (16, 14), (16, 20)]),
     ],
     "folder": [("loop", [(3, 6), (9, 6), (11, 8), (21, 8), (21, 19), (3, 19)])],
+    "file": [
+        ("loop", [(6, 3), (14, 3), (19, 8), (19, 21), (6, 21)]),
+        ("line", [(14, 3), (14, 8), (19, 8)]),
+    ],
     "download": [
         ("line", [(12, 4), (12, 15)]),
         ("line", [(7, 10), (12, 15), (17, 10)]),
@@ -250,7 +255,8 @@ class Button:
 
     ``variant`` : ``primary`` (accent), ``secondary`` (cadre), ``ghost`` (discret),
     ``choice`` (option sélectionnable, ``selected``). ``action`` identifie le bouton
-    pour son propriétaire (chaîne ou valeur quelconque).
+    pour son propriétaire (chaîne ou valeur quelconque). Libellé, touche et infobulle
+    sont écrits en français et traduits au dessin (J11.3).
     """
 
     action: object
@@ -287,8 +293,8 @@ class Button:
             fg = t.on_accent if self.enabled else t.muted
         elif self.variant == "choice":
             if self.selected:
-                rounded(surface, _mix(t.surface2, t.accent, 0.16), rect, 10)
-                rounded(surface, t.accent, rect, 10, 2)
+                rounded(surface, th.mix(t.surface2, t.accent, 0.16), rect, 10)
+                rounded(surface, t.accent_ink, rect, 10, 2)
             else:
                 rounded(surface, t.surface2, rect, 10)
                 rounded(surface, _lighten(t.border, 18) if hovered else t.border, rect, 10, 1)
@@ -307,10 +313,10 @@ class Button:
         if self.icon:
             parts.append(("icon", icon(self.icon, 18 if self.label else 20, fg)))
         if self.label:
-            parts.append(("label", font.render(self.label, True, fg)))
+            parts.append(("label", font.render(tr(self.label), True, fg)))
         if self.hint and self.enabled:
             kbd_font = th.font(11, "medium", mono=True)
-            kbd = kbd_font.render(self.hint, True, t.muted)
+            kbd = kbd_font.render(tr(self.hint), True, t.muted)
             chip = p.Surface((kbd.get_width() + 10, kbd.get_height() + 4), p.SRCALPHA)
             p.draw.rect(chip, (*t.surface2, 255), chip.get_rect(), border_radius=4)
             chip.blit(kbd, (5, 2))
@@ -325,14 +331,6 @@ class Button:
 
 def _lighten(color: RGB, amount: int) -> RGB:
     return (min(255, color[0] + amount), min(255, color[1] + amount), min(255, color[2] + amount))
-
-
-def _mix(a: RGB, b: RGB, t: float) -> RGB:
-    return (
-        round(a[0] + (b[0] - a[0]) * t),
-        round(a[1] + (b[1] - a[1]) * t),
-        round(a[2] + (b[2] - a[2]) * t),
-    )
 
 
 def hovered_button(buttons: Sequence[Button], pos: tuple[int, int]) -> Button | None:
@@ -353,7 +351,7 @@ def draw_buttons(
 def tooltip(surface: p.Surface, t: Theme, value: str, anchor: p.Rect) -> None:
     """Infobulle sous ``anchor`` (gardée dans la fenêtre)."""
     f = th.font(12, "medium")
-    label = f.render(value, True, t.text)
+    label = f.render(tr(value), True, t.text)
     box = p.Rect(0, 0, label.get_width() + 16, label.get_height() + 10)
     box.midtop = (anchor.centerx, anchor.bottom + 6)
     box.clamp_ip(surface.get_rect())

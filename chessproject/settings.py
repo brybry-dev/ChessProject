@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, fields, replace
 from pathlib import Path
 from typing import Any
 
-from chessproject import paths
+from chessproject import i18n, paths
 from chessproject.ai import levels
 from chessproject.core import clock
 
@@ -41,11 +41,14 @@ class Settings:
     show_coordinates: bool = True
     show_legal_moves: bool = True
     sound: bool = True
+    language: str = "fr"  # langue de l'interface (J11.3), cf. i18n.LANGUAGES
     # Derniers choix de l'écran « Nouvelle partie ».
     mode: str = "PvC"
     color: str = "w"
     level: str = levels.DEFAULT_LEVEL.name
     time_control: str = clock.BLITZ_5_0.pgn_tag
+    # Dernier dossier d'export ou d'import PGN (J11.1) ; vide : dossier des données.
+    pgn_dir: str = ""
 
     @property
     def control(self) -> clock.TimeControl:
@@ -60,6 +63,7 @@ class Settings:
 
 _CHOICES: dict[str, tuple[str, ...]] = {
     "theme": THEMES,
+    "language": i18n.LANGUAGES,
     "board": BOARDS,
     "mode": MODES,
     "color": COLORS,

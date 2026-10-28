@@ -246,6 +246,7 @@ class Renderer:
         if scene.check:
             center = self.square_rect(*scene.check).center
             w.circle(self.screen, th.CHECK, center, int(size * 0.48))
+            w.ring(self.screen, (*th.CHECK_RING, 255), center, int(size * 0.48), max(2, size // 32))
         if self.show_coordinates:
             self._draw_coordinates()
 
@@ -298,10 +299,13 @@ class Renderer:
         for i in range(DIMENSION):
             # Rangées sur la première colonne affichée, colonnes sur la dernière rangée.
             rect = self._rect(i, 0)
-            color = self.palette.dark if i % 2 == 0 else self.palette.light
+            # Case (i, 0) claire si i est pair : encre foncée lisible sur chaque case.
+            on_light = i % 2 == 0
+            color = self.palette.coord_on_light if on_light else self.palette.coord_on_dark
             w.text(self.screen, self.rank_label(i), font, color, (rect.x + pad, rect.y + pad // 2))
             rect = self._rect(DIMENSION - 1, i)
-            color = self.palette.dark if (DIMENSION - 1 + i) % 2 == 0 else self.palette.light
+            on_light = (DIMENSION - 1 + i) % 2 == 0
+            color = self.palette.coord_on_light if on_light else self.palette.coord_on_dark
             w.text(
                 self.screen,
                 self.file_label(i),

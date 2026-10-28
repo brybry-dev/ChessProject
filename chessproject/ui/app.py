@@ -25,16 +25,18 @@ from typing import Any
 
 import pygame as p
 
-from chessproject import __version__, paths, serialization
+from chessproject import __version__, i18n, paths, serialization
 from chessproject import settings as settings_module
 from chessproject.ai import analysis, book, levels, review, search
 from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation, pgn
+from chessproject.i18n import plural, tr
 from chessproject.settings import Settings
 from chessproject.ui import layout as layout_module
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.board_view import BoardScene, Drag, PieceSet, Renderer
+from chessproject.ui.files import FileDialog, GamePickerOverlay
 from chessproject.ui.new_game import GameConfig, NewGameMenu, config_from
 from chessproject.ui.overlays import (
     AppearanceOverlay,
@@ -67,6 +69,7 @@ DRAG_THRESHOLD_PX = 4
 NOTICE_MS = 3500
 LOW_TIME_MS = 20_000
 EVAL_MOVETIME_MS = 25
+MOVE_INPUT_MAX_LENGTH = 12
 PIECE_VALUES = {"p": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "K": 0}
 
 logger = logging.getLogger(__name__)
@@ -203,13 +206,29 @@ def evaluate_for_display(game_state) -> int:
     return found.score if game_state.white_to_move else -found.score
 
 
+def typed_move_error(error: notation.TypedMoveError) -> str:
+    """Message affiché pour un coup tapé refusé (J11.2)."""
+    if error.reason == "ambiguous":
+        return tr("Coup ambigu : {options} ?", options=tr(" ou ").join(error.options))
+    if error.reason == "illegal":
+        return tr("Coup illégal : {text}", text=error.text)
+    return tr("Notation non reconnue : {text}", text=error.text)
+
+
 def eval_text(cp: int) -> str:
     """« +0,4 », « −1,2 » ou « #3 » / « −#3 » (mat en 3 coups)."""
     if abs(cp) >= search.MATE_THRESHOLD:
         moves = max(1, (search.MATE - abs(cp) + 1) // 2)
         return f"#{moves}" if cp > 0 else f"−#{moves}"
-    value = f"{abs(cp) / 100:.1f}".replace(".", ",")
-    return ("+" if cp >= 0 else "−") + value
+    return ("+" if cp >= 0 else "−") + i18n.decimal(abs(cp) / 100)
+
+
+def control_name(control: chess_clock_module.TimeControl) -> str:
+    """Nom d'une cadence dans la langue de l'interface (« Rapid 10+5 », « Unlimited »)."""
+    if control.is_unlimited:
+        return tr("Sans limite")
+    kind, _, rest = (control.name or control.label).partition(" ")
+    return f"{tr(kind)} {rest}" if rest else tr(kind)
 
 
 def eval_share(cp: int) -> float:
@@ -272,6 +291,9 @@ class GameController:
         self._start_clock()
 
         self.square_selected: tuple[int, int] | tuple[()] = ()
+        # Coup tapé au clavier (J11.2) : None tant que la saisie n'est pas ouverte.
+        self.move_input: str | None = None
+        self.move_input_error: str | None = None
         self.drag: Drag | None = None
         self._deselect_on_release = False
         self.arrows: set[tuple[tuple[int, int], tuple[int, int]]] = set()
@@ -301,6 +323,9 @@ class GameController:
         self.hinter = analysis.Analyzer(limits=analysis.HINT_LIMITS)
         # Bilan de la partie (J9.3) : évaluation de chaque position, en arrière-plan.
         self.reviewer = review.Reviewer()
+
+        # Parties du PGN en cours d'import, en attente du choix de l'une d'elles (J11.1).
+        self._pgn_games: list[pgn.PgnGame] = []
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
@@ -362,6 +387,8 @@ class GameController:
 
     def set_setting(self, name, value):
         self.settings = replace(self.settings, **{name: value})
+        if name == "language":
+            i18n.set_language(value)
         self._apply_settings()
         if name == "show_eval":
             self.resize(self.screen.get_size())
@@ -417,6 +444,7 @@ class GameController:
 
     def _new_game(self, game_state, saved_clock=None):
         self.game_state = game_state
+        self._close_move_input()
         self.external_result = None
         self.draw_offer = None
         self._start_clock(saved_clock)
@@ -459,6 +487,8 @@ class GameController:
             if action is not None:
                 self._run_action(action)
             return
+        if self.move_input is not None and self._handle_move_input(e):
+            return
         if e.type == p.MOUSEWHEEL:
             self.panel.scroll_by(p.mouse.get_pos(), e.y)
         elif e.type == p.MOUSEBUTTONDOWN:
@@ -492,6 +522,20 @@ class GameController:
                 self._view(action[1])
             elif kind == "setting":
                 self.set_setting(action[1], action[2])
+            elif kind == "file":
+                self.overlay = None
+                handlers = {
+                    "save": self._save_to,
+                    "load": self._load_from,
+                    "export": self._export_to,
+                    "import": self._import_from,
+                }
+                handlers[action[1]](action[2])
+            elif kind == "pgn_game":
+                self.overlay = None
+                games, self._pgn_games = self._pgn_games, []
+                if 0 <= action[1] < len(games):
+                    self._import_game(games[action[1]])
             return
         simple = {
             "new_game": lambda: self.requests.append("new_game"),
@@ -682,10 +726,74 @@ class GameController:
             p.K_DOWN: lambda: self._navigate("last"),
             p.K_END: lambda: self._navigate("last"),
             p.K_ESCAPE: self._escape,
+            p.K_RETURN: self._open_move_input,
+            p.K_KP_ENTER: self._open_move_input,
+            p.K_SPACE: self._open_move_input,
         }
         handler = keys.get(e.key)
         if handler is not None:
             handler()
+
+    # -- coup tapé au clavier (J11.2) --------------------------------------
+    def _open_move_input(self):
+        if self.game_over:
+            self._notify(tr("La partie est terminée"))
+            return
+        if self.mode == "CvC" or not self.human_turn():
+            self._notify(tr("Ce n'est pas à vous de jouer"))
+            return
+        self.view_ply = None
+        self._reset_selection()
+        self.move_input, self.move_input_error = "", None
+
+    def _close_move_input(self):
+        self.move_input = self.move_input_error = None
+
+    def _handle_move_input(self, e):
+        """Saisie ouverte : les touches vont au coup tapé (aucun raccourci) ; un clic la
+        ferme et garde son effet habituel. Renvoie True si l'événement est consommé."""
+        assert self.move_input is not None
+        if e.type == p.TEXTINPUT:
+            typed = "".join(c for c in e.text if c.isalnum() or c in "-=+#:")
+            self.move_input = (self.move_input + typed)[:MOVE_INPUT_MAX_LENGTH]
+            self.move_input_error = None
+            return True
+        if e.type == p.KEYDOWN:
+            if e.key in (p.K_RETURN, p.K_KP_ENTER):
+                self._submit_move_input()
+            elif e.key == p.K_ESCAPE:
+                self._close_move_input()
+            elif e.key == p.K_BACKSPACE:
+                if self.move_input:
+                    self.move_input = self.move_input[:-1]
+                    self.move_input_error = None
+                else:
+                    self._close_move_input()
+            return True
+        if e.type == p.MOUSEBUTTONDOWN:
+            self._close_move_input()
+        return False
+
+    def _submit_move_input(self):
+        text = self.move_input or ""
+        if not text:
+            self._close_move_input()
+            return
+        if self.game_over or not self.human_turn():
+            self._close_move_input()
+            return
+        try:
+            moves = notation.parse_typed_move(self.game_state, text)
+        except notation.TypedMoveError as ex:
+            self.move_input_error = typed_move_error(ex)
+            logger.info("Coup tapé refusé : %s (%s)", text, ex.reason)
+            return
+        self._close_move_input()
+        move = moves[0]
+        if len(moves) == 1:
+            self._play(move, animate=True)
+        else:  # promotion sans pièce indiquée : le choix s'ouvre comme à la souris
+            self._try_move((move.start_row, move.start_col), (move.end_row, move.end_col), True)
 
     def _escape(self):
         if self.square_selected:
@@ -736,6 +844,7 @@ class GameController:
         # joueur. En PvP/CvC, un seul undo.
         if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
             self.game_state.undo_move()
+        self._close_move_input()
         self.external_result = None  # annuler rouvre une partie abandonnée ou nulle
         self.draw_offer = None
         self.end_dismissed = False
@@ -754,9 +863,9 @@ class GameController:
         if self._in_progress():
             self._open(
                 ConfirmOverlay(
-                    "Recommencer la partie ?",
-                    "La partie en cours sera perdue si elle n'a pas été sauvegardée.",
-                    "Recommencer",
+                    tr("Recommencer la partie ?"),
+                    tr("La partie en cours sera perdue si elle n'a pas été sauvegardée."),
+                    tr("Recommencer"),
                     "confirm_restart",
                 )
             )
@@ -797,13 +906,13 @@ class GameController:
             return
         move = notation.parse_san(self.game_state, line.pv[0])
         self.arrows.add(((move.start_row, move.start_col), (move.end_row, move.end_col)))
-        self._notify(f"Indice : {line.pv[0]}", "accent")
+        self._notify(tr("Indice : {san}", san=line.pv[0]), "accent")
         logger.info("Indice : %s", line.pv[0])
 
     # -- bilan (J9.3) ---------------------------------------------------
     def _open_review(self):
         if not self.game_state.move_log:
-            self._notify("Aucun coup à analyser")
+            self._notify(tr("Aucun coup à analyser"))
             return
         self.reviewer.start(self.state_at(0), list(self.game_state.move_log), self._key())
         self._open(ReviewOverlay(self.reviewer, eval_text))
@@ -825,11 +934,26 @@ class GameController:
         self.renderer.flip_board = not self.renderer.flip_board
         self.renderer.animation = None
 
+    # -- fichiers (J11.1) ----------------------------------------------
     def _save(self):
+        """Choix du nom de la sauvegarde, dans le dossier des sauvegardes."""
+        self._open(
+            FileDialog(
+                "save",
+                "save",
+                tr("Sauvegarder la partie"),
+                paths.saves_dir(),
+                paths.SAVE_EXTENSION,
+                default_name=self._default_file_name(),
+                allow_delete=True,
+            )
+        )
+
+    def _save_to(self, path):
         saved = serialization.save_game(
             self.game_state,
             flip_board=self.flip_board,
-            filename=str(paths.save_file()),
+            filename=str(path),
             mode=self.mode,
             human_white=self.player_one,
             human_black=self.player_two,
@@ -838,20 +962,36 @@ class GameController:
             result=self.external_result,
         )
         if saved:
-            self._notify("Partie sauvegardée", "accent")
+            self._notify(tr("Partie sauvegardée : {name}", name=Path(path).name), "accent")
         else:
-            self._notify("Échec de la sauvegarde (voir le journal)", "warning")
+            self._notify(tr("Échec de la sauvegarde (voir le journal)"), "warning")
+        return saved
 
     def _load(self):
-        path = Path(paths.existing_save_file())
-        if not path.exists():
-            self._notify("Aucune sauvegarde à charger", "warning")
-            return False
+        """Choix de la sauvegarde à charger (la plus récente est présélectionnée)."""
+        paths.adopt_legacy_save()
+        folder = paths.saves_dir()
+        if not any(folder.glob("*" + paths.SAVE_EXTENSION)):
+            self._notify(tr("Aucune sauvegarde à charger"), "warning")
+            return
+        self._open(
+            FileDialog(
+                "load",
+                "open",
+                tr("Charger une partie"),
+                folder,
+                paths.SAVE_EXTENSION,
+                confirm_label=tr("Charger"),
+                allow_delete=True,
+            )
+        )
+
+    def _load_from(self, path):
         try:
             saved = serialization.load_save(str(path))
         except Exception as ex:  # noqa: BLE001 - fichier illisible ou illégal
-            logger.error("Erreur lors du chargement : %s", ex)
-            self._notify("Sauvegarde illisible : chargement impossible", "warning")
+            logger.error("Erreur lors du chargement de %s : %s", path, ex)
+            self._notify(tr("Sauvegarde illisible : chargement impossible"), "warning")
             return False
         self.renderer.flip_board = saved.flip_board
         if saved.mode is not None:
@@ -862,16 +1002,47 @@ class GameController:
             self.ai_level = saved.level
         self._new_game(saved.game_state, saved.clock)
         self.external_result = saved.result
-        self._notify(f"Partie chargée ({len(saved.game_state.move_log)} demi-coups)", "accent")
+        n = len(saved.game_state.move_log)
+        self._notify(
+            plural(n, "Partie chargée ({n} demi-coup)", "Partie chargée ({n} demi-coups)"), "accent"
+        )
         return True
+
+    def _pgn_dir(self):
+        """Dossier PGN : le dernier utilisé s'il existe encore, sinon celui des données."""
+        folder = Path(self.settings.pgn_dir) if self.settings.pgn_dir else None
+        return folder if folder is not None and folder.is_dir() else paths.user_data_dir()
+
+    def _remember_pgn_dir(self, path):
+        folder = str(Path(path).parent)
+        if folder != self.settings.pgn_dir:
+            self.set_setting("pgn_dir", folder)
+
+    def _default_file_name(self):
+        """Nom proposé pour une sauvegarde ou un export : « partie-2026-10-28-1530 »."""
+        return tr("partie") + time.strftime("-%Y-%m-%d-%H%M")
 
     def _player_name(self, white):
         human = self.player_one if white else self.player_two
-        return "Humain" if human else f"ChessProject ({self.ai_level})"
+        return tr("Humain") if human else f"ChessProject ({tr(self.ai_level)})"
 
     def _export_pgn(self):
+        self._open(
+            FileDialog(
+                "export",
+                "save",
+                tr("Exporter en PGN"),
+                self._pgn_dir(),
+                paths.PGN_EXTENSION,
+                places=paths.places(),
+                default_name=self._default_file_name(),
+                confirm_label=tr("Exporter"),
+            )
+        )
+
+    def _export_to(self, path):
         headers = {
-            "Event": "Partie ChessProject",
+            "Event": tr("Partie ChessProject"),
             "Date": time.strftime("%Y.%m.%d"),
             "White": self._player_name(True),
             "Black": self._player_name(False),
@@ -880,32 +1051,73 @@ class GameController:
             headers["TimeControl"] = self.time_control.pgn_tag
         opening = book.identify(self.game_state)
         if opening is not None:
-            headers["ECO"], headers["Opening"] = opening.eco, opening.name
+            headers["ECO"], headers["Opening"] = opening.eco, i18n.opening_name(opening.name)
         text = pgn.export_pgn(self.game_state, result=self.result, headers=headers)
-        path = paths.pgn_file()
+        path = Path(path)
         try:
             path.write_text(text, encoding="utf-8")
-            logger.info("Partie exportée en PGN dans %s", path)
-            self._notify(f"PGN exporté : {path}", "accent")
         except OSError as ex:
             logger.error("Export PGN impossible : %s", ex)
-            self._notify("Export PGN impossible (voir le journal)", "warning")
+            self._notify(tr("Export PGN impossible (voir le journal)"), "warning")
+            return False
+        logger.info("Partie exportée en PGN dans %s", path)
+        self._notify(tr("PGN exporté : {path}", path=path), "accent")
+        self._remember_pgn_dir(path)
+        return True
 
     def _import_pgn(self):
-        path = paths.pgn_file()
+        self._open(
+            FileDialog(
+                "import",
+                "open",
+                tr("Importer un PGN"),
+                self._pgn_dir(),
+                paths.PGN_EXTENSION,
+                places=paths.places(),
+                confirm_label=tr("Importer"),
+            )
+        )
+
+    def _import_from(self, path):
+        """Lit le PGN ``path`` : une seule partie est importée tout de suite, sinon la
+        liste des parties s'ouvre."""
+        path = Path(path)
         try:
-            game = pgn.read_pgn_file(path)[-1]
-            state = game.replay()
-        except (OSError, IndexError, pgn.PgnError) as ex:
+            games = pgn.read_pgn_file(path)
+        except (OSError, pgn.PgnError) as ex:
             logger.error("Import PGN impossible : %s", ex)
-            self._notify(f"Import impossible : {path.name} absent ou invalide", "warning")
+            self._notify(
+                tr("Import impossible : {name} illisible ou invalide", name=path.name), "warning"
+            )
+            return False
+        if not games:
+            self._notify(
+                tr("Import impossible : aucune partie dans {name}", name=path.name), "warning"
+            )
+            return False
+        self._remember_pgn_dir(path)
+        if len(games) == 1:
+            return self._import_game(games[0])
+        self._pgn_games = games
+        self._open(GamePickerOverlay(path.name, games))
+        return True
+
+    def _import_game(self, game):
+        try:
+            state = game.replay()
+        except pgn.PgnError as ex:
+            logger.error("Import PGN impossible : %s", ex)
+            self._notify(tr("Import impossible : partie invalide"), "warning")
             return False
         # La partie continue avec les règles du jeu (nulles automatiques).
         state.automatic_draws = True
         state._valid_moves = None
         self._new_game(state)
         logger.info("Partie importée (%d coups)", len(state.move_log))
-        self._notify(f"PGN importé ({len(state.move_log)} demi-coups)", "accent")
+        n = len(state.move_log)
+        self._notify(
+            plural(n, "PGN importé ({n} demi-coup)", "PGN importé ({n} demi-coups)"), "accent"
+        )
         return True
 
     def _human_color(self):
@@ -921,9 +1133,9 @@ class GameController:
             return
         self._open(
             ConfirmOverlay(
-                "Abandonner la partie ?",
-                "La victoire sera attribuée à l'adversaire.",
-                "Abandonner",
+                tr("Abandonner la partie ?"),
+                tr("La victoire sera attribuée à l'adversaire."),
+                tr("Abandonner"),
                 "confirm_resign",
             )
         )
@@ -955,7 +1167,7 @@ class GameController:
                 self.external_result = engine.GameResult(engine.Termination.DRAW_AGREEMENT)
                 self._stop_ai()
             else:
-                self._notify("L'IA refuse la nulle : elle estime sa position meilleure")
+                self._notify(tr("L'IA refuse la nulle : elle estime sa position meilleure"))
             return
         # PvP : l'adversaire accepte en appuyant à son tour sur N, avant de jouer.
         if self._pending_offer_for(color):
@@ -1134,23 +1346,25 @@ class GameController:
             return None
         line = self.analyzer.line
         if line is None:
-            return ("Analyse…", "") if self.analyzer.running else None
-        return analysis.format_pv(line), f"{eval_text(line.score)} · prof. {line.depth}"
+            return (tr("Analyse…"), "") if self.analyzer.running else None
+        info = tr("{score} · prof. {depth}", score=eval_text(line.score), depth=line.depth)
+        return analysis.format_pv(line), info
 
     def _end_game_overlay(self):
         result = self.result
         if result.winner is None:
-            title, piece = "Partie nulle", None
+            title, piece = tr("Partie nulle"), None
         else:
             white = result.winner is engine.Color.WHITE
-            title = "Victoire des blancs" if white else "Victoire des noirs"
+            title = tr("Victoire des blancs") if white else tr("Victoire des noirs")
             if self.mode == "PvC":
                 human_won = white == bool(self.player_one)
-                title = "Victoire !" if human_won else "Défaite"
+                title = tr("Victoire !") if human_won else tr("Défaite")
             piece = "wK" if white else "bK"
         moves = (self.live_ply + 1) // 2
-        subtitle = f"{result.description} · {result.pgn} · {moves} coup{'s' if moves > 1 else ''}"
-        return EndGameOverlay(title, subtitle, piece, self.pieces, result.description)
+        description = tr(result.description)
+        subtitle = f"{description} · {result.pgn} · {plural(moves, '{n} coup', '{n} coups')}"
+        return EndGameOverlay(title, subtitle, piece, self.pieces, description)
 
     # -- rendu -----------------------------------------------------
     def draw(self):
@@ -1176,11 +1390,10 @@ class GameController:
 
     def _info_text(self):
         mode = {"PvC": "Joueur vs IA", "PvP": "Joueur vs Joueur", "CvC": "IA vs IA"}[self.mode]
-        parts = [mode]
+        parts = [tr(mode)]
         if self.mode != "PvP":
-            parts.append(f"Niveau {self.ai_level}")
-        tc = self.time_control
-        parts.append("Sans limite" if tc.is_unlimited else (tc.name or tc.label))
+            parts.append(tr("Niveau {level}", level=tr(self.ai_level)))
+        parts.append(control_name(self.time_control))
         return " · ".join(parts)
 
     def _board_scene(self, state):
@@ -1217,11 +1430,13 @@ class GameController:
 
     def _opening_label(self, state, ply):
         """Ouverture de la position affichée (« B90 · Défense sicilienne… »), ou None."""
-        key = (self._key(), ply)
+        key = (self._key(), ply, i18n.language())
         if getattr(self, "_opening_key", None) != key:
             opening = book.identify(state)
             self._opening_key = key
-            self._opening_cache = opening.label if opening else None
+            self._opening_cache = (
+                f"{opening.eco} · {i18n.opening_name(opening.name)}" if opening else None
+            )
         return self._opening_cache
 
     def _eval(self, state, ply):
@@ -1275,13 +1490,14 @@ class GameController:
     def _player_card(self, white, state, taken, material):
         color = engine.Color.WHITE if white else engine.Color.BLACK
         human = self.player_one if white else self.player_two
-        side = "Blancs" if white else "Noirs"
+        side = tr("Blancs") if white else tr("Noirs")
+        ai_name = tr("IA · {level}", level=tr(self.ai_level))
         if self.mode == "PvC":
-            name = "Vous" if human else f"IA · {self.ai_level}"
+            name = tr("Vous") if human else ai_name
         elif self.mode == "PvP":
-            name = "Joueur blanc" if white else "Joueur noir"
+            name = tr("Joueur blanc") if white else tr("Joueur noir")
         else:
-            name = f"IA · {self.ai_level}"
+            name = ai_name
         to_move = self.game_state.white_to_move == white and not self.game_over
         if self.chess_clock.is_unlimited:
             clock_text = format_elapsed(self.ui.white_time if white else self.ui.black_time)
@@ -1341,27 +1557,29 @@ class GameController:
             sans = self._sans()
             ply = self.view_ply
             if ply == 0:
-                where = "position de départ"
+                text = tr("Revue : position de départ · Fin pour revenir à la partie")
             else:
-                where = f"après {sans[ply - 1]}"
-            return f"Revue : {where} · Fin pour revenir à la partie", "accent"
+                text = tr("Revue : après {san} · Fin pour revenir à la partie", san=sans[ply - 1])
+            return text, "accent"
         if self.notice is not None:
             return self.notice[0], self.notice[1]
         if self.game_over:
-            return self.result.description, "accent"
-        side = "blancs" if self.game_state.white_to_move else "noirs"
-        mover = engine.Color.WHITE if self.game_state.white_to_move else engine.Color.BLACK
+            return tr(self.result.description), "accent"
+        white = self.game_state.white_to_move
+        mover = engine.Color.WHITE if white else engine.Color.BLACK
         if self.mode == "PvP" and self._pending_offer_for(mover):
-            proposer = "Noirs" if self.game_state.white_to_move else "Blancs"
-            return f"Les {proposer} proposent la nulle · N pour accepter", "accent"
+            if white:
+                return tr("Les Noirs proposent la nulle · N pour accepter"), "accent"
+            return tr("Les Blancs proposent la nulle · N pour accepter"), "accent"
         if self.ai_thinking:
-            return "L'IA réfléchit…", "info"
+            return tr("L'IA réfléchit…"), "info"
         if self.hinter.key is not None:
-            return "Recherche d'un indice…", "info"
+            return tr("Recherche d'un indice…"), "info"
         prefix = "Échec ! " if self.game_state.king_in_check() else ""
         if self.mode == "PvC" and self.human_turn():
-            return prefix + "À vous de jouer", "warning" if prefix else "accent"
-        return prefix + f"Aux {side} de jouer", "warning" if prefix else "info"
+            return tr(prefix + "À vous de jouer"), "warning" if prefix else "accent"
+        side = "blancs" if white else "noirs"
+        return tr(prefix + f"Aux {side} de jouer"), "warning" if prefix else "info"
 
     def _panel_model(self, state):
         ply = self.current_ply
@@ -1374,9 +1592,9 @@ class GameController:
         human = self._human_color()
         can_act = human is not None and not self.game_over
         draw_label = (
-            "Accepter"
+            tr("Accepter")
             if (self.mode == "PvP" and human is not None and self._pending_offer_for(human))
-            else "Nulle"
+            else tr("Nulle")
         )
         eval_label = None
         if self.layout.eval_bar is not None:
@@ -1396,6 +1614,9 @@ class GameController:
             can_draw=can_act,
             can_resign=can_act,
             draw_label=draw_label,
+            move_input=(
+                None if self.move_input is None else (self.move_input, self.move_input_error)
+            ),
         )
 
 
@@ -1411,6 +1632,7 @@ class App:
         self.pieces = pieces or PieceSet()
         self.clock = clock or p.time.Clock()
         self.game: GameController | None = None
+        i18n.set_language(settings.language)
         self.scene: NewGameMenu | GameController = NewGameMenu(
             settings, can_cancel=False, pieces=self.pieces
         )
@@ -1419,6 +1641,15 @@ class App:
     def _persist(self, settings: Settings):
         self.settings = settings
         settings_module.save(settings)
+
+    def _set_language(self, code: str) -> None:
+        """Langue choisie sur l'écran « Nouvelle partie » : appliquée et mémorisée."""
+        i18n.set_language(code)
+        self._persist(replace(self.settings, language=code))
+        if isinstance(self.scene, NewGameMenu):
+            self.scene.settings = replace(self.scene.settings, language=code)
+        if self.game is not None:
+            self.game.settings = replace(self.game.settings, language=code)
 
     def _ensure_game(self, config: GameConfig) -> GameController:
         if self.game is None:
@@ -1462,6 +1693,9 @@ class App:
         assert isinstance(menu, NewGameMenu)
         if action == "cancel" and self.game is not None:
             self._resume_game()
+            return
+        if isinstance(action, tuple) and action[0] == "language":
+            self._set_language(action[1])
             return
         if action not in ("load", "import") and not (
             isinstance(action, tuple) and action[0] == "start"
@@ -1614,7 +1848,11 @@ def main(argv: list[str] | None = None) -> None:
         p.quit()
         sys.exit(0 if ok else 1)
     p.key.set_repeat(350, 60)
-    App(screen, settings_module.load(), pieces).run()
+    settings = settings_module.load()
+    if not paths.settings_file().exists():
+        # Premier lancement : la langue du système (français, sinon anglais).
+        settings = replace(settings, language=i18n.system_language())
+    App(screen, settings, pieces).run()
 
 
 if __name__ == "__main__":
