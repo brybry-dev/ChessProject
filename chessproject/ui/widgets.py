@@ -20,6 +20,19 @@ from chessproject.ui.theme import RGB, RGBA, Theme
 Point = tuple[float, float]
 
 
+def smoothscale(surface: p.Surface, size: tuple[int, int]) -> p.Surface:
+    """``pygame.transform.smoothscale`` avec le filtre C portable.
+
+    Les filtres MMX / SSE choisis par défaut ne sont pas les mêmes selon le système
+    (assembleur GCC sous Linux, version MinGW sous Windows) ; sous Windows, rien de ce
+    qui passait par eux ne s'affichait (pièces, icônes, pastilles, en v1.1.0). Le
+    filtre « GENERIC » donne le même résultat partout.
+    """
+    if p.transform.get_smoothscale_backend() != "GENERIC":
+        p.transform.set_smoothscale_backend("GENERIC")
+    return p.transform.smoothscale(surface, size)
+
+
 # --------------------------------------------------------------------------
 # Texte et formes
 # --------------------------------------------------------------------------
@@ -106,7 +119,7 @@ def _disc(color: RGBA, radius: int, width: int) -> p.Surface:
     size = radius * 2 + 2
     big = p.Surface((size * 4, size * 4), p.SRCALPHA)
     p.draw.circle(big, color, (size * 2, size * 2), radius * 4, width * 4)
-    return p.transform.smoothscale(big, (size, size))
+    return smoothscale(big, (size, size))
 
 
 def circle(surface: p.Surface, color: RGBA, center: tuple[int, int], radius: int) -> None:
@@ -220,7 +233,7 @@ def icon(name: str, size: int, color: RGB, stroke: float = 2.0) -> p.Surface:
         elif kind in ("circle", "dot"):
             cx, cy, r = data
             p.draw.circle(big, rgba, pt((cx, cy)), round(r * scale), 0 if kind == "dot" else width)
-    return p.transform.smoothscale(big, (size, size))
+    return smoothscale(big, (size, size))
 
 
 # --------------------------------------------------------------------------

@@ -41,6 +41,8 @@ class PieceSet:
         self.pieces_dir = pieces_dir
         self.images_dir = images_dir
         self.cache: dict[tuple[str, int], p.Surface] = {}
+        # Un SVG inutilisable l'est pour toutes les pièces : on passe alors au PNG.
+        self.svg_failed = False
 
     def get_image(self, piece: str, size: int = 64) -> p.Surface:
         """Image de ``piece`` (code moteur : ``"wK"``, ``"bp"``…) de ``size`` pixels."""
@@ -52,18 +54,29 @@ class PieceSet:
     def _load(self, piece: str, size: int) -> p.Surface:
         svg = self.pieces_dir / f"{piece[0]}{piece[1].upper()}.svg"
         try:
+            if self.svg_failed:
+                raise ValueError("SVG déjà en échec")
             data = svg.read_text(encoding="utf-8")
             # nanosvg (SDL_image) rastérise à la taille déclarée par width / height.
             data = re.sub(r"<svg\b", f'<svg width="{size}" height="{size}"', data, count=1)
             image = p.image.load(io.BytesIO(data.encode("utf-8")), "piece.svg")
+            if image.get_bounding_rect().width == 0:
+                # Vu sur la CI Windows (pygame 2.6, SDL_image) : image à la bonne taille
+                # mais entièrement transparente. Mieux vaut la pièce PNG que rien.
+                raise ValueError(
+                    f"image transparente ({image.get_size()}, {image.get_bitsize()} bits, "
+                    f"masques {image.get_masks()})"
+                )
             if image.get_size() != (size, size):
-                image = p.transform.smoothscale(image, (size, size))
+                image = w.smoothscale(image, (size, size))
         except (OSError, p.error, ValueError) as ex:
-            logger.warning("Pièce %s : SVG indisponible (%s), image PNG utilisée", piece, ex)
+            if not self.svg_failed:
+                logger.warning("Pièce %s : SVG indisponible (%s), images PNG utilisées", piece, ex)
+            self.svg_failed = True
             png = self.images_dir / f"{piece}.png"
             if not png.exists():
                 raise FileNotFoundError(f"Image not found: {png}") from ex
-            image = p.transform.smoothscale(p.image.load(str(png)), (size, size))
+            image = w.smoothscale(p.image.load(str(png)), (size, size))
         if p.display.get_surface() is not None:
             image = image.convert_alpha()
         return image

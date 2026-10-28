@@ -67,7 +67,7 @@ class ReleaseNotesTests(unittest.TestCase):
         notes = release_notes.section(
             (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"), chessproject.__version__
         )
-        self.assertIn("### Ajouté", notes)
+        self.assertIn("### ", notes)  # au moins une rubrique (Ajouté, Corrigé…)
         self.assertNotIn("## [", notes)
 
 
