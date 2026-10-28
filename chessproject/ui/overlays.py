@@ -364,6 +364,8 @@ class ReviewOverlay(Overlay):
     def on_event(self, e):
         if e.type == p.KEYDOWN and e.key in (p.K_g, p.K_RETURN):
             return "close"
+        if e.type == p.KEYDOWN and e.key == p.K_e and self.reviewer.result() is not None:
+            return "export"
         if e.type == p.MOUSEBUTTONDOWN and e.button == 1:
             button = w.hovered_button(self.buttons, e.pos)
             if button is not None:
@@ -409,8 +411,14 @@ class ReviewOverlay(Overlay):
         close = w.Button("close", "Fermer", variant="primary")
         close.rect = p.Rect(0, 0, 120, 44)
         close.rect.bottomright = (card.right - 32, card.bottom - 24)
-        self.buttons = [*faults, close, _close_button(card)]
-        w.draw_buttons(surface, t, [close, self.buttons[-1]], mouse)
+        # Export annoté (J13.2) : symboles et évaluations, une fois le bilan complet.
+        export = w.Button("export", "Exporter PGN annoté", icon="download", hint="E")
+        export.rect = p.Rect(0, 0, 250, 44)
+        export.rect.bottomright = (close.rect.left - 10, close.rect.bottom)
+        export.enabled = result is not None
+        actions = [export, close, _close_button(card)]
+        self.buttons = [*faults, *actions]
+        w.draw_buttons(surface, t, actions, mouse)
 
     def _draw_chart(self, surface, t, mouse, result, faults) -> None:
         chart = self.chart

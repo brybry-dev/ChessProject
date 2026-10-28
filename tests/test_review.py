@@ -1,12 +1,13 @@
 """Tests du bilan de partie (J9.3) : seuils, parties de référence, pilotage du processus."""
 
+import io
 import queue
 import unittest
 
 import pytest
 
 from chessproject.ai import review, search
-from chessproject.core import engine, notation
+from chessproject.core import engine, notation, pgn
 
 MATE = search.MATE
 
@@ -189,6 +190,41 @@ class TestBestLine(unittest.TestCase):
         self.assertEqual(r.moves[1].best_line, "")
         with self.assertRaises(ValueError):
             review.build([0, 250, 250], ["Nf6", "Qxf7"], False, 12, lines=[()])
+
+
+class TestPgnAnnotations(unittest.TestCase):
+    """J13.2 : symboles en NAG et évaluations en commentaires ``[%eval]``."""
+
+    def test_eval_format(self):
+        self.assertEqual(review.pgn_eval(42), "0.42")
+        self.assertEqual(review.pgn_eval(-130), "-1.30")
+        self.assertEqual(review.pgn_eval(0), "0.00")
+        self.assertEqual(review.pgn_eval(MATE - 1), "#1")
+        self.assertEqual(review.pgn_eval(MATE - 5), "#3")
+        self.assertEqual(review.pgn_eval(-(MATE - 4)), "#-2")
+        self.assertIsNone(review.pgn_eval(-MATE))  # position matée : rien à évaluer
+        self.assertEqual(review.NAGS, {"inaccuracy": 6, "mistake": 2, "blunder": 4})
+
+    def test_annotated_game_read_back_by_python_chess(self):
+        chess_pgn = pytest.importorskip("chess.pgn")
+        sans = ["f3", "e5", "g4", "Qh4#"]
+        r = evaluate_game(sans)
+        gs = engine.GameState()
+        for san in sans:
+            gs.make_move(notation.parse_san(gs, san))
+        text = pgn.export_pgn(gs, annotations=review.pgn_annotations(r))
+        game = chess_pgn.read_game(io.StringIO(text))
+        self.assertEqual(game.errors, [])
+        nodes = list(game.mainline())
+        self.assertEqual([n.san() for n in nodes], sans)
+        self.assertEqual(nodes[2].nags, {4})  # g4??
+        self.assertEqual(nodes[2].eval().white().mate(), -1)  # mat en 1 pour les Noirs
+        self.assertIsNone(nodes[3].eval())  # mat sur l'échiquier : pas d'évaluation
+        for node, move in zip(nodes[:3], r.moves[:3], strict=True):
+            self.assertEqual(node.nags, {review.NAGS[move.judgement]} if move.judgement else set())
+        self.assertEqual(nodes[0].eval().white().score(), r.evals[1])
+        # Et notre import relit le fichier.
+        self.assertEqual(pgn.parse_pgn(text)[0].moves, sans)
 
 
 class _InlineProcess:

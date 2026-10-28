@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover - environnement sans SDL
 
 from chessproject import settings as settings_module
 from chessproject.ai import analysis, levels, review, search
-from chessproject.core import clock, engine, notation
+from chessproject.core import clock, engine, notation, pgn
 from chessproject.core.fen import load_fen
 from chessproject.settings import Settings
 from chessproject.ui import app, layout, new_game, widgets
@@ -758,6 +758,36 @@ class GameReviewTests(unittest.TestCase):
             self.gc.draw()
         self.gc.handle_event(_event(p.KEYDOWN, key=p.K_RETURN))
         self._assert_best_move_shown(6)
+
+    def test_export_from_the_review_is_annotated(self):
+        """J13.2 : bouton (ou E) de la fenêtre de bilan, symboles et évaluations."""
+        self._play(["f3", "e5"])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        folder = Path(tmp.name)
+        self.gc._export_to(folder / "brut.pgn")  # pas de bilan : PGN simple
+        self.assertNotIn("{", (folder / "brut.pgn").read_text())
+        self._open_finished_review(["g4", "Qh4#"])
+        export = next(b for b in self.gc.overlay.buttons if b.action == "export")
+        self.assertTrue(export.enabled)
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_e))
+        self.assertIsInstance(self.gc.overlay, app.FileDialog)
+        self.gc._export_to(folder / "annote.pgn")
+        text = (folder / "annote.pgn").read_text()
+        self.assertIn('[Annotator "ChessProject"]', text)
+        self.assertIn("g4 $4 {[%eval", text)
+        self.assertTrue(self.gc._status()[0].startswith("PGN annoté exporté"))
+        self.assertEqual(pgn.parse_pgn(text)[0].moves, ["f3", "e5", "g4", "Qh4#"])
+
+    def test_export_waits_for_the_complete_review(self):
+        self.gc.reviewer = review.Reviewer(process=_IdleProcess, make_queue=queue.Queue)
+        self._play(["e4"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.draw()
+        export = next(b for b in self.gc.overlay.buttons if b.action == "export")
+        self.assertFalse(export.enabled)
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_e))
+        self.assertIsInstance(self.gc.overlay, app.ReviewOverlay)
 
     def test_progress_is_drawn_while_the_review_runs(self):
         self.gc.reviewer = review.Reviewer(process=_IdleProcess, make_queue=queue.Queue)

@@ -324,6 +324,8 @@ EN: dict[str, str] = {
         "or on a dot for the best move."
     ),
     "meilleur : {san}": "best: {san}",
+    "Exporter PGN annoté": "Export annotated PGN",
+    "PGN annoté exporté : {path}": "Annotated PGN exported: {path}",
     "Meilleur coup : {line}": "Best move: {line}",
     "au lieu de {san}": "instead of {san}",
     "Position de départ": "Starting position",

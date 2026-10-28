@@ -1250,6 +1250,18 @@ joueur, le bilan signale les fautes sans montrer le meilleur coup.
 > on y retourne. Testé : variante légale pour chaque coup de deux parties, meilleur
 > coup qui pare le mat du berger, troncature d'une variante illégale, clic et clavier
 > depuis la fenêtre de bilan.
+>
+> **J13.2 ✅ (2026-10-28)** : `pgn.export_pgn` accepte une annotation par coup
+> (`MoveAnnotation` : NAG et commentaire, placés après la SAN ; le coup noir qui suit un
+> commentaire reprend son numéro, « 1... e5 » ; une `}` est retirée du commentaire).
+> `review.pgn_annotations` traduit le bilan : `$6` ?!, `$2` ?, `$4` ?? et
+> `{[%eval 0.42]}` pour la position atteinte (pions, point de vue des Blancs ; `#-3` pour
+> un mat des Noirs en 3 ; rien pour une position déjà matée). L'export est annoté dès que
+> le bilan de la partie est complet, avec l'en-tête `[Annotator "ChessProject"]` ; la
+> fenêtre de bilan a son bouton « Exporter PGN annoté » (`E`), actif une fois le bilan
+> fini. Testé : python-chess relit NAG et évaluations sans erreur (`node.nags`,
+> `node.eval()`), sur un texte construit et sur le bilan réel du mat du lion, et notre
+> import relit les mêmes fichiers.
 
 #### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
 

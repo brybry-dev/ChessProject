@@ -1142,7 +1142,15 @@ class GameController:
         opening = book.identify(self.game_state)
         if opening is not None:
             headers["ECO"], headers["Opening"] = opening.eco, i18n.opening_name(opening.name)
-        text = pgn.export_pgn(self.game_state, result=self.result, headers=headers)
+        # Bilan prêt pour cette partie : symboles et évaluations dans le PGN (J13.2).
+        annotations = []
+        result = self.reviewer.result() if self.reviewer.key == self._key() else None
+        if result is not None:
+            annotations = review.pgn_annotations(result)
+            headers["Annotator"] = "ChessProject"
+        text = pgn.export_pgn(
+            self.game_state, result=self.result, headers=headers, annotations=annotations
+        )
         path = Path(path)
         try:
             path.write_text(text, encoding="utf-8")
@@ -1151,7 +1159,8 @@ class GameController:
             self._notify(tr("Export PGN impossible (voir le journal)"), "warning")
             return False
         logger.info("Partie exportée en PGN dans %s", path)
-        self._notify(tr("PGN exporté : {path}", path=path), "accent")
+        message = "PGN annoté exporté : {path}" if annotations else "PGN exporté : {path}"
+        self._notify(tr(message, path=path), "accent")
         self._remember_pgn_dir(path)
         return True
 

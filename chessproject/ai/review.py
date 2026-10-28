@@ -29,6 +29,11 @@ pour une faute, c'est la suite que le moteur proposait à la place du coup joué
 coup de la variante est rejoué et vérifié ; elle s'arrête au premier coup qui ne serait
 pas légal (une table de transposition peut prolonger une variante par un coup d'une
 autre position).
+
+Export (J13.2). :func:`pgn_annotations` traduit le bilan en annotations PGN : symbole de
+la faute en NAG (``$6`` ?!, ``$2`` ?, ``$4`` ??) et évaluation de la position atteinte
+en commentaire ``[%eval 0.42]`` (pions, du point de vue des Blancs) ou ``[%eval #-3]``
+(mat en 3 pour les Noirs), la convention que lisent python-chess et les sites d'échecs.
 """
 
 import contextlib
@@ -39,7 +44,7 @@ from multiprocessing import Process, Queue
 from typing import Any
 
 from chessproject.ai import search
-from chessproject.core import engine, notation
+from chessproject.core import engine, notation, pgn
 
 REVIEW_DEPTH = 3
 REVIEW_NODES = 20_000  # plafond par recherche ; environ 0,25 s par position en moyenne
@@ -52,6 +57,8 @@ BLUNDER = "blunder"
 THRESHOLDS: tuple[tuple[float, str], ...] = ((0.40, BLUNDER), (0.30, MISTAKE), (0.20, INACCURACY))
 SYMBOLS: dict[str, str] = {INACCURACY: "?!", MISTAKE: "?", BLUNDER: "??"}
 LABELS: dict[str, str] = {INACCURACY: "Imprécisions", MISTAKE: "Erreurs", BLUNDER: "Gaffes"}
+# NAG du standard PGN (§10) : $2 coup faible, $4 très faible, $6 douteux.
+NAGS: dict[str, int] = {INACCURACY: 6, MISTAKE: 2, BLUNDER: 4}
 
 
 def expected_score(cp: int) -> float:
@@ -167,6 +174,33 @@ def build(
     for color, values in losses.items():
         sides[color].acpl = round(sum(values) / len(values)) if values else 0
     return GameReview(list(evals), moves, sides[True], sides[False])
+
+
+def pgn_eval(cp: int) -> str | None:
+    """Évaluation au format ``[%eval]`` : ``"0.42"``, ``"-1.30"``, ``"#3"`` ou ``"#-2"``
+    (mat en N coups, signe du camp qui mate) ; None pour une position déjà matée."""
+    if abs(cp) >= search.MATE_THRESHOLD:
+        plies = search.MATE - abs(cp)
+        if plies == 0:
+            return None
+        moves = (plies + 1) // 2
+        return f"#{moves}" if cp > 0 else f"#-{moves}"
+    return f"{cp / 100:.2f}"
+
+
+def pgn_annotations(result: GameReview) -> list[pgn.MoveAnnotation]:
+    """Annotations PGN de chaque coup : NAG de la faute et évaluation de la position
+    atteinte."""
+    notes = []
+    for move in result.moves:
+        value = pgn_eval(result.evals[move.ply])
+        notes.append(
+            pgn.MoveAnnotation(
+                nag=NAGS.get(move.judgement or ""),
+                comment=None if value is None else f"[%eval {value}]",
+            )
+        )
+    return notes
 
 
 def _terminal_score(game_state: engine.GameState) -> int | None:

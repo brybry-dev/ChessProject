@@ -26,6 +26,7 @@ from chessproject.core.pgn import (
     SEVEN_TAG_ROSTER,
     STANDARD_START_FEN,
     TERMINATION_TAGS,
+    MoveAnnotation,
     PgnError,
     PgnGame,
     export_pgn,
@@ -223,6 +224,63 @@ class TestExport(unittest.TestCase):
         before = (to_fen(gs), len(gs.move_log), list(gs.position_keys))
         export_pgn(gs)
         self.assertEqual(before, (to_fen(gs), len(gs.move_log), list(gs.position_keys)))
+
+
+class TestAnnotatedExport(unittest.TestCase):
+    """J13.2 : NAG et commentaires après la SAN, relus par notre import."""
+
+    SANS = ("e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#")
+
+    def _game(self) -> GameState:
+        return _play(GameState(), *self.SANS)
+
+    def test_nags_and_comments_follow_their_move(self):
+        notes = [
+            MoveAnnotation(comment="[%eval 0.30]"),
+            None,
+            MoveAnnotation(nag=6),
+            MoveAnnotation(comment="[%eval 1.10]"),
+            MoveAnnotation(),
+            MoveAnnotation(nag=4, comment="[%eval #1]"),
+        ]
+        text = export_pgn(self._game(), annotations=notes)
+        movetext = " ".join(text.split("\n\n", 1)[1].split())
+        self.assertEqual(
+            movetext,
+            "1. e4 {[%eval 0.30]} 1... e5 2. Qh5 $6 Nc6 {[%eval 1.10]} 3. Bc4 Nf6 $4 "
+            "{[%eval #1]} 4. Qxf7# 1-0",
+        )
+        for line in text.splitlines():
+            self.assertLessEqual(len(line), pgn.MAX_LINE_LENGTH)
+        game = parse_pgn(text)[0]
+        self.assertEqual(game.moves, list(self.SANS))
+        self.assertEqual(game.result, "1-0")
+
+    def test_a_closing_brace_cannot_end_the_comment_early(self):
+        text = export_pgn(_play(GameState(), "e4"), annotations=[MoveAnnotation(comment="a}b")])
+        self.assertIn("{ab}", text)
+        self.assertEqual(parse_pgn(text)[0].moves, ["e4"])
+
+    def test_without_annotations_nothing_changes(self):
+        gs = self._game()
+        self.assertEqual(export_pgn(gs, annotations=[None] * 7), export_pgn(gs))
+
+    @unittest.skipUnless(HAS_PYTHON_CHESS, "python-chess absent")
+    def test_python_chess_reads_the_nags_and_evaluations(self):
+        notes = [
+            MoveAnnotation(nag=2, comment="[%eval -0.42]"),
+            MoveAnnotation(comment="[%eval #-3]"),
+        ]
+        game = _read_reference(
+            io.StringIO(export_pgn(_play(GameState(), "e4", "e5"), annotations=notes))
+        )
+        self.assertEqual(game.errors, [])
+        first, second = list(game.mainline())
+        self.assertEqual(first.nags, {2})
+        first_eval, second_eval = first.eval(), second.eval()
+        assert first_eval is not None and second_eval is not None
+        self.assertEqual(first_eval.white().score(), -42)
+        self.assertEqual(second_eval.white().mate(), -3)
 
 
 # --------------------------------------------------------------------------
