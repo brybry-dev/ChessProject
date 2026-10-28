@@ -1058,6 +1058,16 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 > - Reste à faire quand du temps de calcul est disponible : chaque technique seule à
 >   400 ms (environ 400 parties chacune pour un IC de ±35 Elo), puis, si les niveaux
 >   doivent en profiter, recalibrer J8.1 et J8.2.
+>
+> **J10.3 ✅ (2026-10-28)** : `uci.allocate_time_ms` (restant / 30 + 0,8 × incrément)
+> est supprimé ; le moteur UCI appelle `clock.allocate_think_time_ms`, celui de la
+> pendule du jeu, qui gagne le paramètre `moves_to_go` (`movestogo` en UCI). Avec lui,
+> `remaining / moves_to_go + 0,75 × incrément`, sans le plafond du tiers (le temps est
+> rendu au contrôle suivant) ; sans lui, formule inchangée pour le jeu. Les demi-coups
+> joués viennent du numéro de coup (une partie UCI peut commencer par une FEN). En UCI,
+> début de partie à 60 s : 1,5 s par coup au lieu de 2 s, jamais plus du tiers du temps
+> restant. Tests communs dans `tests/test_clock.py` ; `tests/test_uci.py` vérifie que
+> `go` passe par ce calcul avec les bons arguments.
 
 #### J11 — v1.4 : confort (2–3 j)
 

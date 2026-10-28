@@ -3,10 +3,12 @@
 import io
 import subprocess
 import sys
+from unittest import mock
 
 import pytest
 
 from chessproject import uci
+from chessproject.core.clock import allocate_think_time_ms
 from chessproject.core.engine import GameState
 from chessproject.core.fen import load_fen
 from chessproject.core.notation import parse_uci
@@ -171,26 +173,36 @@ def test_info_line_reports_mate() -> None:
 # Gestion du temps
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize(
-    ("remaining", "increment", "movestogo", "expected"),
+    ("commands", "expected_args"),
     [
-        (60_000, 0, None, 2000),  # 60 s / 30
-        (60_000, 1000, None, 2800),  # + 0,8 × incrément
-        (60_000, 0, 10, 6000),  # movestogo explicite
-        (10_000, 0, 1, 9950),  # dernier coup avant le contrôle : tout sauf la marge
-        (100, 5000, None, 50),  # jamais plus que le temps restant moins la marge
-        (0, 0, None, 1),  # au moins 1 ms
-        (-500, 0, 0, 1),  # entrées aberrantes tolérées
+        # Après 1. d4, aux Noirs : 1 demi-coup joué, temps et incrément des Noirs.
+        (
+            ["position startpos moves d2d4", "go wtime 2000 btime 9000 winc 0 binc 10"],
+            (9000, 10, 1, None),
+        ),
+        # FEN au 21e coup, Blancs au trait : 40 demi-coups, movestogo transmis.
+        (
+            ["position fen 4k3/8/8/8/8/8/8/4K2R w K - 0 21", "go wtime 60000 movestogo 10"],
+            (60000, 0, 40, 10),
+        ),
     ],
 )
-def test_allocate_time_ms(
-    remaining: int, increment: int, movestogo: int | None, expected: int
+def test_go_uses_the_shared_time_allocation(
+    commands: list[str], expected_args: tuple[int, int, int, int | None]
 ) -> None:
-    assert uci.allocate_time_ms(remaining, increment, movestogo) == expected
+    # Un seul calcul du temps de réflexion, celui de la pendule du jeu (J10.3).
+    calls: list[tuple[int, int, int, int | None]] = []
 
+    def spy(remaining, increment, moves_played, max_ms=None, moves_to_go=None):
+        calls.append((remaining, increment, moves_played, moves_to_go))
+        return allocate_think_time_ms(remaining, increment, moves_played, max_ms, moves_to_go)
 
-def test_allocate_time_is_monotonic() -> None:
-    values = [uci.allocate_time_ms(t, 100) for t in range(0, 300_000, 1000)]
-    assert values == sorted(values)
+    out = io.StringIO()
+    with mock.patch.object(uci, "allocate_think_time_ms", spy):
+        uci.run(io.StringIO("\n".join([*commands, "quit"]) + "\n"), out)
+    (best,) = _bestmoves(out.getvalue().splitlines())
+    assert calls == [expected_args]
+    assert best != "0000"
 
 
 def test_level_command_line_option() -> None:

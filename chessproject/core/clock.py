@@ -462,15 +462,23 @@ THINK_MAX_FRACTION = 1 / 3
 
 
 def allocate_think_time_ms(
-    remaining_ms: int, increment_ms: int, moves_played: int, max_ms: int | None = None
+    remaining_ms: int,
+    increment_ms: int,
+    moves_played: int,
+    max_ms: int | None = None,
+    moves_to_go: int | None = None,
 ) -> int:
     """Budget de réflexion de l'IA pour le prochain coup, en millisecondes (fonction pure).
 
-    ``moves_played`` est le nombre de demi-coups déjà joués dans la partie (par exemple
-    ``len(game_state.move_log)``). Formule :
+    Seul calcul du temps de réflexion, pour la pendule du jeu comme pour le moteur UCI
+    (J10.3). ``moves_played`` est le nombre de demi-coups déjà joués dans la partie (par
+    exemple ``len(game_state.move_log)``). Formule :
 
     - ``remaining / max(20, 40 - moves_played // 2) + 0,75 × incrément`` : on prévoit
       40 coups restants en début de partie, puis jamais moins de 20 ;
+    - avec ``moves_to_go`` (coups restants avant le prochain contrôle, ``movestogo`` en
+      UCI), ``remaining / moves_to_go`` à la place ; le temps restant est alors rendu au
+      contrôle, et le plafond du tiers ne s'applique pas ;
     - plafonné à 1/3 du temps restant et à ``remaining - 50 ms`` (marge de sécurité pour
       le coût du coup et de l'affichage) ;
     - au moins 10 ms ;
@@ -481,9 +489,14 @@ def allocate_think_time_ms(
     """
     remaining_ms = max(0, remaining_ms)
     increment_ms = max(0, increment_ms)
-    moves_to_go = max(20, 40 - max(0, moves_played) // 2)
-    budget = remaining_ms / moves_to_go + THINK_INCREMENT_SHARE * increment_ms
-    budget = min(budget, remaining_ms * THINK_MAX_FRACTION, remaining_ms - THINK_SAFETY_MS)
+    if moves_to_go is not None and moves_to_go > 0:
+        budget = remaining_ms / moves_to_go + THINK_INCREMENT_SHARE * increment_ms
+    else:
+        budget = remaining_ms / max(20, 40 - max(0, moves_played) // 2)
+        budget = min(
+            budget + THINK_INCREMENT_SHARE * increment_ms, remaining_ms * THINK_MAX_FRACTION
+        )
+    budget = min(budget, remaining_ms - THINK_SAFETY_MS)
     result = max(THINK_MIN_MS, int(budget))
     if max_ms is not None:
         result = min(result, max(THINK_MIN_MS, max_ms))
