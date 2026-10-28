@@ -1,6 +1,7 @@
 # ChessProject
 
 ![CI](https://github.com/brybry-dev/ChessProject/actions/workflows/ci.yml/badge.svg)
+![Couverture](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fbrybry-dev%2FChessProject%2Fbadges%2Fcoverage.json)
 ![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-3776ab)
 ![Licence](https://img.shields.io/badge/licence-MIT-e3a953)
 
@@ -60,7 +61,8 @@ chessproject
   (touche `B`, désactivable contre l'IA), bilan de la partie avec courbe d'évaluation
   et imprécisions, erreurs et gaffes de chaque camp (touche `G`), pendule du camp au trait mise en avant,
   carte de fin de partie. Coups jouables au clavier (`Entrée`, puis `e4`, `Nf3`, `O-O`…).
-  **Français ou anglais**, au choix. Contrastes vérifiés au niveau WCAG AA
+  **Français ou anglais**, au choix. Tout se fait aussi au clavier : fenêtres (`Tab`),
+  échiquier (curseur de case). Contrastes vérifiés au niveau WCAG AA
   (`tools/contrast.py`). Les préférences sont mémorisées.
 
 | Écran « Nouvelle partie » | Thème clair |
@@ -84,6 +86,11 @@ chessproject
   coordonnées `e2e4`, et les initiales françaises (`Cf3`, `Fc4`, `Dh5`, `Td1`, `Re2`).
   Sans pièce de promotion (`e8`), le choix s'ouvre. Un coup illégal, ambigu ou illisible
   est signalé et reste à corriger ; `Échap` ferme la saisie.
+- **Ou au curseur, sans notation** : `K` affiche un curseur de case, les flèches le
+  déplacent, `Entrée` (ou `Espace`) prend la pièce puis la pose. `Échap` repose la pièce,
+  puis quitte le mode « échiquier » (les flèches parcourent de nouveau l'historique).
+- **Fenêtres et écran « Nouvelle partie »** : `Tab` / `Maj+Tab` passent d'un bouton à
+  l'autre, `Entrée` ou `Espace` activent celui qui a le focus.
 
 ### Raccourcis clavier
 
@@ -92,6 +99,7 @@ chessproject
 | `Z` | Annuler le dernier coup (contre l'IA, annule aussi la réponse de l'IA) |
 | `R` | Rejouer avec les mêmes réglages (confirmation si une partie est en cours) |
 | `Entrée` / `Espace` | Taper un coup (cf. ci-dessus) |
+| `K` | Curseur de case sur l'échiquier (flèches, `Entrée`) |
 | `S` / `L` | Sauvegarder sous un nom / choisir la sauvegarde à charger (`Suppr` pour en supprimer une) |
 | `E` / `I` | Exporter / importer la partie en PGN, dans le dossier choisi |
 | `A` | Abandonner (avec confirmation) |
@@ -105,8 +113,10 @@ chessproject
 | `←` / `→` | Coup précédent / suivant dans l'historique |
 | `Origine` / `Fin` | Position de départ / position actuelle |
 | `Échap` | Annuler la sélection, effacer les flèches, fermer une fenêtre |
+| `Tab` / `Maj+Tab` | Dans une fenêtre : bouton suivant / précédent (`Entrée` ou `Espace` pour l'activer) |
 
-Pendant une promotion : `D`, `T`, `F`, `C` (ou `Q`, `R`, `B`, `N`) choisissent la pièce.
+Pendant une promotion : `D`, `T`, `F`, `C` (ou `Q`, `R`, `B`, `N`) choisissent la pièce,
+ou les flèches puis `Entrée`.
 
 ## Choix techniques
 
@@ -165,6 +175,7 @@ d'environnement `CHESSPROJECT_DATA_DIR`.
 ```bash
 python -m pytest -q            # suite rapide (~30 s ; les tests « slow » sont exclus)
 python -m pytest -q -m slow    # perft profond, 1 000 parties différentielles (~4 min)
+python -m pytest -q --cov --cov-report=json && python tools/coverage_report.py coverage.json
 ruff check . && ruff format --check .
 python -m mypy .               # strict sur le moteur, l'IA et les données
 ```
@@ -209,7 +220,7 @@ sur `master` avec « publier » coché (le tag est alors créé par le workflow)
 | `chessproject/ui/files.py` | Choix du fichier (sauvegarde, PGN) et de la partie d'un PGN multiple |
 | `chessproject/ui/widgets.py` | Texte, formes, icônes vectorielles, boutons |
 | `chessproject/assets/` | Pièces, polices et effets sonores |
-| `tools/` | Mini-ligue Elo, suite tactique, vitesse du moteur, audit des contrastes, exécutables, GIF et icône |
+| `tools/` | Mini-ligue Elo, suite tactique, vitesse du moteur, audit des contrastes, couverture, exécutables, GIF et icône |
 | `tests/` | Tests : perft, différentiels contre python-chess, règles, IA, notation, FEN, UI |
 | `pyproject.toml` | Métadonnées, dépendances, configuration de ruff, mypy et pytest |
 | `RAPPORT_ANALYSE.md` | Audit du projet, suivi des bugs et feuille de route |

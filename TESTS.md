@@ -11,6 +11,10 @@ python -m pip install -e ".[dev]"
 ```bash
 # Suite rapide (~30 s) — les tests marqués `slow` sont exclus par défaut
 python -m pytest -q
+
+# Couverture par paquet (seuil de 90 % sur core, comme en CI)
+python -m pytest -q --cov --cov-report=json
+python tools/coverage_report.py coverage.json
 ```
 
 ## Contenu
@@ -36,7 +40,9 @@ Les tests sont dans `tests/`.
 | `test_notation.py` | SAN / UCI : roques, désambiguïsation, en passant, promotions, échec et mat ; comparaison avec python-chess ; coup tapé au clavier (J11.2) : graphies tolérantes, initiales françaises, promotion sans pièce, erreurs expliquées. |
 | `test_files.py` | Choix de fichier (J11.1), parcouru avec le contrôleur sans écran : sauvegarde sous un nom, remplacement confirmé, plusieurs sauvegardes et choix de celle à charger (clavier et souris), suppression, ancienne sauvegarde reprise, export et import dans un dossier choisi et retenu, choix d'une partie dans un PGN multiple, PGN invalide, depuis l'écran « Nouvelle partie ». |
 | `test_i18n.py` | Version anglaise (J11.3) : chaque texte passé à `tr`, chaque bouton et chaque table affichée traduits, mêmes champs dans les deux langues, noms anglais des 268 ouvertures ; chaque écran dessiné en anglais sans un mot de français ; choix de la langue (écran « Nouvelle partie », Apparence), mémorisé. |
-| `test_contrast.py` | Audit WCAG AA (J11.4) : formules de la norme, aucune paire de couleurs sous son seuil dans les deux thèmes et sur les quatre échiquiers. |
+| `test_contrast.py` | Audit WCAG AA (J11.4) : formules de la norme, aucune paire de couleurs sous son seuil dans les deux thèmes et sur les quatre échiquiers (anneau de focus et curseur de case compris, J12). |
+| `test_keyboard.py` | Clavier seul (J12.2, J12.3) : chaque fenêtre et l'écran « Nouvelle partie » (trois modes) parcourus avec `Tab` puis `Maj+Tab`, chaque bouton actif visité une fois dans l'ordre de lecture ; anneau de focus dessiné ; `Entrée` / `Espace` activent comme un clic (dossier, fichier, option) ; promotion aux flèches ; curseur de case (sens de l'échiquier retourné, bords, coup impossible, `Échap`) ; mat du lion joué au curseur ; parcours complet sans souris, des réglages à la carte de fin. |
+| `test_coverage_report.py` | Couverture en CI (J12.1) : regroupement par paquet, badge shields.io, résumé Markdown, seuil bloquant sur `core`. |
 | `test_game_result.py` | Résultat de partie : vainqueur, motif de fin, notation PGN, le mat prime sur les 50 coups. |
 
 ## Tests longs (`slow`, ~4 min)
