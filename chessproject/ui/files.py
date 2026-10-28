@@ -386,7 +386,7 @@ class FileDialog(Overlay):
             w.text(surface, tr("NOM DU FICHIER"), th.font(12, "semibold"), t.muted, (x, y))
             box = p.Rect(x, y + 24, inner, 44)
             w.rounded(surface, t.surface2, box, 8)
-            w.rounded(surface, t.accent, box, 8, 2)
+            w.rounded(surface, t.accent_ink, box, 8, 2)
             f = th.font(15, mono=True)
             suffix = "" if self.name.lower().endswith(self.extension) else self.extension
             suffix_w = f.size(suffix)[0]
@@ -400,7 +400,7 @@ class FileDialog(Overlay):
             y += field_h
         if self.message is not None:
             text, kind = self.message
-            color = th.WARNING_DOT if kind == "warning" else t.accent
+            color = th.WARNING_DOT if kind == "warning" else t.accent_ink
             p.draw.circle(surface, color, (x + 4, y + 10), 4)
             w.text(
                 surface,

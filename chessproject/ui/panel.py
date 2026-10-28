@@ -200,7 +200,7 @@ class SidePanel:
 
     def _draw_card(self, surface, rect, card: PlayerCard, t: Theme, pieces, now_ms) -> None:
         w.rounded(surface, t.surface, rect, 10)
-        w.rounded(surface, t.accent if card.highlighted else t.border, rect, 10, 1)
+        w.rounded(surface, t.accent_ink if card.highlighted else t.border, rect, 10, 1)
         avatar = p.Rect(rect.x + 14, rect.centery - 20, 40, 40)
         tile = th.WHITE_PIECE_TILE if card.white else th.BLACK_PIECE_TILE
         w.rounded(surface, tile, avatar, 8)
@@ -330,7 +330,9 @@ class SidePanel:
         if model.move_input is not None:
             self._draw_move_input(surface, foot, model.move_input, t)
         else:
-            dot = {"accent": t.accent, "warning": th.WARNING_DOT}.get(model.status_kind, t.muted)
+            dot = {"accent": t.accent_ink, "warning": th.WARNING_DOT}.get(
+                model.status_kind, t.muted
+            )
             p.draw.circle(surface, dot, (foot.x + 20, foot.centery), 4)
             f = th.font(13)
             w.text(
@@ -350,9 +352,9 @@ class SidePanel:
         text, error = value
         box = foot.inflate(-12, -10)
         w.rounded(surface, t.surface2, box, 6)
-        w.rounded(surface, th.WARNING_DOT if error else t.accent, box, 6, 1)
+        w.rounded(surface, th.WARNING_DOT if error else t.accent_ink, box, 6, 1)
         mono = th.font(14, "semibold", mono=True)
-        prompt = w.text(surface, "›", mono, t.accent, (box.x + 10, box.centery), "midleft")
+        prompt = w.text(surface, "›", mono, t.accent_ink, (box.x + 10, box.centery), "midleft")
         typed = w.text(surface, text, mono, t.text, (prompt.right + 8, box.centery), "midleft")
         p.draw.line(
             surface, t.text, (typed.right + 2, box.y + 7), (typed.right + 2, box.bottom - 7), 2

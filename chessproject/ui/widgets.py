@@ -293,8 +293,8 @@ class Button:
             fg = t.on_accent if self.enabled else t.muted
         elif self.variant == "choice":
             if self.selected:
-                rounded(surface, _mix(t.surface2, t.accent, 0.16), rect, 10)
-                rounded(surface, t.accent, rect, 10, 2)
+                rounded(surface, th.mix(t.surface2, t.accent, 0.16), rect, 10)
+                rounded(surface, t.accent_ink, rect, 10, 2)
             else:
                 rounded(surface, t.surface2, rect, 10)
                 rounded(surface, _lighten(t.border, 18) if hovered else t.border, rect, 10, 1)
@@ -331,14 +331,6 @@ class Button:
 
 def _lighten(color: RGB, amount: int) -> RGB:
     return (min(255, color[0] + amount), min(255, color[1] + amount), min(255, color[2] + amount))
-
-
-def _mix(a: RGB, b: RGB, t: float) -> RGB:
-    return (
-        round(a[0] + (b[0] - a[0]) * t),
-        round(a[1] + (b[1] - a[1]) * t),
-        round(a[2] + (b[2] - a[2]) * t),
-    )
 
 
 def hovered_button(buttons: Sequence[Button], pos: tuple[int, int]) -> Button | None:

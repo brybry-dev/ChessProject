@@ -298,7 +298,7 @@ class NewGameMenu:
             rect, index, level = data
             for k in range(5):
                 bar = p.Rect(rect.x + 12 + k * 13, rect.y + 14, 10, 4)
-                w.rounded(surface, t.accent if k <= index else t.border, bar, 2)
+                w.rounded(surface, t.accent_ink if k <= index else t.border, bar, 2)
             name_font = th.font(15 if rect.width > 96 else 13, "semibold")
             w.text(
                 surface,

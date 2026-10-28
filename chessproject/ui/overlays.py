@@ -230,7 +230,7 @@ class AppearanceOverlay(Overlay):
             w.text(surface, label, th.font(14), t.text, (rect.x + 8, rect.centery), "midleft")
             switch = p.Rect(0, 0, 40, 22)
             switch.midright = (rect.right - 8, rect.centery)
-            w.rounded(surface, t.accent if on else t.surface2, switch, 11)
+            w.rounded(surface, t.accent_ink if on else t.surface2, switch, 11)
             if not on:
                 w.rounded(surface, t.border, switch, 11, 1)
             knob_x = switch.right - 11 if on else switch.x + 11
@@ -386,13 +386,13 @@ class ReviewOverlay(Overlay):
                 if move.judgement:
                     color = th.JUDGEMENT_COLORS[move.judgement]
                     center = self._point(move.ply, result.evals[move.ply])
-                    p.draw.circle(surface, t.surface, center, 6)
+                    p.draw.circle(surface, th.JUDGEMENT_RING, center, 7)
                     p.draw.circle(surface, color, center, 5)
         if chart.collidepoint(mouse) and evals:
             ply = min(self.ply_at(mouse[0]), len(evals) - 1)
             x, y = self._point(ply, evals[ply])
-            p.draw.line(surface, t.accent, (x, chart.y), (x, chart.bottom - 1))
-            p.draw.circle(surface, t.accent, (x, y), 4)
+            p.draw.line(surface, t.accent_ink, (x, chart.y), (x, chart.bottom - 1))
+            p.draw.circle(surface, t.accent_ink, (x, y), 4)
             label = tr("Position de départ")
             if result is not None and ply > 0:
                 move = result.moves[ply - 1]
@@ -429,6 +429,7 @@ class ReviewOverlay(Overlay):
         value_font = th.font(14, "semibold", mono=True)
         for label, kind, white, black in rows:
             if kind is not None:
+                p.draw.circle(surface, th.JUDGEMENT_RING, (x + 5, y + 10), 7)
                 p.draw.circle(surface, th.JUDGEMENT_COLORS[kind], (x + 5, y + 10), 5)
             w.text(surface, label, f, t.text, (x + 18, y + 10), "midleft")
             w.text(surface, white, value_font, t.text, (x + 200 + col // 2, y + 10), "center")
