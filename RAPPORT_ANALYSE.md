@@ -1293,6 +1293,9 @@ joueur, le bilan signale les fautes sans montrer le meilleur coup.
 >   série ; coup faux, indice et coup juste à la souris ; solution puis coup joué ;
 >   sortie du mode par « Nouvelle partie » ; écrans du mode en anglais sans un mot de
 >   français.
+>
+> **Publication `v1.6.0` (2026-10-28)** : J13 terminé ; version, CHANGELOG, README et
+> TESTS.md à jour. Suite rapide : 738 tests ; tests longs : 74.
 
 #### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
 

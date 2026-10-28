@@ -48,6 +48,10 @@ chessproject
   motif de fin affiché.
 - **PGN** : export et import (commentaires, variantes et NAG ignorés à la lecture), dans
   le dossier de son choix ; un PGN de plusieurs parties propose la liste des parties.
+  Après le bilan, l'export est **annoté** : symboles des fautes et évaluations
+  (`[%eval]`), relus par les autres logiciels d'échecs.
+- **Problèmes** : 39 positions « trouvez le meilleur coup », du mat en 1 au mat en 3,
+  chacune à solution unique vérifiée ; indice, solution et score de la série.
   **Sauvegardes** JSON versionnées, autant qu'on veut, chacune avec son nom, son mode,
   son niveau et ses pendules.
 - **Protocole UCI** (`chessproject-uci`) : le moteur se branche dans une interface
@@ -58,8 +62,9 @@ chessproject
   flèches et marques au clic droit, historique SAN cliquable pour revoir la partie,
   matériel pris, barre d'évaluation (désactivable), variante principale du moteur pour la
   position affichée (mode analyse, touche `V`), indice du meilleur coup en flèche
-  (touche `B`, désactivable contre l'IA), bilan de la partie avec courbe d'évaluation
-  et imprécisions, erreurs et gaffes de chaque camp (touche `G`), pendule du camp au trait mise en avant,
+  (touche `B`, désactivable contre l'IA), bilan de la partie avec courbe d'évaluation,
+  imprécisions, erreurs et gaffes de chaque camp et, pour chaque faute, le meilleur coup
+  et sa variante (touche `G`), pendule du camp au trait mise en avant,
   carte de fin de partie. Coups jouables au clavier (`Entrée`, puis `e4`, `Nf3`, `O-O`…).
   **Français ou anglais**, au choix. Tout se fait aussi au clavier : fenêtres (`Tab`),
   échiquier (curseur de case). Contrastes vérifiés au niveau WCAG AA
@@ -108,7 +113,7 @@ chessproject
 | `C` | Apparence : thème, langue, échiquier, aides visuelles, sons |
 | `V` | Afficher ou masquer la variante principale (mode analyse) |
 | `B` | Indice : le meilleur coup s'affiche en flèche (option « Indices contre l'IA » dans Apparence) |
-| `G` | Bilan de la partie : courbe d'évaluation (cliquer pour voir une position), imprécisions `?!`, erreurs `?` et gaffes `??`, aussi marquées dans l'historique |
+| `G` | Bilan de la partie : courbe d'évaluation (cliquer pour voir une position, ou sur une pastille pour le meilleur coup à la place de la faute), imprécisions `?!`, erreurs `?` et gaffes `??`, aussi marquées dans l'historique ; `E` y exporte le PGN annoté |
 | `H` | Afficher les raccourcis |
 | `←` / `→` | Coup précédent / suivant dans l'historique |
 | `Origine` / `Fin` | Position de départ / position actuelle |
@@ -117,6 +122,9 @@ chessproject
 
 Pendant une promotion : `D`, `T`, `F`, `C` (ou `Q`, `R`, `B`, `N`) choisissent la pièce,
 ou les flèches puis `Entrée`.
+
+En mode problèmes : `B` indice (la pièce à jouer est marquée), `O` solution (en
+flèche), `N` problème suivant ; `Z`, `R` et `A` sont sans effet.
 
 ## Choix techniques
 
@@ -205,6 +213,7 @@ sur `master` avec « publier » coché (le tag est alors créé par le workflow)
 | `chessproject/core/fen.py` | Lecture validée des positions FEN |
 | `chessproject/core/notation.py` | Notation SAN et UCI (lecture et écriture) |
 | `chessproject/core/perft.py` | Comptage perft, validation du générateur de coups |
+| `chessproject/core/puzzles.py` | Problèmes : lecture de la suite tactique (EPD), série et score |
 | `chessproject/ai/search.py` | IA : NegaMax alpha-bêta, table de transposition, évaluation en centipions |
 | `chessproject/serialization.py` | Sauvegarde / chargement JSON versionné, export FEN |
 | `chessproject/paths.py` | Chemins des ressources et des données utilisateur |
@@ -219,7 +228,7 @@ sur `master` avec « publier » coché (le tag est alors créé par le workflow)
 | `chessproject/ui/new_game.py` | Écran « Nouvelle partie » |
 | `chessproject/ui/files.py` | Choix du fichier (sauvegarde, PGN) et de la partie d'un PGN multiple |
 | `chessproject/ui/widgets.py` | Texte, formes, icônes vectorielles, boutons |
-| `chessproject/assets/` | Pièces, polices et effets sonores |
+| `chessproject/assets/` | Pièces, polices, effets sonores, livre d'ouvertures et suite tactique |
 | `tools/` | Mini-ligue Elo, suite tactique, vitesse du moteur, audit des contrastes, couverture, exécutables, GIF et icône |
 | `tests/` | Tests : perft, différentiels contre python-chess, règles, IA, notation, FEN, UI |
 | `pyproject.toml` | Métadonnées, dépendances, configuration de ruff, mypy et pytest |
