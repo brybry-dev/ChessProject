@@ -46,6 +46,8 @@ class Settings:
     color: str = "w"
     level: str = levels.DEFAULT_LEVEL.name
     time_control: str = clock.BLITZ_5_0.pgn_tag
+    # Dernier dossier d'export ou d'import PGN (J11.1) ; vide : dossier des données.
+    pgn_dir: str = ""
 
     @property
     def control(self) -> clock.TimeControl:

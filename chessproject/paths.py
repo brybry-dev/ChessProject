@@ -22,6 +22,9 @@ PIECES_DIR = ASSETS_DIR / "pieces"  # jeu vectoriel « Chessnut » (Apache 2.0)
 FONTS_DIR = ASSETS_DIR / "fonts"  # IBM Plex Sans / Mono (SIL OFL 1.1)
 
 SAVE_FILE_NAME = "saved_game.json"
+SAVES_DIR_NAME = "saves"
+SAVE_EXTENSION = ".json"
+PGN_EXTENSION = ".pgn"
 LOG_FILE_NAME = "chess.log"
 PGN_FILE_NAME = "partie.pgn"
 SETTINGS_FILE_NAME = "settings.json"
@@ -40,6 +43,43 @@ def save_file() -> Path:
     return user_data_dir() / SAVE_FILE_NAME
 
 
+def saves_dir() -> Path:
+    """Dossier des sauvegardes (J11.1), créé au besoin."""
+    path = user_data_dir() / SAVES_DIR_NAME
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def adopt_legacy_save() -> Path | None:
+    """Copie l'ancienne sauvegarde unique (``saved_game.json``, versions 1.3 et
+    antérieures) dans le dossier des sauvegardes, si elle n'y est pas déjà. L'original
+    est laissé en place. Renvoie la copie, ou None."""
+    legacy = existing_save_file()
+    target = saves_dir() / SAVE_FILE_NAME
+    if not legacy.exists() or target.exists():
+        return None
+    try:
+        target.write_bytes(legacy.read_bytes())
+    except OSError:
+        return None
+    return target
+
+
+def places() -> list[tuple[str, Path]]:
+    """Dossiers proposés par le choix de fichier : données du jeu, dossier personnel,
+    Documents et Téléchargements s'ils existent (noms français, traduits à l'affichage)."""
+    home = Path.home()
+    found = [("Données du jeu", user_data_dir()), ("Dossier personnel", home)]
+    for label, names in (
+        ("Documents", ("Documents",)),
+        ("Téléchargements", ("Downloads", "Téléchargements")),
+    ):
+        folder = next((home / n for n in names if (home / n).is_dir()), None)
+        if folder is not None:
+            found.append((label, folder))
+    return found
+
+
 def existing_save_file() -> Path:
     """Sauvegarde à charger : celle du dossier utilisateur, sinon l'ancienne
     sauvegarde laissée dans le dossier courant par les versions précédentes."""
@@ -55,7 +95,7 @@ def log_file() -> Path:
 
 
 def pgn_file() -> Path:
-    """Fichier PGN d'export / d'import de la partie (touches E et I)."""
+    """Fichier PGN proposé par défaut à l'export (touche E)."""
     return user_data_dir() / PGN_FILE_NAME
 
 

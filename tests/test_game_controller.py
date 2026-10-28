@@ -534,9 +534,7 @@ class SaveRestoresTheGameContext(unittest.TestCase):
     """J4.5 / B37 : L restaure le mode, la couleur de l'humain, le niveau et la fin."""
 
     def test_load_restores_mode_colour_level_and_result(self):
-        fd, path = tempfile.mkstemp(suffix=".json")
-        os.close(fd)
-        try:
+        with _isolated_data_dir():
             gc = app.GameController(
                 p.display.get_surface(),
                 p.time.Clock(),
@@ -551,8 +549,7 @@ class SaveRestoresTheGameContext(unittest.TestCase):
             gc.external_result = engine.GameResult(
                 engine.Termination.RESIGNATION, engine.Color.WHITE
             )
-            with mock.patch.object(app.paths, "save_file", return_value=path):
-                gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_s}))
+            _save_and_confirm(gc)
             other = app.GameController(
                 p.display.get_surface(),
                 p.time.Clock(),
@@ -563,14 +560,42 @@ class SaveRestoresTheGameContext(unittest.TestCase):
                 True,
                 False,
             )
-            with mock.patch.object(app.paths, "existing_save_file", return_value=path):
-                other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_l}))
-            self.assertEqual((other.mode, other.player_one, other.player_two), ("PvC", False, True))
-            self.assertEqual(other.ai_level, "Facile")
-            self.assertTrue(other.flip_board)
-            self.assertEqual(other.result.termination, engine.Termination.RESIGNATION)
-        finally:
-            os.remove(path)
+            _load_most_recent(other)
+        self.assertEqual((other.mode, other.player_one, other.player_two), ("PvC", False, True))
+        self.assertEqual(other.ai_level, "Facile")
+        self.assertTrue(other.flip_board)
+        self.assertEqual(other.result.termination, engine.Termination.RESIGNATION)
+
+
+def _isolated_data_dir():
+    """Dossier de données temporaire (sauvegardes, PGN) le temps d'un test."""
+    directory = tempfile.TemporaryDirectory()
+
+    class _Context:
+        def __enter__(self):
+            self.patch = mock.patch.dict(os.environ, {"CHESSPROJECT_DATA_DIR": directory.name})
+            self.patch.start()
+            return Path(directory.name)
+
+        def __exit__(self, *exc):
+            self.patch.stop()
+            directory.cleanup()
+
+    return _Context()
+
+
+def _save_and_confirm(gc):
+    """S puis Entrée : sauvegarde sous le nom proposé (J11.1)."""
+    gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_s}))
+    gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_RETURN}))
+    assert gc.overlay is None
+
+
+def _load_most_recent(gc):
+    """L puis Entrée : charge la sauvegarde la plus récente, présélectionnée (J11.1)."""
+    gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_l}))
+    gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_RETURN}))
+    assert gc.overlay is None
 
 
 class _Seconds:
@@ -690,25 +715,20 @@ class ClockInTheGame(unittest.TestCase):
         self.assertIsNone(gc.chess_clock.remaining_ms(engine.Color.WHITE))
 
     def test_clock_is_saved_and_restored(self):
-        fd, path = tempfile.mkstemp(suffix=".json")
-        os.close(fd)
-        try:
+        with _isolated_data_dir():
             gc = self._controller(clock.TimeControl.from_minutes(3, 2))
             self.now.t += 10
             self._play(gc, "e4")
-            with mock.patch.object(app.paths, "save_file", return_value=path):
-                gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_s}))
+            _save_and_confirm(gc)
             other = self._controller(clock.UNLIMITED)
-            with mock.patch.object(app.paths, "existing_save_file", return_value=path):
-                other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_l}))
-            self.assertEqual(other.chess_clock.remaining_ms(engine.Color.WHITE), 172_000)
-            self.assertEqual(other.time_control, clock.TimeControl.from_minutes(3, 2))
-            # Un coup après le chargement est bien décompté (pendule synchronisée).
-            self.now.t += 3
-            self._play(other, "e5")
-            self.assertEqual(other.chess_clock.remaining_ms(engine.Color.BLACK), 177_000 + 2_000)
-        finally:
-            os.remove(path)
+            _load_most_recent(other)
+            other.update()  # le dialogue fermé, la boucle relance la pendule
+        self.assertEqual(other.chess_clock.remaining_ms(engine.Color.WHITE), 172_000)
+        self.assertEqual(other.time_control, clock.TimeControl.from_minutes(3, 2))
+        # Un coup après le chargement est bien décompté (pendule synchronisée).
+        self.now.t += 3
+        self._play(other, "e5")
+        self.assertEqual(other.chess_clock.remaining_ms(engine.Color.BLACK), 177_000 + 2_000)
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
@@ -716,8 +736,7 @@ class PgnKeys(unittest.TestCase):
     """J4.6 : E exporte la partie en PGN, I la réimporte."""
 
     def test_export_then_import(self):
-        with tempfile.TemporaryDirectory() as directory:
-            target = os.path.join(directory, "partie.pgn")
+        with _isolated_data_dir() as directory:
             gc = app.GameController(
                 p.display.get_surface(),
                 p.time.Clock(),
@@ -731,25 +750,28 @@ class PgnKeys(unittest.TestCase):
             )
             for san in ("e4", "e5", "Nf3"):
                 gc.game_state.make_move(notation.parse_san(gc.game_state, san))
-            with mock.patch.object(app.paths, "pgn_file", return_value=Path(target)):
-                gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_e}))
-                text = Path(target).read_text(encoding="utf-8")
-                self.assertIn('[White "Humain"]', text)
-                self.assertIn('[TimeControl "180+2"]', text)
-                self.assertIn("1. e4 e5 2. Nf3 *", text)
-                other = app.GameController(
-                    p.display.get_surface(),
-                    p.time.Clock(),
-                    app.UIManager(),
-                    app.ResourceManager(),
-                    "PvP",
-                    True,
-                    True,
-                    False,
-                )
-                other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_i}))
-            self.assertEqual(len(other.game_state.move_log), 3)
-            self.assertTrue(other.game_state.automatic_draws)
+            gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_e}))
+            gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_RETURN}))
+            exported = list(directory.glob("*.pgn"))
+            self.assertEqual(len(exported), 1)
+            text = exported[0].read_text(encoding="utf-8")
+            self.assertIn('[White "Humain"]', text)
+            self.assertIn('[TimeControl "180+2"]', text)
+            self.assertIn("1. e4 e5 2. Nf3 *", text)
+            other = app.GameController(
+                p.display.get_surface(),
+                p.time.Clock(),
+                app.UIManager(),
+                app.ResourceManager(),
+                "PvP",
+                True,
+                True,
+                False,
+            )
+            other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_i}))
+            other.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_RETURN}))
+        self.assertEqual(len(other.game_state.move_log), 3)
+        self.assertTrue(other.game_state.automatic_draws)
 
     def test_import_of_a_missing_file_is_harmless(self):
         gc = app.GameController(
@@ -762,9 +784,10 @@ class PgnKeys(unittest.TestCase):
             True,
             False,
         )
-        with mock.patch.object(app.paths, "pgn_file", return_value=Path("/inexistant/x.pgn")):
-            gc.handle_event(p.event.Event(p.KEYDOWN, {"key": p.K_i}))
+        self.assertFalse(gc._import_from(Path("/inexistant/x.pgn")))
         self.assertEqual(gc.game_state.move_log, [])
+        assert gc.notice is not None
+        self.assertEqual(gc.notice[1], "warning")
 
 
 if __name__ == "__main__":
@@ -821,8 +844,7 @@ class BookMoves(unittest.TestCase):
         self.assertEqual(label, "B90 · Défense sicilienne : variante Najdorf")
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "partie.pgn"
-            with mock.patch.object(app.paths, "pgn_file", return_value=target):
-                self.gc._export_pgn()
+            self.assertTrue(self.gc._export_to(target))
             text = target.read_text(encoding="utf-8")
         self.assertIn('[ECO "B90"]', text)
         self.assertIn('[Opening "Défense sicilienne : variante Najdorf"]', text)

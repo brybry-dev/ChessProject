@@ -35,6 +35,7 @@ from chessproject.ui import layout as layout_module
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.board_view import BoardScene, Drag, PieceSet, Renderer
+from chessproject.ui.files import FileDialog, GamePickerOverlay
 from chessproject.ui.new_game import GameConfig, NewGameMenu, config_from
 from chessproject.ui.overlays import (
     AppearanceOverlay,
@@ -302,6 +303,9 @@ class GameController:
         # Bilan de la partie (J9.3) : évaluation de chaque position, en arrière-plan.
         self.reviewer = review.Reviewer()
 
+        # Parties du PGN en cours d'import, en attente du choix de l'une d'elles (J11.1).
+        self._pgn_games: list[pgn.PgnGame] = []
+
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
         self.promotion_moves: list[engine.Move] = []
@@ -492,6 +496,20 @@ class GameController:
                 self._view(action[1])
             elif kind == "setting":
                 self.set_setting(action[1], action[2])
+            elif kind == "file":
+                self.overlay = None
+                handlers = {
+                    "save": self._save_to,
+                    "load": self._load_from,
+                    "export": self._export_to,
+                    "import": self._import_from,
+                }
+                handlers[action[1]](action[2])
+            elif kind == "pgn_game":
+                self.overlay = None
+                games, self._pgn_games = self._pgn_games, []
+                if 0 <= action[1] < len(games):
+                    self._import_game(games[action[1]])
             return
         simple = {
             "new_game": lambda: self.requests.append("new_game"),
@@ -825,11 +843,26 @@ class GameController:
         self.renderer.flip_board = not self.renderer.flip_board
         self.renderer.animation = None
 
+    # -- fichiers (J11.1) ----------------------------------------------
     def _save(self):
+        """Choix du nom de la sauvegarde, dans le dossier des sauvegardes."""
+        self._open(
+            FileDialog(
+                "save",
+                "save",
+                "Sauvegarder la partie",
+                paths.saves_dir(),
+                paths.SAVE_EXTENSION,
+                default_name=time.strftime("partie-%Y-%m-%d-%H%M"),
+                allow_delete=True,
+            )
+        )
+
+    def _save_to(self, path):
         saved = serialization.save_game(
             self.game_state,
             flip_board=self.flip_board,
-            filename=str(paths.save_file()),
+            filename=str(path),
             mode=self.mode,
             human_white=self.player_one,
             human_black=self.player_two,
@@ -838,19 +871,35 @@ class GameController:
             result=self.external_result,
         )
         if saved:
-            self._notify("Partie sauvegardée", "accent")
+            self._notify(f"Partie sauvegardée : {Path(path).name}", "accent")
         else:
             self._notify("Échec de la sauvegarde (voir le journal)", "warning")
+        return saved
 
     def _load(self):
-        path = Path(paths.existing_save_file())
-        if not path.exists():
+        """Choix de la sauvegarde à charger (la plus récente est présélectionnée)."""
+        paths.adopt_legacy_save()
+        folder = paths.saves_dir()
+        if not any(folder.glob("*" + paths.SAVE_EXTENSION)):
             self._notify("Aucune sauvegarde à charger", "warning")
-            return False
+            return
+        self._open(
+            FileDialog(
+                "load",
+                "open",
+                "Charger une partie",
+                folder,
+                paths.SAVE_EXTENSION,
+                confirm_label="Charger",
+                allow_delete=True,
+            )
+        )
+
+    def _load_from(self, path):
         try:
             saved = serialization.load_save(str(path))
         except Exception as ex:  # noqa: BLE001 - fichier illisible ou illégal
-            logger.error("Erreur lors du chargement : %s", ex)
+            logger.error("Erreur lors du chargement de %s : %s", path, ex)
             self._notify("Sauvegarde illisible : chargement impossible", "warning")
             return False
         self.renderer.flip_board = saved.flip_board
@@ -865,11 +914,35 @@ class GameController:
         self._notify(f"Partie chargée ({len(saved.game_state.move_log)} demi-coups)", "accent")
         return True
 
+    def _pgn_dir(self):
+        """Dossier PGN : le dernier utilisé s'il existe encore, sinon celui des données."""
+        folder = Path(self.settings.pgn_dir) if self.settings.pgn_dir else None
+        return folder if folder is not None and folder.is_dir() else paths.user_data_dir()
+
+    def _remember_pgn_dir(self, path):
+        folder = str(Path(path).parent)
+        if folder != self.settings.pgn_dir:
+            self.set_setting("pgn_dir", folder)
+
     def _player_name(self, white):
         human = self.player_one if white else self.player_two
         return "Humain" if human else f"ChessProject ({self.ai_level})"
 
     def _export_pgn(self):
+        self._open(
+            FileDialog(
+                "export",
+                "save",
+                "Exporter en PGN",
+                self._pgn_dir(),
+                paths.PGN_EXTENSION,
+                places=paths.places(),
+                default_name=time.strftime("partie-%Y-%m-%d-%H%M"),
+                confirm_label="Exporter",
+            )
+        )
+
+    def _export_to(self, path):
         headers = {
             "Event": "Partie ChessProject",
             "Date": time.strftime("%Y.%m.%d"),
@@ -882,23 +955,57 @@ class GameController:
         if opening is not None:
             headers["ECO"], headers["Opening"] = opening.eco, opening.name
         text = pgn.export_pgn(self.game_state, result=self.result, headers=headers)
-        path = paths.pgn_file()
+        path = Path(path)
         try:
             path.write_text(text, encoding="utf-8")
-            logger.info("Partie exportée en PGN dans %s", path)
-            self._notify(f"PGN exporté : {path}", "accent")
         except OSError as ex:
             logger.error("Export PGN impossible : %s", ex)
             self._notify("Export PGN impossible (voir le journal)", "warning")
+            return False
+        logger.info("Partie exportée en PGN dans %s", path)
+        self._notify(f"PGN exporté : {path}", "accent")
+        self._remember_pgn_dir(path)
+        return True
 
     def _import_pgn(self):
-        path = paths.pgn_file()
+        self._open(
+            FileDialog(
+                "import",
+                "open",
+                "Importer un PGN",
+                self._pgn_dir(),
+                paths.PGN_EXTENSION,
+                places=paths.places(),
+                confirm_label="Importer",
+            )
+        )
+
+    def _import_from(self, path):
+        """Lit le PGN ``path`` : une seule partie est importée tout de suite, sinon la
+        liste des parties s'ouvre."""
+        path = Path(path)
         try:
-            game = pgn.read_pgn_file(path)[-1]
-            state = game.replay()
-        except (OSError, IndexError, pgn.PgnError) as ex:
+            games = pgn.read_pgn_file(path)
+        except (OSError, pgn.PgnError) as ex:
             logger.error("Import PGN impossible : %s", ex)
-            self._notify(f"Import impossible : {path.name} absent ou invalide", "warning")
+            self._notify(f"Import impossible : {path.name} illisible ou invalide", "warning")
+            return False
+        if not games:
+            self._notify(f"Import impossible : aucune partie dans {path.name}", "warning")
+            return False
+        self._remember_pgn_dir(path)
+        if len(games) == 1:
+            return self._import_game(games[0])
+        self._pgn_games = games
+        self._open(GamePickerOverlay(path.name, games))
+        return True
+
+    def _import_game(self, game):
+        try:
+            state = game.replay()
+        except pgn.PgnError as ex:
+            logger.error("Import PGN impossible : %s", ex)
+            self._notify("Import impossible : partie invalide", "warning")
             return False
         # La partie continue avec les règles du jeu (nulles automatiques).
         state.automatic_draws = True

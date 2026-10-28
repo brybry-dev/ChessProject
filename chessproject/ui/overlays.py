@@ -23,7 +23,7 @@ SHORTCUTS: list[tuple[str, str]] = [
     ("A", "Abandonner"),
     ("R", "Rejouer avec les mêmes réglages"),
     ("S", "Sauvegarder la partie"),
-    ("L", "Charger la partie"),
+    ("L", "Charger une sauvegarde"),
     ("E", "Exporter en PGN"),
     ("I", "Importer un PGN"),
     ("F", "Retourner l'échiquier"),
