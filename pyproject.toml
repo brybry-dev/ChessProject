@@ -48,6 +48,7 @@ chessproject = [
     "assets/icon.png",
     "assets/openings.tsv",
     "assets/openings_en.tsv",
+    "assets/tactics.epd",
 ]
 
 # --------------------------------------------------------------------------

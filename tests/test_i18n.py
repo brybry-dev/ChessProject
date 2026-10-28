@@ -278,7 +278,7 @@ class EnglishScreensTests(unittest.TestCase):
         self.assertTrue(self.seen, "aucun texte relevé")
 
     def test_new_game_screen(self):
-        for mode in ("PvC", "PvP", "CvC"):
+        for mode in ("PvC", "PvP", "CvC", "Puzzle"):
             for color in ("w", "r", "b"):
                 menu = new_game.NewGameMenu(
                     Settings(mode=mode, color=color, language="en", time_control="600+5"),
@@ -324,6 +324,35 @@ class EnglishScreensTests(unittest.TestCase):
         cvc = self._controller("CvC", False, False)
         cvc.ai_thinking = True
         cvc.draw()
+        self.assert_no_french()
+
+    def test_puzzle_screens(self):
+        """J13.3 : consigne, coup faux, indice, solution, problème résolu, fin de série."""
+        gc = self._controller("PvP", True, True)
+        gc.start_puzzles()
+        self._draw(gc)
+        self.assertIn("White to play and mate in 1", self.seen)
+        run = gc.puzzles
+        solution = run.solution_move(gc.game_state)
+        wrong = next(m for m in gc.valid_moves if m != solution)
+        gc._play(wrong, False)
+        self._draw(gc)
+        gc._hint()
+        self._draw(gc)
+        gc._play(solution, False)
+        self._draw(gc)
+        gc._puzzle_next()
+        gc._puzzle_solution()
+        gc.notice = None
+        self._draw(gc)
+        while run.next():
+            pass
+        gc._load_puzzle(run)
+        gc._play(run.solution_move(gc.game_state), False)
+        self._draw(gc)
+        gc._puzzle_next()
+        self._draw(gc)
+        self.assertIn("0 puzzles solved out of 39.", self.seen)  # tous sautés
         self.assert_no_french()
 
     def test_overlays(self):

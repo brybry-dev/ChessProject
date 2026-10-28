@@ -1262,6 +1262,37 @@ joueur, le bilan signale les fautes sans montrer le meilleur coup.
 > fini. Testé : python-chess relit NAG et évaluations sans erreur (`node.nags`,
 > `node.eval()`), sur un texte construit et sur le bilan réel du mat du lion, et notre
 > import relit les mêmes fichiers.
+>
+> **J13.3 ✅ (2026-10-28)** : quatrième mode sur l'écran « Nouvelle partie »,
+> « Problèmes ». La suite tactique passe dans le paquet (`chessproject/assets/tactics.epd`,
+> livrée avec le jeu et les exécutables) ; sa lecture passe de `tools/tactics.py` à
+> `chessproject.core.puzzles`, que l'outil réutilise. La série reprend les 39 positions
+> à solution unique (sur 44 ; les 5 autres acceptent plusieurs coups), des mats en 1 aux
+> mats en 3, gains de matériel entre les deux.
+>
+> - **Déroulement** (`PuzzleRun`) : le joueur joue le camp au trait, sans pendule, à la
+>   souris, au curseur ou en tapant le coup. Un coup faux n'est pas joué (« Ce n'est pas
+>   le meilleur coup : réessayez ») ; le bon coup est joué et termine le problème (pas
+>   de carte de fin de partie après un mat). Indice (`B`) : la pièce à jouer est
+>   marquée. Solution (`O`) : le coup en flèche, qui reste jouable. Suivant (`N`). Les
+>   trois boutons remplacent Annuler / Nulle / Abandonner, dont les touches sont
+>   inactives. L'évaluation (barre et chiffre) est cachée tant que le problème n'est
+>   pas terminé : elle trahirait la solution.
+> - **Score** : un problème compte s'il est trouvé du premier coup, sans indice ni
+>   solution ; un problème sauté est raté. L'en-tête affiche « Problèmes · 10 / 39 ·
+>   Score 7 / 9 » ; la fin de la série donne le total et propose de recommencer.
+> - **Solutions vérifiées** (`tests/test_puzzles.py`) : chacune est unique (solveur
+>   exhaustif de `tools/tactics.py` : `bm` est l'ensemble exact des coups qui matent en
+>   N, ou l'unique gain d'au moins un cavalier) et trouvée par le moteur du jeu en
+>   recherche complète (sans élagage) à la profondeur du mat annoncé, le mat étant
+>   trouvé exactement à cette distance ; 4 demi-coups pour les gains. Avec l'élagage du
+>   jeu (J10.2), un mat en 3 (Lasker-Thomas) ne se trouve qu'à la profondeur 7 : la
+>   vérification se fait donc sans. Les 6 mats en 3 (≈ 20 s) sont dans les tests longs.
+> - **Parcours sans écran** : la série entière au clavier (solution tapée, un problème
+>   sur trois avec d'abord un coup faux, score attendu), la fin de série et une nouvelle
+>   série ; coup faux, indice et coup juste à la souris ; solution puis coup joué ;
+>   sortie du mode par « Nouvelle partie » ; écrans du mode en anglais sans un mot de
+>   français.
 
 #### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
 
