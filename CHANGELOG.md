@@ -12,6 +12,9 @@ Toutes les évolutions notables du projet. Format inspiré de
 - **Windows** : pièces, icônes et pastilles des coups possibles n'apparaissaient pas.
   Le lissage des images utilise maintenant le même filtre sur tous les systèmes, et les
   tests vérifient que ces images ont des pixels visibles, pas seulement leur taille.
+- **Windows** : quand la bibliothèque d'images rend les pièces vectorielles (SVG)
+  entièrement transparentes, comme sur la CI Windows, les pièces PNG sont utilisées à
+  la place, avec un seul avertissement dans le journal.
 
 ## [1.1.0] - 2026-10-25
 

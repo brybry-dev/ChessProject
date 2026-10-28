@@ -471,6 +471,28 @@ class PieceSetTests(unittest.TestCase):
             self.assertEqual(image.get_size(), (size, size))
             self.assertGreater(_opaque_pixels(image), size * size // 10)
 
+    def test_transparent_svg_falls_back_to_the_png_images(self):
+        # Constaté sur la CI Windows : le SVG est chargé à la bonne taille, mais sans
+        # aucun pixel visible. La pièce doit rester visible (image PNG).
+        real_load = p.image.load
+
+        def load(source, namehint=""):
+            if namehint == "piece.svg":
+                return p.Surface((60, 60), p.SRCALPHA)
+            return real_load(source)
+
+        with (
+            mock.patch("chessproject.ui.board_view.p.image.load", side_effect=load),
+            self.assertLogs("chessproject.ui.board_view", "WARNING") as logs,
+        ):
+            pieces = PieceSet()
+            image = pieces.get_image("wK", 60)
+            other = pieces.get_image("bQ", 40)
+        self.assertGreater(_opaque_pixels(image), 60 * 60 // 10)
+        self.assertGreater(_opaque_pixels(other), 40 * 40 // 10)
+        self.assertEqual(len(logs.output), 1)  # un seul avertissement
+        self.assertIn("transparente", logs.output[0])
+
     def test_falls_back_to_the_png_images(self):
         pieces = PieceSet(pieces_dir=Path("/inexistant"))
         with self.assertLogs("chessproject.ui.board_view", "WARNING"):
