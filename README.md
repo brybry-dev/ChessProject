@@ -45,8 +45,10 @@ chessproject
   gère son temps.
 - **Fin de partie** : abandon, proposition de nulle (l'IA accepte selon son évaluation),
   motif de fin affiché.
-- **PGN** : export et import (commentaires, variantes et NAG ignorés à la lecture).
-  **Sauvegarde** JSON versionnée, avec mode, niveau et pendules.
+- **PGN** : export et import (commentaires, variantes et NAG ignorés à la lecture), dans
+  le dossier de son choix ; un PGN de plusieurs parties propose la liste des parties.
+  **Sauvegardes** JSON versionnées, autant qu'on veut, chacune avec son nom, son mode,
+  son niveau et ses pendules.
 - **Protocole UCI** (`chessproject-uci`) : le moteur se branche dans une interface
   d'échecs ou joue contre d'autres moteurs.
 - **Interface** : écran « Nouvelle partie » unique (mode, couleur, niveau, cadence),
@@ -57,7 +59,9 @@ chessproject
   position affichée (mode analyse, touche `V`), indice du meilleur coup en flèche
   (touche `B`, désactivable contre l'IA), bilan de la partie avec courbe d'évaluation
   et imprécisions, erreurs et gaffes de chaque camp (touche `G`), pendule du camp au trait mise en avant,
-  carte de fin de partie. Les préférences sont mémorisées.
+  carte de fin de partie. Coups jouables au clavier (`Entrée`, puis `e4`, `Nf3`, `O-O`…).
+  **Français ou anglais**, au choix. Contrastes vérifiés au niveau WCAG AA
+  (`tools/contrast.py`). Les préférences sont mémorisées.
 
 | Écran « Nouvelle partie » | Thème clair |
 |---|---|
@@ -73,18 +77,27 @@ chessproject
 - **Historique** : cliquer un coup pour revoir la position. L'échiquier est alors en
   lecture seule ; un clic dessus ramène à la partie.
 
+### Clavier
+
+- **Jouer un coup** : `Entrée` (ou `Espace`), taper le coup, puis `Entrée`. La saisie est
+  tolérante : `e4`, `Nf3` ou `nf3`, `Nxe5` ou `Ne5`, `O-O` ou `0-0`, `e8=Q` ou `e8Q`,
+  coordonnées `e2e4`, et les initiales françaises (`Cf3`, `Fc4`, `Dh5`, `Td1`, `Re2`).
+  Sans pièce de promotion (`e8`), le choix s'ouvre. Un coup illégal, ambigu ou illisible
+  est signalé et reste à corriger ; `Échap` ferme la saisie.
+
 ### Raccourcis clavier
 
 | Touche | Action |
 |---|---|
 | `Z` | Annuler le dernier coup (contre l'IA, annule aussi la réponse de l'IA) |
 | `R` | Rejouer avec les mêmes réglages (confirmation si une partie est en cours) |
-| `S` / `L` | Sauvegarder / charger la partie |
-| `E` / `I` | Exporter / importer la partie en PGN |
+| `Entrée` / `Espace` | Taper un coup (cf. ci-dessus) |
+| `S` / `L` | Sauvegarder sous un nom / choisir la sauvegarde à charger (`Suppr` pour en supprimer une) |
+| `E` / `I` | Exporter / importer la partie en PGN, dans le dossier choisi |
 | `A` | Abandonner (avec confirmation) |
 | `N` | Proposer la nulle (en Joueur contre Joueur, l'adversaire accepte avec `N`) |
 | `F` | Retourner l'échiquier |
-| `C` | Apparence : thème, échiquier, aides visuelles, sons |
+| `C` | Apparence : thème, langue, échiquier, aides visuelles, sons |
 | `V` | Afficher ou masquer la variante principale (mode analyse) |
 | `B` | Indice : le meilleur coup s'affiche en flèche (option « Indices contre l'IA » dans Apparence) |
 | `G` | Bilan de la partie : courbe d'évaluation (cliquer pour voir une position), imprécisions `?!`, erreurs `?` et gaffes `??`, aussi marquées dans l'historique |
@@ -185,6 +198,7 @@ sur `master` avec « publier » coché (le tag est alors créé par le workflow)
 | `chessproject/serialization.py` | Sauvegarde / chargement JSON versionné, export FEN |
 | `chessproject/paths.py` | Chemins des ressources et des données utilisateur |
 | `chessproject/settings.py` | Préférences de l'interface, lues et écrites de façon tolérante |
+| `chessproject/i18n.py` | Langue de l'interface : catalogue anglais, pluriels, noms d'ouvertures |
 | `chessproject/ui/app.py` | Scènes (`App`), contrôleur de partie, point d'entrée |
 | `chessproject/ui/layout.py` | Mise en page adaptative (fonction pure de la taille de fenêtre) |
 | `chessproject/ui/theme.py` | Couleurs des thèmes et des échiquiers, polices |
@@ -192,9 +206,10 @@ sur `master` avec « publier » coché (le tag est alors créé par le workflow)
 | `chessproject/ui/panel.py` | En-tête et panneau latéral (joueurs, pendules, historique) |
 | `chessproject/ui/overlays.py` | Fenêtres superposées : raccourcis, apparence, confirmation, fin de partie, promotion |
 | `chessproject/ui/new_game.py` | Écran « Nouvelle partie » |
+| `chessproject/ui/files.py` | Choix du fichier (sauvegarde, PGN) et de la partie d'un PGN multiple |
 | `chessproject/ui/widgets.py` | Texte, formes, icônes vectorielles, boutons |
 | `chessproject/assets/` | Pièces, polices et effets sonores |
-| `tools/` | Mini-ligue Elo, suite tactique, construction des exécutables, GIF et icône |
+| `tools/` | Mini-ligue Elo, suite tactique, vitesse du moteur, audit des contrastes, exécutables, GIF et icône |
 | `tests/` | Tests : perft, différentiels contre python-chess, règles, IA, notation, FEN, UI |
 | `pyproject.toml` | Métadonnées, dépendances, configuration de ruff, mypy et pytest |
 | `RAPPORT_ANALYSE.md` | Audit du projet, suivi des bugs et feuille de route |

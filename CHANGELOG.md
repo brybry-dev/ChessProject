@@ -5,6 +5,35 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.4.0] - 2026-10-28
+
+Confort : fichiers, clavier, anglais, contrastes.
+
+### Ajouté
+
+- **Plusieurs sauvegardes** : `S` demande un nom (la date et l'heure par défaut), `L`
+  ouvre la liste des sauvegardes, la plus récente choisie ; `Suppr` en supprime une. La
+  sauvegarde unique des versions précédentes est reprise dans la liste.
+- **PGN dans le dossier de son choix** : `E` et `I` ouvrent un choix de fichier
+  (dossiers du jeu, personnel, Documents, Téléchargements) ; le dernier dossier utilisé
+  est retenu. Un PGN de plusieurs parties affiche la liste des parties (joueurs,
+  résultat, tournoi, date, nombre de coups) pour en choisir une.
+- **Jouer au clavier** : `Entrée` (ou `Espace`), taper le coup, puis `Entrée`. Saisie
+  tolérante (`e4`, `nf3`, `Ne5` pour `Nxe5`, `0-0`, `e2e4`, initiales françaises `Cf3`,
+  `Dh5`…) ; un coup illégal, ambigu (avec les coups possibles) ou illisible est signalé.
+- **Version anglaise** : toute l'interface, y compris les motifs de fin, les niveaux,
+  les cadences et les 268 noms d'ouvertures. Langue au choix sur l'écran « Nouvelle
+  partie » et dans Apparence ; au premier lancement, celle du système.
+- `tools/contrast.py` : audit des contrastes WCAG 2.2 de toutes les couleurs de
+  l'interface.
+
+### Modifié
+
+- **Contrastes au niveau WCAG AA** dans les deux thèmes et sur les quatre échiquiers :
+  coordonnées de l'échiquier plus foncées, points des coups possibles plus marqués,
+  liseré autour du halo d'échec et des pastilles du bilan, accent plus foncé pour les
+  cadres et interrupteurs du thème clair.
+
 ## [1.3.0] - 2026-10-28
 
 Moteur plus rapide.
