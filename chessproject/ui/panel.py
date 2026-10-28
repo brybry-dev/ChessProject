@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 import pygame as p
 
+from chessproject.i18n import tr
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.theme import Theme
@@ -43,7 +44,7 @@ class Header:
         x = rect.right - 16
         for button in reversed(self.buttons):
             if button.label:
-                width = th.font(14, "semibold").size(button.label)[0] + 50
+                width = th.font(14, "semibold").size(tr(button.label))[0] + 50
                 button.rect = p.Rect(0, 0, width, 38)
                 x -= 12  # séparation avec les icônes
             else:
@@ -157,7 +158,7 @@ class SidePanel:
             w.Button(("nav", "last"), icon="last", variant="ghost", tooltip="Position actuelle"),
         ]
         self.actions = [
-            w.Button("undo", "Annuler", icon="undo", hint="Z"),
+            w.Button("undo", "Annuler|coup", icon="undo", hint="Z"),
             w.Button("draw", "Nulle", icon="equal", hint="N"),
             w.Button("resign", "Abandonner", icon="flag", hint="A"),
         ]
@@ -233,7 +234,9 @@ class SidePanel:
         x = avatar.right + 12
         limit = (clock_rect.left if clock_rect.width else rect.right) - x - 10
         name_font = th.font(15, "semibold")
-        name = card.name + (" · réfléchit" + "." * (now_ms // 400 % 4) if card.thinking else "")
+        name = card.name
+        if card.thinking:
+            name = tr("{name} · réfléchit", name=name) + "." * (now_ms // 400 % 4)
         w.text(
             surface,
             w.ellipsize(name, name_font, limit),
@@ -262,7 +265,7 @@ class SidePanel:
         head = p.Rect(rect.x, rect.y, rect.width, 48)
         w.text(
             surface,
-            "Coups",
+            tr("Coups"),
             th.font(14, "semibold"),
             t.text,
             (head.x + 16, head.centery),
@@ -355,7 +358,7 @@ class SidePanel:
             surface, t.text, (typed.right + 2, box.y + 7), (typed.right + 2, box.bottom - 7), 2
         )
         f = th.font(12)
-        note = error or "Entrée : jouer · Échap : annuler"
+        note = error or tr("Entrée : jouer · Échap : annuler")
         w.text(
             surface,
             w.ellipsize(note, f, box.right - typed.right - 28),
@@ -425,7 +428,7 @@ class SidePanel:
         if not model.rows:
             w.text(
                 surface,
-                "Aucun coup joué",
+                tr("Aucun coup joué"),
                 th.font(13),
                 t.muted,
                 (area.centerx, area.y + 24),

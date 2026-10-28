@@ -14,6 +14,7 @@ from typing import Any
 
 import pygame as p
 
+from chessproject.i18n import tr
 from chessproject.ui import theme as th
 from chessproject.ui.theme import RGB, RGBA, Theme
 
@@ -254,7 +255,8 @@ class Button:
 
     ``variant`` : ``primary`` (accent), ``secondary`` (cadre), ``ghost`` (discret),
     ``choice`` (option sélectionnable, ``selected``). ``action`` identifie le bouton
-    pour son propriétaire (chaîne ou valeur quelconque).
+    pour son propriétaire (chaîne ou valeur quelconque). Libellé, touche et infobulle
+    sont écrits en français et traduits au dessin (J11.3).
     """
 
     action: object
@@ -311,10 +313,10 @@ class Button:
         if self.icon:
             parts.append(("icon", icon(self.icon, 18 if self.label else 20, fg)))
         if self.label:
-            parts.append(("label", font.render(self.label, True, fg)))
+            parts.append(("label", font.render(tr(self.label), True, fg)))
         if self.hint and self.enabled:
             kbd_font = th.font(11, "medium", mono=True)
-            kbd = kbd_font.render(self.hint, True, t.muted)
+            kbd = kbd_font.render(tr(self.hint), True, t.muted)
             chip = p.Surface((kbd.get_width() + 10, kbd.get_height() + 4), p.SRCALPHA)
             p.draw.rect(chip, (*t.surface2, 255), chip.get_rect(), border_radius=4)
             chip.blit(kbd, (5, 2))
@@ -357,7 +359,7 @@ def draw_buttons(
 def tooltip(surface: p.Surface, t: Theme, value: str, anchor: p.Rect) -> None:
     """Infobulle sous ``anchor`` (gardée dans la fenêtre)."""
     f = th.font(12, "medium")
-    label = f.render(value, True, t.text)
+    label = f.render(tr(value), True, t.text)
     box = p.Rect(0, 0, label.get_width() + 16, label.get_height() + 10)
     box.midtop = (anchor.centerx, anchor.bottom + 6)
     box.clamp_ip(surface.get_rect())

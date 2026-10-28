@@ -46,6 +46,7 @@ chessproject = [
     "assets/sounds/*.wav",
     "assets/icon.png",
     "assets/openings.tsv",
+    "assets/openings_en.tsv",
 ]
 
 # --------------------------------------------------------------------------

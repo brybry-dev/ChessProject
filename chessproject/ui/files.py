@@ -20,6 +20,7 @@ from pathlib import Path
 import pygame as p
 
 from chessproject.core import pgn
+from chessproject.i18n import plural, tr
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.overlays import Overlay, _close_button
@@ -196,7 +197,7 @@ class FileDialog(Overlay):
         try:
             entries = list_directory(directory, (self.extension,))
         except OSError:
-            self.message = ("Dossier illisible", "warning")
+            self.message = (tr("Dossier illisible"), "warning")
             return
         self.directory, self.entries = directory, entries
         self.list.scroll = 0
@@ -241,13 +242,16 @@ class FileDialog(Overlay):
         target = self.target()
         if target is None:
             self.message = (
-                "Tapez un nom de fichier" if self.mode == "save" else "Choisissez un fichier",
+                tr("Tapez un nom de fichier" if self.mode == "save" else "Choisissez un fichier"),
                 "warning",
             )
             return None
         if self.mode == "save" and target.exists() and self.pending != ("overwrite", target):
             self.pending = ("overwrite", target)
-            self.message = (f"« {target.name} » existe déjà : Entrée pour le remplacer", "warning")
+            self.message = (
+                tr("« {name} » existe déjà : Entrée pour le remplacer", name=target.name),
+                "warning",
+            )
             return None
         return ("file", self.kind, target)
 
@@ -257,16 +261,19 @@ class FileDialog(Overlay):
             return
         if self.pending != ("delete", entry.path):
             self.pending = ("delete", entry.path)
-            self.message = (f"Supprimer « {entry.label} » ? Suppr pour confirmer", "warning")
+            self.message = (
+                tr("Supprimer « {name} » ? Suppr pour confirmer", name=entry.label),
+                "warning",
+            )
             return
         try:
             entry.path.unlink()
         except OSError:
-            self.message = ("Suppression impossible", "warning")
+            self.message = (tr("Suppression impossible"), "warning")
             return
         index = self.list.selected or 0
         self.open_directory(self.directory)
-        self.message = (f"« {entry.label} » supprimé", "info")
+        self.message = (tr("« {name} » supprimé", name=entry.label), "info")
         files = [i for i, e in enumerate(self.entries) if not e.is_dir]
         if files:
             self.list.selected = min(files, key=lambda i: abs(i - index))
@@ -368,7 +375,7 @@ class FileDialog(Overlay):
         if not any(not e.is_dir for e in self.entries):
             w.text(
                 surface,
-                f"Aucun fichier {self.extension} dans ce dossier",
+                tr("Aucun fichier {extension} dans ce dossier", extension=self.extension),
                 th.font(13),
                 t.muted,
                 (self.list.rect.centerx, self.list.rect.bottom - 24),
@@ -376,7 +383,7 @@ class FileDialog(Overlay):
             )
         y = self.list.rect.bottom + 16
         if self.mode == "save":
-            w.text(surface, "NOM DU FICHIER", th.font(12, "semibold"), t.muted, (x, y))
+            w.text(surface, tr("NOM DU FICHIER"), th.font(12, "semibold"), t.muted, (x, y))
             box = p.Rect(x, y + 24, inner, 44)
             w.rounded(surface, t.surface2, box, 8)
             w.rounded(surface, t.accent, box, 8, 2)
@@ -447,7 +454,7 @@ def game_label(index: int, game: pgn.PgnGame) -> tuple[str, str]:
     moves = (len(game.moves) + 1) // 2
     # En-têtes inconnus (« ? », « ????.??.?? ») omis.
     details = [v for v in (h.get("Event", ""), h.get("Date", "")) if v.strip("?.")]
-    details.append(f"{moves} coup{'s' if moves > 1 else ''}")
+    details.append(plural(moves, "{n} coup", "{n} coups"))
     return title, " · ".join(details)
 
 
@@ -499,8 +506,8 @@ class GamePickerOverlay(Overlay):
         y = self._title(
             surface,
             t,
-            "Choisir une partie",
-            f"{self.filename} contient {count} parties.",
+            tr("Choisir une partie"),
+            tr("{name} contient {n} parties.", name=self.filename, n=count),
         )
         x, inner = card.x + 32, card.width - 64
         self.list.rect = p.Rect(x, y, inner, card.bottom - 24 - 44 - 16 - y)
