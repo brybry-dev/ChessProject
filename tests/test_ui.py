@@ -437,6 +437,91 @@ class AnalysisTests(unittest.TestCase):
         self.assertIsNone(self._analysis())
 
 
+class _IdleProcess(_InlineProcess):
+    """Faux processus qui ne rend jamais rien (recherche en cours)."""
+
+    def start(self):
+        pass
+
+    def is_alive(self):
+        return True
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class HintTests(unittest.TestCase):
+    """J9.2 : bouton « Indice », meilleur coup en flèche."""
+
+    def _controller(self, *args, process=_InlineProcess, **kwargs):
+        gc = _controller(*args, **kwargs)
+        gc.hinter = analysis.Analyzer(
+            process=process, make_queue=queue.Queue, limits=search.SearchLimits(depth=2)
+        )
+        return gc
+
+    def _hint_button(self, gc):
+        gc.draw()
+        return next(b for b in gc.header.buttons if b.action == "hint")
+
+    def test_b_draws_the_best_move_as_an_arrow(self):
+        gc = self._controller()
+        gc._new_game(load_fen("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1"))
+        gc.handle_event(_event(p.KEYDOWN, key=p.K_b))
+        gc.update()
+        self.assertEqual(gc.arrows, {((7, 0), (0, 0))})  # Ra8#
+        self.assertEqual(gc._status()[0], "Indice : Ra8#")
+        self.assertEqual(gc.live_ply, 0)  # l'indice ne joue pas le coup
+
+    def test_the_header_button_asks_for_a_hint(self):
+        gc = self._controller()
+        button = self._hint_button(gc)
+        self.assertTrue(button.enabled)
+        gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=button.rect.center, button=1))
+        gc.update()
+        self.assertEqual(len(gc.arrows), 1)
+        ((start, end),) = gc.arrows
+        legal = {((m.start_row, m.start_col), (m.end_row, m.end_col)) for m in gc.valid_moves}
+        self.assertIn((start, end), legal)
+
+    def test_hint_from_the_review_comes_back_to_the_game(self):
+        gc = self._controller()
+        gc.game_state.make_move(notation.parse_san(gc.game_state, "e4"))
+        gc._navigate("first")
+        gc._hint()
+        self.assertIsNone(gc.view_ply)
+
+    def test_status_while_searching_and_a_move_cancels_the_hint(self):
+        gc = self._controller(process=_IdleProcess)
+        gc._hint()
+        gc.update()
+        self.assertEqual(gc._status()[0], "Recherche d'un indice…")
+        gc.game_state.make_move(notation.parse_san(gc.game_state, "e4"))
+        gc.move_made = True
+        gc.update()
+        self.assertIsNone(gc.hinter.key)
+        self.assertFalse(gc.arrows)
+        self.assertNotEqual(gc._status()[0], "Recherche d'un indice…")
+
+    def test_not_available_on_the_ai_turn_or_after_the_game(self):
+        gc = self._controller("PvC", False, True)  # l'IA a les blancs et le trait
+        self.assertFalse(gc._can_hint())
+        gc = self._controller("CvC", False, False)
+        self.assertFalse(gc._can_hint())
+        gc = self._controller()
+        gc._resign()
+        self.assertFalse(self._hint_button(gc).enabled)
+
+    def test_can_be_turned_off_against_the_ai(self):
+        gc = self._controller("PvC", True, False, settings=Settings(hints_vs_ai=False))
+        self.assertFalse(self._hint_button(gc).enabled)
+        gc.handle_event(_event(p.KEYDOWN, key=p.K_b))
+        gc.update()
+        self.assertFalse(gc.arrows)
+        self.assertIsNone(gc.hinter.key)
+        # Entre deux joueurs, l'option ne s'applique pas.
+        gc = self._controller(settings=Settings(hints_vs_ai=False))
+        self.assertTrue(gc._can_hint())
+
+
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
 class OverlayTests(unittest.TestCase):
     def test_appearance_changes_are_applied_and_reported(self):

@@ -31,6 +31,7 @@ class Header:
             w.Button("load", icon="folder", variant="ghost", tooltip="Charger (L)"),
             w.Button("export", icon="download", variant="ghost", tooltip="Exporter en PGN (E)"),
             w.Button("import", icon="upload", variant="ghost", tooltip="Importer un PGN (I)"),
+            w.Button("hint", icon="bulb", variant="ghost", tooltip="Indice (B)"),
             w.Button("flip", icon="flip", variant="ghost", tooltip="Retourner l'échiquier (F)"),
             w.Button("appearance", icon="contrast", variant="ghost", tooltip="Apparence (C)"),
             w.Button("shortcuts", icon="keyboard", variant="ghost", tooltip="Raccourcis (H)"),

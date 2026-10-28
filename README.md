@@ -54,7 +54,8 @@ chessproject
   fenêtre redimensionnable. Glisser-déposer ou clic-clic, coups possibles affichés,
   flèches et marques au clic droit, historique SAN cliquable pour revoir la partie,
   matériel pris, barre d'évaluation (désactivable), variante principale du moteur pour la
-  position affichée (mode analyse, touche `V`), pendule du camp au trait mise en avant,
+  position affichée (mode analyse, touche `V`), indice du meilleur coup en flèche
+  (touche `B`, désactivable contre l'IA), pendule du camp au trait mise en avant,
   carte de fin de partie. Les préférences sont mémorisées.
 
 | Écran « Nouvelle partie » | Thème clair |
@@ -84,6 +85,7 @@ chessproject
 | `F` | Retourner l'échiquier |
 | `C` | Apparence : thème, échiquier, aides visuelles, sons |
 | `V` | Afficher ou masquer la variante principale (mode analyse) |
+| `B` | Indice : le meilleur coup s'affiche en flèche (option « Indices contre l'IA » dans Apparence) |
 | `H` | Afficher les raccourcis |
 | `←` / `→` | Coup précédent / suivant dans l'historique |
 | `Origine` / `Fin` | Position de départ / position actuelle |

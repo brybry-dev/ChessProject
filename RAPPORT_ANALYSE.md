@@ -936,6 +936,17 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 > d'évaluation reprend son score. Analyse et IA tournent dans deux processus : la force
 > de l'IA, bornée en nœuds, n'en dépend pas ; seul le plafond de temps peut être atteint
 > plus tôt sur une machine chargée. 21 nouveaux tests.
+>
+> **J9.2 ✅ (2026-10-28)** : bouton « Indice » (ampoule dans l'en-tête, touche `B`).
+> Le meilleur coup de la position actuelle est cherché pendant 1 s dans un processus
+> (`analysis.HINT_LIMITS`, même `Analyzer` que l'analyse), puis tracé en flèche et
+> annoncé dans la ligne d'état (« Indice : Nc3 ») ; la flèche s'efface au coup suivant.
+> Demandé depuis la revue, il ramène à la position actuelle. Un coup joué ou annulé
+> pendant la recherche abandonne l'indice. Indisponible au tour de l'IA, en IA contre
+> IA et en fin de partie. Option « Indices contre l'IA » (Apparence, activée par
+> défaut) : coupée, le bouton est désactivé contre l'IA ; elle ne s'applique pas entre
+> deux joueurs. Le temps de recherche est décompté de la pendule du joueur. 6 nouveaux
+> tests.
 
 #### J10 — v1.3 : moteur plus rapide (3–5 j)
 

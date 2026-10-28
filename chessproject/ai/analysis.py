@@ -22,6 +22,9 @@ from chessproject.core.fen import fullmove_number
 # Une analyse s'arrête d'elle-même : pas de processus qui tourne sans fin en arrière-plan.
 ANALYSIS_MOVETIME_MS = 15_000
 ANALYSIS_LIMITS = search.SearchLimits(depth=search.MAX_PLY, movetime_ms=ANALYSIS_MOVETIME_MS)
+# Indice (J9.2) : recherche courte, le temps est décompté de la pendule du joueur.
+HINT_MOVETIME_MS = 1_000
+HINT_LIMITS = search.SearchLimits(depth=search.MAX_PLY, movetime_ms=HINT_MOVETIME_MS)
 
 
 @dataclass(frozen=True, slots=True)

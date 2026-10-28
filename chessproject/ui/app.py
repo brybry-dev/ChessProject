@@ -296,6 +296,8 @@ class GameController:
         self.return_queue: Any = None
         # Variante principale de la position affichée (J9.1), en arrière-plan.
         self.analyzer = analysis.Analyzer()
+        # Indice demandé par le joueur (J9.2) : meilleur coup de la position actuelle.
+        self.hinter = analysis.Analyzer(limits=analysis.HINT_LIMITS)
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
@@ -442,6 +444,7 @@ class GameController:
         if e.type == p.QUIT:
             self._stop_ai()  # ne pas attendre la fin de la recherche (B45)
             self.analyzer.stop()
+            self.hinter.stop()
             p.quit()
             sys.exit()
         if self.promotion_popup:
@@ -490,6 +493,7 @@ class GameController:
             "export": self._export_pgn,
             "import": self._import_pgn,
             "flip": self._flip,
+            "hint": self._hint,
             "appearance": lambda: self._open(AppearanceOverlay(self.settings)),
             "shortcuts": lambda: self._open(ShortcutsOverlay()),
             "undo": self._undo,
@@ -660,6 +664,7 @@ class GameController:
             p.K_f: self._flip,
             p.K_c: lambda: self._open(AppearanceOverlay(self.settings)),
             p.K_v: lambda: self.set_setting("show_analysis", not self.settings.show_analysis),
+            p.K_b: self._hint,
             p.K_h: lambda: self._open(ShortcutsOverlay()),
             p.K_LEFT: lambda: self._navigate("prev"),
             p.K_RIGHT: lambda: self._navigate("next"),
@@ -752,6 +757,39 @@ class GameController:
     def _restart(self):
         self._new_game(engine.GameState())
         logger.info("Partie réinitialisée")
+
+    # -- indice (J9.2) -------------------------------------------------
+    def _can_hint(self):
+        if self.game_over or self.mode == "CvC" or not self.human_turn():
+            return False
+        if self.promotion_popup or self.ai_thinking:
+            return False
+        return self.mode != "PvC" or self.settings.hints_vs_ai
+
+    def _hint(self):
+        """Cherche le meilleur coup de la position actuelle ; update() le dessine."""
+        if not self._can_hint():
+            return
+        self.view_ply = None
+        self._reset_selection()
+        self.hinter.start(copy.deepcopy(self.game_state), self._key())
+
+    def _update_hint(self):
+        if self.hinter.key is None:
+            return
+        if self.hinter.key != self._key() or not self._can_hint():
+            self.hinter.stop()  # coup joué ou annulé entre-temps : indice périmé
+            return
+        line = self.hinter.poll()
+        if self.hinter.running:
+            return
+        self.hinter.stop()
+        if line is None or not line.pv:
+            return
+        move = notation.parse_san(self.game_state, line.pv[0])
+        self.arrows.add(((move.start_row, move.start_col), (move.end_row, move.end_col)))
+        self._notify(f"Indice : {line.pv[0]}", "accent")
+        logger.info("Indice : %s", line.pv[0])
 
     def _flip(self):
         self.renderer.flip_board = not self.renderer.flip_board
@@ -1038,6 +1076,7 @@ class GameController:
         if not frozen:
             self.update_ai()
         self._update_analysis()
+        self._update_hint()
 
         if (
             self.game_over
@@ -1089,6 +1128,8 @@ class GameController:
         mouse = p.mouse.get_pos()
         self.screen.fill(t.bg)
         logo = self.pieces.get_image("wN", 30)
+        hint = next(b for b in self.header.buttons if b.action == "hint")
+        hint.enabled = self._can_hint() and self.hinter.key is None
         self.header.draw(self.screen, self.layout.header, t, logo, self._info_text(), mouse, now)
         state = self.state_at(self.current_ply)
         if self.layout.eval_bar is not None:
@@ -1281,6 +1322,8 @@ class GameController:
             return f"Les {proposer} proposent la nulle · N pour accepter", "accent"
         if self.ai_thinking:
             return "L'IA réfléchit…", "info"
+        if self.hinter.key is not None:
+            return "Recherche d'un indice…", "info"
         prefix = "Échec ! " if self.game_state.king_in_check() else ""
         if self.mode == "PvC" and self.human_turn():
             return prefix + "À vous de jouer", "warning" if prefix else "accent"
@@ -1414,6 +1457,7 @@ class App:
             if self.game is not None:
                 self.game._stop_ai()  # ne pas attendre la fin de la recherche (B45)
                 self.game.analyzer.stop()
+                self.game.hinter.stop()
             p.quit()
             sys.exit()
         if e.type == p.VIDEORESIZE:

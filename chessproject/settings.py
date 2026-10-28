@@ -37,6 +37,7 @@ class Settings:
     board: str = "Ardoise"
     show_eval: bool = True
     show_analysis: bool = False  # variante principale de la position affichée (J9.1)
+    hints_vs_ai: bool = True  # bouton « Indice » disponible contre l'IA (J9.2)
     show_coordinates: bool = True
     show_legal_moves: bool = True
     sound: bool = True
