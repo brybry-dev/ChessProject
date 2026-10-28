@@ -322,7 +322,17 @@ def main(argv: list[str] | None = None) -> None:
         metavar="SPEC",
         help="niveau sur mesure pour la calibration, ex. « base=Moyen,nodes=4000,noise=40 »",
     )
+    parser.add_argument(
+        "--features",
+        metavar="LISTE",
+        help="techniques de recherche, ex. « pvs,lmr », « all » ou « none » (mesures J10.2)",
+    )
     args = parser.parse_args(argv)
+    if args.features is not None:
+        try:
+            search.DEFAULT_FEATURES = search.SearchFeatures.parse(args.features)
+        except ValueError as exc:
+            parser.error(f"--features : {exc}")
     level: str | levels.Level | None = args.level
     if args.level_spec is not None:
         try:

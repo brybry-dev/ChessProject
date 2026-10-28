@@ -409,6 +409,30 @@ class GameState:
         self.position_keys.append(key)
         self.position_history[key] = self.position_history.get(key, 0) + 1
 
+    def make_null_move(self) -> Square | None:
+        """Coup nul de la recherche (J10.2) : le trait passe sans rien jouer. Renvoie la
+        case d'en passant effacée, à rendre à ``undo_null_move``. La clé est empilée dans
+        ``position_keys`` (``undo_move`` y relit la clé précédente) mais pas comptée
+        dans les répétitions ; ``move_log`` n'est pas touché. Jamais en échec."""
+        old_enpassant = self.enpassant_possible
+        key = self.zobrist_key ^ ZOBRIST_BLACK_TO_MOVE ^ _zobrist_en_passant(old_enpassant)
+        self.enpassant_possible = None
+        self.white_to_move = not self.white_to_move
+        self.zobrist_key = key
+        self.position_keys.append(key)
+        self._valid_moves = None
+        return old_enpassant
+
+    def undo_null_move(self, old_enpassant: Square | None) -> None:
+        self.position_keys.pop()
+        self.zobrist_key = self.position_keys[-1]
+        self.white_to_move = not self.white_to_move
+        self.enpassant_possible = old_enpassant
+        self.checkmate = False
+        self.stalemate = False
+        self.termination = None
+        self._valid_moves = None
+
     def undo_move(self) -> None:
         """Annule le dernier mouvement effectué et restaure les compteurs et l'historique."""
         if not self.move_log:

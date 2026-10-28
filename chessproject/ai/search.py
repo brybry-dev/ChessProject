@@ -48,6 +48,50 @@ TT_MAX_ENTRIES: int = 1 << 20  # au-delà, la table est vidée (remplacement sim
 TIME_CHECK_INTERVAL: int = 256
 QUIESCENCE_MAX_PLY: int = 16  # garde-fou : la quiescence s'arrête au-delà
 
+# Techniques d'élagage (J10.2), chacune mesurée en mini-ligue à temps égal.
+NULL_MOVE_REDUCTION: int = 2  # R du coup nul : recherche à depth - 1 - R
+NULL_MOVE_MIN_DEPTH: int = 3
+LMR_MIN_DEPTH: int = 3
+LMR_MIN_MOVE_INDEX: int = 3  # les coups calmes à partir du 4e sont réduits d'un demi-coup
+ASPIRATION_WINDOW: int = 50  # demi-largeur de la fenêtre autour du score précédent (cp)
+ASPIRATION_MIN_DEPTH: int = 4
+
+
+@dataclass(frozen=True, slots=True)
+class SearchFeatures:
+    """Techniques activées. ``pvs`` : fenêtre nulle après le premier coup ;
+    ``aspiration`` : fenêtre étroite autour du score de l'itération précédente ;
+    ``null_move`` : coup nul (passer son tour) pour couper tôt les positions trop
+    bonnes ; ``lmr`` : réduction de profondeur des coups calmes tardifs."""
+
+    pvs: bool = False
+    aspiration: bool = False
+    null_move: bool = False
+    lmr: bool = False
+
+    @classmethod
+    def parse(cls, text: str) -> "SearchFeatures":
+        """« pvs,lmr » ; « none » : aucune technique ; « all » : toutes."""
+        names = {name.strip() for name in text.split(",") if name.strip()}
+        if names == {"none"}:
+            return cls()
+        if names == {"all"}:
+            return cls(True, True, True, True)
+        unknown = names - set(cls.__slots__)
+        if unknown:
+            raise ValueError(f"technique inconnue : {', '.join(sorted(unknown))}")
+        return cls(**{name: True for name in names})
+
+    def __str__(self) -> str:
+        return ",".join(name for name in self.__slots__ if getattr(self, name)) or "none"
+
+
+NO_FEATURES = SearchFeatures()
+# Pleine force (UCI, analyse, indice) : PVS, coup nul et LMR, +24 Elo [−18, +65] à
+# 400 ms par coup sur 192 parties (J10.2). Les fenêtres d'aspiration, sans gain mesurable
+# en nœuds, restent coupées. Niveaux et bilan de partie : NO_FEATURES.
+DEFAULT_FEATURES = SearchFeatures(pvs=True, null_move=True, lmr=True)
+
 
 @dataclass(slots=True)
 class TTEntry:
@@ -109,9 +153,11 @@ class Searcher:
     interrompue par une limite (les coups joués sont annulés en remontant).
     """
 
-    def __init__(self, clock: Any = time.monotonic) -> None:
+    def __init__(self, clock: Any = time.monotonic, features: SearchFeatures | None = None) -> None:
         self.tt: TranspositionTable = {}
         self.clock = clock
+        # None : DEFAULT_FEATURES lu à chaque recherche (le moteur UCI peut le changer).
+        self._features = features
         self.nodes = 0
         self._deadline: float | None = None
         self._max_nodes: int | None = None
@@ -147,9 +193,15 @@ class Searcher:
             result.score = -MATE if game_state.checkmate else 0
             return result
         result.move = self._ordered(game_state, root_moves, None, 0)[0]
+        aspiration = self.features.aspiration
         for depth in range(1, max_depth + 1):
             try:
-                score, move = self.negamax(game_state, root_moves, depth, -INF, INF, 0)
+                if aspiration and depth >= ASPIRATION_MIN_DEPTH and result.depth:
+                    score, move = self._aspiration_search(
+                        game_state, root_moves, depth, result.score
+                    )
+                else:
+                    score, move = self.negamax(game_state, root_moves, depth, -INF, INF, 0)
             except SearchLimitError:
                 break  # profondeur inachevée : on garde le résultat de la précédente
             if move is not None:
@@ -175,6 +227,27 @@ class Searcher:
         self._max_nodes = None
         result.pv = self._principal_variation(game_state, result.depth)
         return result
+
+    @property
+    def features(self) -> SearchFeatures:
+        return DEFAULT_FEATURES if self._features is None else self._features
+
+    def _aspiration_search(
+        self,
+        game_state: engine.GameState,
+        root_moves: list[engine.Move],
+        depth: int,
+        previous: int,
+    ) -> tuple[int, engine.Move | None]:
+        """Fenêtre ±ASPIRATION_WINDOW autour du score précédent ; si le score en sort,
+        nouvelle recherche en fenêtre complète."""
+        if abs(previous) >= MATE_THRESHOLD:
+            return self.negamax(game_state, root_moves, depth, -INF, INF, 0)
+        alpha, beta = previous - ASPIRATION_WINDOW, previous + ASPIRATION_WINDOW
+        score, move = self.negamax(game_state, root_moves, depth, alpha, beta, 0)
+        if alpha < score < beta:
+            return score, move
+        return self.negamax(game_state, root_moves, depth, -INF, INF, 0)
 
     def set_limits(self, deadline: float | None, extra_nodes: int | None) -> None:
         """Limites des appels directs à ``negamax`` après ``think`` (réévaluation des
@@ -230,17 +303,40 @@ class Searcher:
                 if entry.flag == UPPER and tt_score <= alpha:
                     return tt_score, tt_move
 
+        features = self.features
+        in_check = game_state.in_check
+        if (
+            features.null_move
+            and ply > 0
+            and depth >= NULL_MOVE_MIN_DEPTH
+            and not in_check
+            and beta < MATE_THRESHOLD
+            and _has_pieces(game_state)
+        ):
+            # Passer son tour et rester au-dessus de bêta : la position est trop bonne,
+            # l'adversaire évitera d'y entrer. Exclu sans pièce (zugzwang en finale).
+            old_enpassant = game_state.make_null_move()
+            try:
+                score, _ = self.negamax(
+                    game_state, None, depth - 1 - NULL_MOVE_REDUCTION, -beta, -beta + 1, ply + 1
+                )
+            finally:
+                game_state.undo_null_move(old_enpassant)
+            if -score >= beta:
+                return beta, None
+
         alpha_orig = alpha
         ordered = self._ordered(game_state, valid_moves, tt_move, ply)
         best_score = -INF
         best_move: engine.Move = ordered[0]
-        for move in ordered:
+        for index, move in enumerate(ordered):
             game_state.make_move(move, validate=False)
             try:
-                score, _ = self.negamax(game_state, None, depth - 1, -beta, -alpha, ply + 1)
+                score = self._search_child(
+                    game_state, move, index, depth, alpha, beta, ply, in_check, features
+                )
             finally:
                 game_state.undo_move()
-            score = -score
             if score > best_score:
                 best_score, best_move = score, move
             if score > alpha:
@@ -258,6 +354,43 @@ class Searcher:
             flag = EXACT
         self.tt[key] = TTEntry(depth, _to_tt_score(best_score, ply), flag, best_move)
         return best_score, best_move
+
+    def _search_child(
+        self,
+        game_state: engine.GameState,
+        move: engine.Move,
+        index: int,
+        depth: int,
+        alpha: int,
+        beta: int,
+        ply: int,
+        in_check: bool,
+        features: SearchFeatures,
+    ) -> int:
+        """Score du coup ``move`` (déjà joué), du point de vue du camp qui l'a joué."""
+        if index == 0 or not (features.pvs or features.lmr):
+            return -self.negamax(game_state, None, depth - 1, -beta, -alpha, ply + 1)[0]
+        new_depth = depth - 1
+        if (
+            features.lmr
+            and ply > 0  # jamais à la racine : un sacrifice calme y serait vu trop tard
+            and depth >= LMR_MIN_DEPTH
+            and index >= LMR_MIN_MOVE_INDEX
+            and not in_check
+            and not move.is_capture
+            and not move.is_pawn_promotion
+            and not game_state.king_in_check()
+        ):
+            # Coup calme tardif : recherche réduite en fenêtre nulle ; s'il dépasse
+            # alpha, il est revu à pleine profondeur.
+            score = -self.negamax(game_state, None, new_depth - 1, -alpha - 1, -alpha, ply + 1)[0]
+            if score <= alpha:
+                return score
+        if features.pvs:
+            score = -self.negamax(game_state, None, new_depth, -alpha - 1, -alpha, ply + 1)[0]
+            if not alpha < score < beta:
+                return score
+        return -self.negamax(game_state, None, new_depth, -beta, -alpha, ply + 1)[0]
 
     def quiescence(
         self,
@@ -361,6 +494,14 @@ class Searcher:
             for _ in pv:
                 game_state.undo_move()
         return pv
+
+
+def _has_pieces(game_state: engine.GameState) -> bool:
+    """Le camp au trait a-t-il une pièce autre que roi et pions ?"""
+    ally = "w" if game_state.white_to_move else "b"
+    return any(
+        piece[0] == ally and piece[1] not in "Kp" for row in game_state.board for piece in row
+    )
 
 
 def _history_key(move: engine.Move) -> tuple[str, int, int]:

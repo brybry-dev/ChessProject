@@ -178,7 +178,8 @@ def run(
     position finale : ``(demi-coup, évaluation, score du coup joué)`` (point de vue des
     Blancs ; ``None`` pour le coup de la position finale), puis ``None``."""
     game_state = copy.deepcopy(start_state)
-    searcher = search.Searcher()
+    # Sans élagage : à horizon égal, le meilleur coup doit perdre exactement 0.
+    searcher = search.Searcher(features=search.NO_FEATURES)
     try:
         for ply in range(len(moves) + 1):
             sign = 1 if game_state.white_to_move else -1

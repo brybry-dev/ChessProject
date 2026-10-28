@@ -1019,6 +1019,46 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 >   finies par la règle des 50 coups : la relecture PGN suit les règles FIDE strictes
 >   (nulle à réclamer). Le test compare maintenant à règles égales.
 
+> **J10.2 ✅ (2026-10-28, mesure écourtée)** : `SearchFeatures` (`pvs`, `aspiration`,
+> `null_move`, `lmr`), option `--features` du moteur UCI et de `tools/bench.py`, pour
+> opposer le même code avec et sans une technique. Budget fixé par le propriétaire :
+> **30 min de calcul** au total.
+>
+> - PVS : fenêtre nulle après le premier coup, nouvelle recherche si le score en sort.
+>   Coup nul : R = 2, dès la profondeur 3, jamais en échec ni sans pièce (zugzwang des
+>   finales de pions) ; `GameState.make_null_move` / `undo_null_move`. LMR : coups
+>   calmes à partir du 4e, sans échec donné ni subi, réduits d'un demi-coup dès la
+>   profondeur 3, revus à pleine profondeur s'ils dépassent alpha ; **jamais à la
+>   racine** (sinon le mat en deux 1. Ta6 ! bxa6 2. b7# n'est plus vu à profondeur 3,
+>   `tests/test_ai.py`). Aspiration : ±50 cp dès la profondeur 4.
+> - Nœuds pour la profondeur 5 (positions de `tools/bench.py`) : aucune technique
+>   433 k ; PVS 306 k ; + aspiration 304 k ; PVS + coup nul 236 k ; PVS + LMR 154 k ;
+>   PVS + coup nul + LMR hors racine **168 k (−61 %)**. À profondeur fixe, PVS rend
+>   exactement les mêmes scores (60 positions sur 60).
+> - Suite tactique à 1 s : 41/44 sans technique, 42/44 avec (mats en 2 : 11/11).
+>
+> | Match (moteur UCI, pleine force) | Parties | V / N / D | Écart Elo [IC 95 %] | LOS |
+> |---|---|---|---|---|
+> | PVS – aucune, 100 ms par coup | 200 | 61 / 43 / 96 | −61 [−106, −19] | 0,3 % |
+> | PVS + coup nul + LMR – aucune, 400 ms | 96 | 35 / 32 / 29 | +22 [−35, +80] | 77 % |
+> | idem, 48 autres ouvertures | 96 | 39 / 25 / 32 | +25 [−34, +87] | 80 % |
+> | **400 ms, cumul** | **192** | **74 / 57 / 61** | **+24 [−18, +65]** | **87 %** |
+>
+> - À 100 ms, le moteur ne dépasse presque jamais la profondeur 2 (~1 800 nœuds) :
+>   PVS n'y a rien à couper, et ce régime ne ressemble pas au jeu réel (3 500 à 40 000
+>   nœuds par coup). Ce match a été écarté, et la mesure refaite à 400 ms.
+> - Positions de départ : 96 positions du livre (`calibrate.book_openings`), chacune
+>   jouée deux fois, couleurs inversées, 8 parties en parallèle.
+> - **Décision** : PVS + coup nul + LMR pour la pleine force (moteur UCI, analyse,
+>   indice) ; gain probable (87 %) mais non établi à 95 %. La racine exclue de LMR a
+>   été décidée après les matchs (environ 16 % de nœuds en plus à profondeur 5) : non
+>   remesuré. Aspiration écartée (−0,6 % de nœuds, gain non mesurable). **Les niveaux et
+>   le bilan restent sans élagage** : bornés en nœuds, les niveaux ont été calibrés
+>   ainsi (J8), et le bilan suppose qu'à horizon égal le meilleur coup perd 0.
+> - Reste à faire quand du temps de calcul est disponible : chaque technique seule à
+>   400 ms (environ 400 parties chacune pour un IC de ±35 Elo), puis, si les niveaux
+>   doivent en profiter, recalibrer J8.1 et J8.2.
+
 #### J11 — v1.4 : confort (2–3 j)
 
 | # | Tâche | Critère d'acceptation | Taille |

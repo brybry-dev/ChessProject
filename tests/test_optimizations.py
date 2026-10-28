@@ -10,7 +10,7 @@ import random
 import unittest
 
 from chessproject.ai import evaluate
-from chessproject.ai.search import Searcher, SearchLimits
+from chessproject.ai.search import NO_FEATURES, Searcher, SearchLimits
 from chessproject.core.fen import load_fen, to_fen
 
 FENS = [
@@ -86,6 +86,7 @@ REFERENCE_NODES_DEPTH_3: list[int] = [633, 25638, 592, 15183]
 
 class SearchTreeTests(unittest.TestCase):
     def test_node_counts_match_the_reference(self):
-        # Signature de l'arbre : nombre de nœuds à profondeur 3 (cf. tools/bench.py).
-        nodes = [Searcher().think(load_fen(fen), SearchLimits(depth=3)).nodes for fen in FENS]
+        # Signature de l'arbre sans élagage (les niveaux, J10.2) : nœuds à profondeur 3.
+        limits = SearchLimits(depth=3)
+        nodes = [Searcher(features=NO_FEATURES).think(load_fen(f), limits).nodes for f in FENS]
         self.assertEqual(nodes, REFERENCE_NODES_DEPTH_3)

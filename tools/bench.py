@@ -8,7 +8,8 @@ Le **nombre de nœuds** est déterministe : une optimisation qui ne change pas l
 doit le laisser identique (c'est la signature de la recherche), seule la vitesse bouge.
 Une technique de recherche (J10.2) le change, et se juge alors en mini-ligue.
 
-    python tools/bench.py                # profondeur 4
+    python tools/bench.py                # profondeur 4, sans élagage (arbre des niveaux)
+    python tools/bench.py --features pvs,null_move,lmr
     python tools/bench.py --depth 5
     python tools/bench.py --profile      # profil cProfile des 25 fonctions les plus chères
 """
@@ -21,7 +22,7 @@ import pstats
 import time
 from dataclasses import dataclass
 
-from chessproject.ai.search import Searcher, SearchLimits
+from chessproject.ai.search import NO_FEATURES, Searcher, SearchFeatures, SearchLimits
 from chessproject.core.fen import load_fen
 
 # Ouverture, milieu de partie ouvert (Kiwipete), milieu fermé, finale de tours, finale
@@ -46,14 +47,14 @@ class BenchLine:
         return self.nodes / self.seconds if self.seconds > 0 else 0.0
 
 
-def run(depth: int) -> list[BenchLine]:
+def run(depth: int, features: SearchFeatures = NO_FEATURES) -> list[BenchLine]:
     """Une recherche à ``depth`` par position, chacune avec une table de transposition
     neuve (les mesures ne dépendent pas de l'ordre des positions)."""
     lines = []
     for name, fen in POSITIONS:
         game_state = load_fen(fen)
         start = time.perf_counter()
-        result = Searcher().think(game_state, SearchLimits(depth=depth))
+        result = Searcher(features=features).think(game_state, SearchLimits(depth=depth))
         lines.append(BenchLine(name, result.nodes, time.perf_counter() - start))
     return lines
 
@@ -71,15 +72,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     parser.add_argument("--depth", type=int, default=4)
     parser.add_argument("--profile", action="store_true", help="profil cProfile")
+    parser.add_argument(
+        "--features", type=SearchFeatures.parse, default=NO_FEATURES, help="ex. pvs,lmr ; all"
+    )
     args = parser.parse_args(argv)
     if args.profile:
         profiler = cProfile.Profile()
         profiler.enable()
-        lines = run(args.depth)
+        lines = run(args.depth, args.features)
         profiler.disable()
         pstats.Stats(profiler).sort_stats("tottime").print_stats(25)
     else:
-        lines = run(args.depth)
+        lines = run(args.depth, args.features)
     print(report(lines))
     return 0
 

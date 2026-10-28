@@ -229,7 +229,9 @@ def choose_move(
         move = book_choice(game_state, level, rng)
         if move is not None:
             return move
-    searcher = Searcher()
+    # Sans élagage (J10.2) : les niveaux, bornés en nœuds, ont été calibrés ainsi (J8) ;
+    # l'élagage rendrait chacun plus fort à budget égal et fausserait leur Elo.
+    searcher = Searcher(features=search.NO_FEATURES)
     movetime = min(level.movetime_ms, movetime_ms or level.movetime_ms)
     deadline = searcher.clock() + movetime / 1000
     noisy = level.eval_noise_cp > 0 or level.mistake_probability > 0.0
