@@ -27,7 +27,7 @@ import pygame as p
 
 from chessproject import __version__, paths, serialization
 from chessproject import settings as settings_module
-from chessproject.ai import analysis, book, levels, search
+from chessproject.ai import analysis, book, levels, review, search
 from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation, pgn
 from chessproject.settings import Settings
@@ -42,6 +42,7 @@ from chessproject.ui.overlays import (
     EndGameOverlay,
     Overlay,
     PromotionPopup,
+    ReviewOverlay,
     ShortcutsOverlay,
 )
 from chessproject.ui.panel import Header, MoveRow, PanelModel, PlayerCard, SidePanel
@@ -298,6 +299,8 @@ class GameController:
         self.analyzer = analysis.Analyzer()
         # Indice demandé par le joueur (J9.2) : meilleur coup de la position actuelle.
         self.hinter = analysis.Analyzer(limits=analysis.HINT_LIMITS)
+        # Bilan de la partie (J9.3) : évaluation de chaque position, en arrière-plan.
+        self.reviewer = review.Reviewer()
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
@@ -445,6 +448,7 @@ class GameController:
             self._stop_ai()  # ne pas attendre la fin de la recherche (B45)
             self.analyzer.stop()
             self.hinter.stop()
+            self.reviewer.stop()
             p.quit()
             sys.exit()
         if self.promotion_popup:
@@ -483,6 +487,9 @@ class GameController:
                 self._navigate(action[1])
             elif kind == "goto":
                 self._view(action[1])
+            elif kind == "review_goto":
+                self.overlay = None
+                self._view(action[1])
             elif kind == "setting":
                 self.set_setting(action[1], action[2])
             return
@@ -494,6 +501,7 @@ class GameController:
             "import": self._import_pgn,
             "flip": self._flip,
             "hint": self._hint,
+            "game_review": self._open_review,
             "appearance": lambda: self._open(AppearanceOverlay(self.settings)),
             "shortcuts": lambda: self._open(ShortcutsOverlay()),
             "undo": self._undo,
@@ -665,6 +673,7 @@ class GameController:
             p.K_c: lambda: self._open(AppearanceOverlay(self.settings)),
             p.K_v: lambda: self.set_setting("show_analysis", not self.settings.show_analysis),
             p.K_b: self._hint,
+            p.K_g: self._open_review,
             p.K_h: lambda: self._open(ShortcutsOverlay()),
             p.K_LEFT: lambda: self._navigate("prev"),
             p.K_RIGHT: lambda: self._navigate("next"),
@@ -790,6 +799,27 @@ class GameController:
         self.arrows.add(((move.start_row, move.start_col), (move.end_row, move.end_col)))
         self._notify(f"Indice : {line.pv[0]}", "accent")
         logger.info("Indice : %s", line.pv[0])
+
+    # -- bilan (J9.3) ---------------------------------------------------
+    def _open_review(self):
+        if not self.game_state.move_log:
+            self._notify("Aucun coup à analyser")
+            return
+        self.reviewer.start(self.state_at(0), list(self.game_state.move_log), self._key())
+        self._open(ReviewOverlay(self.reviewer, eval_text))
+
+    def _update_review(self):
+        if self.reviewer.key is None:
+            return
+        if self.reviewer.key != self._key():
+            self.reviewer.stop()  # coup joué ou annulé : le bilan ne correspond plus
+            return
+        self.reviewer.poll()
+
+    def _review_symbols(self):
+        """Symbole (« ?! », « ? », « ?? ») de chaque coup, si le bilan est prêt."""
+        result = self.reviewer.result() if self.reviewer.key == self._key() else None
+        return [m.symbol for m in result.moves] if result else None
 
     def _flip(self):
         self.renderer.flip_board = not self.renderer.flip_board
@@ -1077,6 +1107,7 @@ class GameController:
             self.update_ai()
         self._update_analysis()
         self._update_hint()
+        self._update_review()
 
         if (
             self.game_over
@@ -1281,6 +1312,9 @@ class GameController:
 
     def _move_rows(self):
         sans = self._sans()
+        symbols = self._review_symbols()
+        if symbols is not None and len(symbols) == len(sans):
+            sans = [san + symbol for san, symbol in zip(sans, symbols, strict=True)]
         rows: list[MoveRow] = []
         start_white = self.game_state.white_to_move == (len(sans) % 2 == 0)
         number = self.game_state.start_fullmove
@@ -1458,6 +1492,7 @@ class App:
                 self.game._stop_ai()  # ne pas attendre la fin de la recherche (B45)
                 self.game.analyzer.stop()
                 self.game.hinter.stop()
+                self.game.reviewer.stop()
             p.quit()
             sys.exit()
         if e.type == p.VIDEORESIZE:

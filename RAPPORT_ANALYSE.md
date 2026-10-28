@@ -947,6 +947,35 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 > défaut) : coupée, le bouton est désactivé contre l'IA ; elle ne s'applique pas entre
 > deux joueurs. Le temps de recherche est décompté de la pendule du joueur. 6 nouveaux
 > tests.
+>
+> **J9.3 ✅ (2026-10-28)** : `ai/review.py`, bilan calculé dans un processus.
+>
+> - **Mesure** : dans chaque position, meilleur coup à profondeur 3 (plafond de
+>   20 000 nœuds), puis, si le coup joué diffère, ce coup évalué au même horizon depuis
+>   la position suivante, avec la même table de transposition. Un premier essai
+>   (évaluer chaque position séparément, 3 000 nœuds) signalait des imprécisions sur
+>   e5 et a6 dans l'Espagnole : la profondeur atteinte alternait entre 3 et 4 et
+>   l'évaluation oscillait de ±100 cp. À horizon égal, le meilleur coup perd
+>   exactement 0. Environ 0,25 s par position (2,8 s pour une partie de 14 coups), et
+>   le même bilan sur toutes les machines.
+> - **Seuils** : chute du score attendu du camp qui joue (`1 / (1 + 10^(−cp/400))`, un
+>   mat vaut 0 ou 1) d'au moins 20 points pour une imprécision `?!`, 30 pour une erreur
+>   `?`, 40 pour une gaffe `??`, soit environ 150, 240 et 380 cp depuis l'égalité. Les
+>   seuils habituels (10 / 20 / 30) supposent un moteur bien plus profond : sur cinq
+>   parties de théorie, ce moteur voit des chutes allant jusqu'à 18 points sur des
+>   coups corrects (Bxc6 puis Nxe5 semble gagner un pion à cet horizon). Une pièce en
+>   prise coûte plus de 50 points, un mat concédé 100. Perte moyenne par coup en
+>   centipions (scores bornés à ±1000).
+> - **Parties de référence** (`tests/test_review.py`) : mat du lion (g4 gaffe), coup du
+>   berger (Nf6 gaffe), fou en prise (Bg5 erreur ou gaffe, Qxg5 rien), quatre parties de
+>   théorie de 20 demi-coups sans rien de signalé (trois en `slow`).
+> - **Interface** : bouton « Bilan » de la carte de fin de partie et touche `G` (à tout
+>   moment dès le premier coup). Courbe d'évaluation remplie au fur et à mesure,
+>   pastilles colorées sur les coups fautifs, survol (coup et évaluation), clic pour
+>   revoir la position ; tableau par camp. Les symboles s'ajoutent aux coups de
+>   l'historique ; un coup joué ou annulé rend le bilan périmé. 20 nouveaux tests.
+> - Limite : un moteur de profondeur 3 ne voit pas les fautes stratégiques ni les
+>   tactiques longues ; le bilan signale surtout le matériel perdu et les mats.
 
 #### J10 — v1.3 : moteur plus rapide (3–5 j)
 

@@ -105,6 +105,13 @@ ARROW: RGBA = (76, 139, 214, 200)
 MARK: RGBA = (76, 139, 214, 210)
 EVAL_WHITE: RGB = (236, 234, 229)
 EVAL_BLACK: RGB = (42, 45, 51)
+# Bilan de partie (J9.3) : imprécision, erreur, gaffe (palette Okabe-Ito, lisible par
+# les daltoniens).
+JUDGEMENT_COLORS: dict[str, RGB] = {
+    "inaccuracy": (86, 180, 233),
+    "mistake": (230, 159, 0),
+    "blunder": (223, 83, 83),
+}
 WHITE_PIECE_TILE: RGB = (236, 234, 229)
 BLACK_PIECE_TILE: RGB = (42, 45, 51)
 DROP_TARGET: RGB = (255, 255, 255)  # case survolée pendant un glisser-déposer

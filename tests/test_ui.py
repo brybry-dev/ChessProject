@@ -26,7 +26,7 @@ except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
 from chessproject import settings as settings_module
-from chessproject.ai import analysis, levels, search
+from chessproject.ai import analysis, levels, review, search
 from chessproject.core import clock, engine, notation
 from chessproject.core.fen import load_fen
 from chessproject.settings import Settings
@@ -520,6 +520,81 @@ class HintTests(unittest.TestCase):
         # Entre deux joueurs, l'option ne s'applique pas.
         gc = self._controller(settings=Settings(hints_vs_ai=False))
         self.assertTrue(gc._can_hint())
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class GameReviewTests(unittest.TestCase):
+    """J9.3 : courbe d'évaluation et bilan de la partie."""
+
+    def setUp(self):
+        self.gc = _controller()
+        self.gc.reviewer = review.Reviewer(
+            process=_InlineProcess, make_queue=queue.Queue, nodes=2000
+        )
+
+    def _play(self, sans):
+        for san in sans:
+            self.gc.game_state.make_move(notation.parse_san(self.gc.game_state, san))
+        self.gc.move_made = True
+        self.gc.update()
+
+    def test_nothing_to_review_before_the_first_move(self):
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.assertIsNone(self.gc.overlay)
+        self.assertEqual(self.gc._status()[0], "Aucun coup à analyser")
+
+    def test_end_card_opens_the_review_and_marks_the_moves(self):
+        self._play(["f3", "e5", "g4", "Qh4#"])
+        self.gc.draw()
+        self.assertIsInstance(self.gc.overlay, app.EndGameOverlay)
+        button = next(b for b in self.gc.overlay.buttons if b.action == "game_review")
+        self.gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=button.rect.center, button=1))
+        self.assertIsInstance(self.gc.overlay, app.ReviewOverlay)
+        self.gc.update()
+        result = self.gc.reviewer.result()
+        assert result is not None
+        self.assertEqual(result.white.blunders, 1)
+        rows = self.gc._move_rows()
+        self.assertEqual(rows[1].white, ("g4??", 3))
+        for theme in ("sombre", "clair"):
+            self.gc.set_setting("theme", theme)
+            self.gc.draw()
+
+    def test_clicking_the_curve_shows_that_position(self):
+        self._play(["e4", "e5", "Nf3", "Nc6"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.gc.draw()
+        chart = self.gc.overlay.chart
+        x = chart.x + chart.width // 2  # demi-coup 2 sur 4
+        self.gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=(x, chart.centery), button=1))
+        self.assertIsNone(self.gc.overlay)
+        self.assertEqual(self.gc.view_ply, 2)
+        self.assertEqual(self.gc.live_ply, 4)
+
+    def test_progress_is_drawn_while_the_review_runs(self):
+        self.gc.reviewer = review.Reviewer(process=_IdleProcess, make_queue=queue.Queue)
+        self._play(["e4"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.gc.draw()
+        self.assertEqual(self.gc._move_rows()[0].white, ("e4", 1))
+
+    def test_a_new_move_makes_the_review_stale(self):
+        self._play(["f3", "e5", "g4"])
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.assertEqual(self.gc._move_rows()[1].white, ("g4??", 3))
+        self.gc.overlay = None
+        self._undo_and_update()
+        self.assertEqual(
+            [(r.white, r.black) for r in self.gc._move_rows()], [(("f3", 1), ("e5", 2))]
+        )
+        self.assertIsNone(self.gc.reviewer.key)
+
+    def _undo_and_update(self):
+        self.gc._undo()
+        self.gc.update()
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")

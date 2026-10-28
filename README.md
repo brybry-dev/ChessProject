@@ -55,7 +55,8 @@ chessproject
   flèches et marques au clic droit, historique SAN cliquable pour revoir la partie,
   matériel pris, barre d'évaluation (désactivable), variante principale du moteur pour la
   position affichée (mode analyse, touche `V`), indice du meilleur coup en flèche
-  (touche `B`, désactivable contre l'IA), pendule du camp au trait mise en avant,
+  (touche `B`, désactivable contre l'IA), bilan de la partie avec courbe d'évaluation
+  et imprécisions, erreurs et gaffes de chaque camp (touche `G`), pendule du camp au trait mise en avant,
   carte de fin de partie. Les préférences sont mémorisées.
 
 | Écran « Nouvelle partie » | Thème clair |
@@ -86,6 +87,7 @@ chessproject
 | `C` | Apparence : thème, échiquier, aides visuelles, sons |
 | `V` | Afficher ou masquer la variante principale (mode analyse) |
 | `B` | Indice : le meilleur coup s'affiche en flèche (option « Indices contre l'IA » dans Apparence) |
+| `G` | Bilan de la partie : courbe d'évaluation (cliquer pour voir une position), imprécisions `?!`, erreurs `?` et gaffes `??`, aussi marquées dans l'historique |
 | `H` | Afficher les raccourcis |
 | `←` / `→` | Coup précédent / suivant dans l'historique |
 | `Origine` / `Fin` | Position de départ / position actuelle |
