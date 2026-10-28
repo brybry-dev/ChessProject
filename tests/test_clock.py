@@ -507,6 +507,27 @@ class AllocateThinkTimeTests(unittest.TestCase):
         self.assertEqual(allocate_think_time_ms(300_000, 0, 0, max_ms=0), 10)
         self.assertEqual(allocate_think_time_ms(300_000, 0, 0, max_ms=None), 7500)
 
+    def test_moves_to_go(self):
+        # Partagé avec le moteur UCI (J10.3) : coups restants avant le prochain contrôle.
+        self.assertEqual(allocate_think_time_ms(60_000, 0, 0, moves_to_go=10), 6000)
+        self.assertEqual(allocate_think_time_ms(60_000, 1000, 0, moves_to_go=10), 6750)
+        # Dernier coup avant le contrôle : tout sauf la marge de sécurité.
+        self.assertEqual(allocate_think_time_ms(10_000, 0, 80, moves_to_go=1), 9950)
+        self.assertEqual(allocate_think_time_ms(100, 5000, 0, moves_to_go=1), 50)
+        # moves_to_go absent ou nul : formule de la partie à temps fixe.
+        self.assertEqual(allocate_think_time_ms(300_000, 0, 0, moves_to_go=0), 7500)
+        self.assertEqual(allocate_think_time_ms(300_000, 0, 0, moves_to_go=None), 7500)
+
+    def test_moves_to_go_bounds_and_monotonic(self):
+        for moves_to_go in (1, 2, 5, 30):
+            previous = 0
+            for remaining in range(0, 120_000, 499):
+                t = allocate_think_time_ms(remaining, 500, 0, moves_to_go=moves_to_go)
+                self.assertGreaterEqual(t, max(previous, 10))
+                if remaining >= 200:
+                    self.assertLessEqual(t, remaining - 50)
+                previous = t
+
     def test_never_flags_simulation(self):
         # 5+0 : en dépensant exactement le budget à chaque coup, on finit 150 coups
         # sans épuiser la pendule.

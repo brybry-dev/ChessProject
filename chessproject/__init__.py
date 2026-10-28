@@ -2,7 +2,7 @@
 
 import os
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # Pas de bannière pygame dans la console (jeu, moteur UCI, exécutables).
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")

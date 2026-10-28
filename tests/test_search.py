@@ -137,5 +137,62 @@ class OrderingTests(unittest.TestCase):
         self.assertEqual(sorted(m.move_id for m in ordered), sorted(m.move_id for m in moves))
 
 
+class FeaturesTests(unittest.TestCase):
+    """Techniques d'élagage (J10.2)."""
+
+    def test_parse(self):
+        parse = search.SearchFeatures.parse
+        self.assertEqual(parse("none"), search.NO_FEATURES)
+        self.assertEqual(parse("pvs, lmr"), search.SearchFeatures(pvs=True, lmr=True))
+        self.assertEqual(str(parse("all")), "pvs,aspiration,null_move,lmr")
+        self.assertEqual(str(search.NO_FEATURES), "none")
+        with self.assertRaises(ValueError):
+            parse("pvs,futility")
+
+    def test_pvs_gives_the_same_score_with_fewer_nodes(self):
+        for fen in (KIWIPETE, ITALIAN):
+            plain = Searcher(features=search.NO_FEATURES).think(
+                load_fen(fen), SearchLimits(depth=3)
+            )
+            pvs = Searcher(features=search.SearchFeatures(pvs=True)).think(
+                load_fen(fen), SearchLimits(depth=3)
+            )
+            self.assertEqual(pvs.score, plain.score)
+            self.assertLessEqual(pvs.nodes, plain.nodes)
+
+    def test_all_features_leave_the_position_intact_and_find_the_mate(self):
+        gs = load_fen("6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1")  # Rd8#
+        before = _state(gs)
+        result = Searcher(features=search.SearchFeatures.parse("all")).think(
+            gs, SearchLimits(depth=4)
+        )
+        assert result.move is not None
+        self.assertEqual(to_san(gs, result.move), "Rd8#")
+        self.assertEqual(_state(gs), before)
+        gs = load_fen(KIWIPETE)
+        before = _state(gs)
+        Searcher(features=search.SearchFeatures.parse("all")).think(gs, SearchLimits(depth=4))
+        self.assertEqual(_state(gs), before)
+
+    def test_null_move_is_undone_exactly(self):
+        gs = engine.GameState()
+        gs.make_move(next(m for m in gs.get_valid_moves() if to_san(gs, m) == "e4"))
+        self.assertIsNotNone(gs.enpassant_possible)  # case d'en passant à effacer
+        before = (_state(gs), gs.enpassant_possible, list(gs.position_keys))
+        old = gs.make_null_move()
+        self.assertTrue(gs.white_to_move)
+        self.assertIsNone(gs.enpassant_possible)
+        self.assertEqual(gs.zobrist_key, gs.compute_zobrist_key())
+        gs.make_move(gs.get_valid_moves()[0], validate=False)
+        gs.undo_move()
+        gs.undo_null_move(old)
+        self.assertEqual((_state(gs), gs.enpassant_possible, list(gs.position_keys)), before)
+
+    def test_null_move_is_not_tried_without_pieces(self):
+        # Finale de pions : zugzwang fréquent, le coup nul fausserait la recherche.
+        self.assertFalse(search._has_pieces(load_fen("8/2k5/3p4/p2P1p2/P4P2/8/6K1/8 w - - 0 50")))
+        self.assertTrue(search._has_pieces(load_fen(KIWIPETE)))
+
+
 if __name__ == "__main__":
     unittest.main()

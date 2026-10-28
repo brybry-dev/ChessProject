@@ -40,8 +40,9 @@ from typing import TextIO
 
 from chessproject.ai import book, levels, search
 from chessproject.ai.search import SearchLimits, SearchResult
+from chessproject.core.clock import allocate_think_time_ms
 from chessproject.core.engine import GameState, Move
-from chessproject.core.fen import FenError, load_fen
+from chessproject.core.fen import FenError, fullmove_number, load_fen
 from chessproject.core.notation import NotationError, parse_uci, to_uci
 
 ENGINE_NAME = "ChessProject"
@@ -49,27 +50,7 @@ ENGINE_AUTHOR = "BryanBlinDorard"
 # Valeur de l'option Level qui désactive les niveaux (limites de go appliquées telles quelles).
 FULL_STRENGTH = "Max"
 
-# Gestion du temps (cf. allocate_time_ms)
-DEFAULT_MOVES_TO_GO: int = 30  # Nombre de coups restants supposé sans ``movestogo``
-INCREMENT_SHARE: float = 0.8  # Part de l'incrément dépensée dès ce coup
-MOVE_OVERHEAD_MS: int = 50  # Marge de sécurité (latence du tube, démarrage de la recherche)
-MIN_TIME_MS: int = 1
-
 _INT_GO_PARAMS = ("depth", "movetime", "wtime", "btime", "winc", "binc", "movestogo", "nodes")
-
-
-def allocate_time_ms(remaining_ms: int, increment_ms: int = 0, movestogo: int | None = None) -> int:
-    """Temps à consacrer au prochain coup, en millisecondes (fonction pure).
-
-    ``remaining / (movestogo ou 30) + 0,8 × incrément``, borné à ``[1, remaining - 50]`` :
-    on ne dépense jamais tout le temps restant, et toujours au moins 1 ms.
-    """
-    remaining_ms = max(0, remaining_ms)
-    increment_ms = max(0, increment_ms)
-    moves_left = movestogo if movestogo is not None and movestogo > 0 else DEFAULT_MOVES_TO_GO
-    budget = remaining_ms / moves_left + INCREMENT_SHARE * increment_ms
-    ceiling = max(MIN_TIME_MS, remaining_ms - MOVE_OVERHEAD_MS)
-    return max(MIN_TIME_MS, min(int(budget), ceiling))
 
 
 def _think(
@@ -266,7 +247,12 @@ class UciEngine:
             remaining = params.get("wtime" if white else "btime")
             if remaining is not None:
                 increment = params.get("winc" if white else "binc", 0)
-                movetime = allocate_time_ms(remaining, increment, params.get("movestogo"))
+                # Même calcul que la pendule du jeu (J10.3) ; demi-coups joués d'après le
+                # numéro de coup, la partie pouvant commencer par une FEN.
+                plies = 2 * (fullmove_number(self.game_state) - 1) + int(not white)
+                movetime = allocate_think_time_ms(
+                    remaining, increment, plies, moves_to_go=params.get("movestogo")
+                )
         if infinite:
             depth, movetime = None, None
 
@@ -322,7 +308,17 @@ def main(argv: list[str] | None = None) -> None:
         metavar="SPEC",
         help="niveau sur mesure pour la calibration, ex. « base=Moyen,nodes=4000,noise=40 »",
     )
+    parser.add_argument(
+        "--features",
+        metavar="LISTE",
+        help="techniques de recherche, ex. « pvs,lmr », « all » ou « none » (mesures J10.2)",
+    )
     args = parser.parse_args(argv)
+    if args.features is not None:
+        try:
+            search.DEFAULT_FEATURES = search.SearchFeatures.parse(args.features)
+        except ValueError as exc:
+            parser.error(f"--features : {exc}")
     level: str | levels.Level | None = args.level
     if args.level_spec is not None:
         try:

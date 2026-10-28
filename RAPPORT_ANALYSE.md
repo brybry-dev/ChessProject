@@ -991,6 +991,88 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 
 Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffisent pas.
 
+> **J10.1 ✅ (2026-10-28)** : `tools/bench.py`, recherche à profondeur 4 sur cinq
+> positions (départ, Kiwipete, Italienne, deux finales), avec profil `--profile`. Le
+> **nombre de nœuds** (110 534) est la signature de l'arbre : il n'a pas bougé, seule
+> la vitesse change. `tests/test_optimizations.py` fige les valeurs d'avant J10
+> (nœuds à profondeur 3, évaluation de 2 312 positions de parties aléatoires) et compare
+> `has_legal_moves` à la génération complète.
+>
+> | Étape | Nœuds/s | Gain cumulé |
+> |---|---|---|
+> | Départ (1.2.0) | 10 700 | — |
+> | Rayons, sauts et pas de roi précalculés (`square_under_attack`, pièces glissantes, cavalier) | 11 200 | +5 % |
+> | Constructeur de `Move` sur variables locales (4,3 M appels pour 110 k nœuds) | 11 900 | +11 % |
+> | Évaluation : valeur, table et signe fusionnés par pièce | 12 100 | +13 % |
+> | Génération paresseuse en quiescence : `has_legal_moves()` s'arrête au premier coup légal, la liste n'est générée que si le *stand pat* ne coupe pas | 16 000 | +50 % |
+> | Cache de la structure de pions (clé de Zobrist des pions) | 19 300 | **+81 %** |
+>
+> - Le profil de départ : 60 % du temps dans la génération des coups (environ 39 `Move`
+>   créés par nœud, même aux feuilles de la quiescence, qui s'arrêtent pour la plupart
+>   sur l'évaluation statique), 27 % dans l'évaluation.
+> - Écarté : garder les clouages calculés par `has_legal_moves` pour `get_valid_moves`
+>   (environ 4 %) ; l'interface et des tests modifient le plateau puis remettent
+>   seulement `_valid_moves` à zéro, le cache serait fragile.
+> - Les niveaux sont bornés en nœuds : leur force est inchangée, ils jouent environ
+>   deux fois plus vite (Expert ≈ 2 s au lieu de 4). La suite rapide passe de 55 à 40 s.
+> - Au passage : `test_random_games_long` (lent) échouait depuis J4.4 sur 10 parties
+>   finies par la règle des 50 coups : la relecture PGN suit les règles FIDE strictes
+>   (nulle à réclamer). Le test compare maintenant à règles égales.
+
+> **J10.2 ✅ (2026-10-28, mesure écourtée)** : `SearchFeatures` (`pvs`, `aspiration`,
+> `null_move`, `lmr`), option `--features` du moteur UCI et de `tools/bench.py`, pour
+> opposer le même code avec et sans une technique. Budget fixé par le propriétaire :
+> **30 min de calcul** au total.
+>
+> - PVS : fenêtre nulle après le premier coup, nouvelle recherche si le score en sort.
+>   Coup nul : R = 2, dès la profondeur 3, jamais en échec ni sans pièce (zugzwang des
+>   finales de pions) ; `GameState.make_null_move` / `undo_null_move`. LMR : coups
+>   calmes à partir du 4e, sans échec donné ni subi, réduits d'un demi-coup dès la
+>   profondeur 3, revus à pleine profondeur s'ils dépassent alpha ; **jamais à la
+>   racine** (sinon le mat en deux 1. Ta6 ! bxa6 2. b7# n'est plus vu à profondeur 3,
+>   `tests/test_ai.py`). Aspiration : ±50 cp dès la profondeur 4.
+> - Nœuds pour la profondeur 5 (positions de `tools/bench.py`) : aucune technique
+>   433 k ; PVS 306 k ; + aspiration 304 k ; PVS + coup nul 236 k ; PVS + LMR 154 k ;
+>   PVS + coup nul + LMR hors racine **168 k (−61 %)**. À profondeur fixe, PVS rend
+>   exactement les mêmes scores (60 positions sur 60).
+> - Suite tactique à 1 s : 41/44 sans technique, 42/44 avec (mats en 2 : 11/11).
+>
+> | Match (moteur UCI, pleine force) | Parties | V / N / D | Écart Elo [IC 95 %] | LOS |
+> |---|---|---|---|---|
+> | PVS – aucune, 100 ms par coup | 200 | 61 / 43 / 96 | −61 [−106, −19] | 0,3 % |
+> | PVS + coup nul + LMR – aucune, 400 ms | 96 | 35 / 32 / 29 | +22 [−35, +80] | 77 % |
+> | idem, 48 autres ouvertures | 96 | 39 / 25 / 32 | +25 [−34, +87] | 80 % |
+> | **400 ms, cumul** | **192** | **74 / 57 / 61** | **+24 [−18, +65]** | **87 %** |
+>
+> - À 100 ms, le moteur ne dépasse presque jamais la profondeur 2 (~1 800 nœuds) :
+>   PVS n'y a rien à couper, et ce régime ne ressemble pas au jeu réel (3 500 à 40 000
+>   nœuds par coup). Ce match a été écarté, et la mesure refaite à 400 ms.
+> - Positions de départ : 96 positions du livre (`calibrate.book_openings`), chacune
+>   jouée deux fois, couleurs inversées, 8 parties en parallèle.
+> - **Décision** : PVS + coup nul + LMR pour la pleine force (moteur UCI, analyse,
+>   indice) ; gain probable (87 %) mais non établi à 95 %. La racine exclue de LMR a
+>   été décidée après les matchs (environ 16 % de nœuds en plus à profondeur 5) : non
+>   remesuré. Aspiration écartée (−0,6 % de nœuds, gain non mesurable). **Les niveaux et
+>   le bilan restent sans élagage** : bornés en nœuds, les niveaux ont été calibrés
+>   ainsi (J8), et le bilan suppose qu'à horizon égal le meilleur coup perd 0.
+> - Reste à faire quand du temps de calcul est disponible : chaque technique seule à
+>   400 ms (environ 400 parties chacune pour un IC de ±35 Elo), puis, si les niveaux
+>   doivent en profiter, recalibrer J8.1 et J8.2.
+>
+> **J10.3 ✅ (2026-10-28)** : `uci.allocate_time_ms` (restant / 30 + 0,8 × incrément)
+> est supprimé ; le moteur UCI appelle `clock.allocate_think_time_ms`, celui de la
+> pendule du jeu, qui gagne le paramètre `moves_to_go` (`movestogo` en UCI). Avec lui,
+> `remaining / moves_to_go + 0,75 × incrément`, sans le plafond du tiers (le temps est
+> rendu au contrôle suivant) ; sans lui, formule inchangée pour le jeu. Les demi-coups
+> joués viennent du numéro de coup (une partie UCI peut commencer par une FEN). En UCI,
+> début de partie à 60 s : 1,5 s par coup au lieu de 2 s, jamais plus du tiers du temps
+> restant. Tests communs dans `tests/test_clock.py` ; `tests/test_uci.py` vérifie que
+> `go` passe par ce calcul avec les bons arguments.
+>
+> **Publication `v1.3.0` (2026-10-28)** : J10 terminé ; version et CHANGELOG à jour. Une
+> réécriture en bitboards n'est pas engagée : le gain de J10.1–J10.2 suffit aux niveaux
+> actuels.
+
 #### J11 — v1.4 : confort (2–3 j)
 
 | # | Tâche | Critère d'acceptation | Taille |

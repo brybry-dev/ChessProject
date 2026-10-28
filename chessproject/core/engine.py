@@ -137,6 +137,60 @@ _KING_STEPS: tuple[Square, ...] = (
 # Code de la pièce de promotion dans Move.move_id (0 = pas de promotion).
 _PROMOTION_CODES: dict[str, int] = {"Q": 1, "R": 2, "B": 3, "N": 4}
 
+# --------------------------------------------------------------------------
+# Tables précalculées (J10.1) : pour chaque case (index rangée × 8 + colonne), les cases
+# de chaque rayon, dans l'ordre d'éloignement, et les cases à un saut de cavalier ou à
+# un pas de roi. Les boucles chaudes n'ont plus de test de bord. L'ordre des directions
+# est celui de la génération historique des coups : il fixe l'ordre des coups, donc
+# l'arbre de recherche.
+# --------------------------------------------------------------------------
+_ORTHOGONAL_DIRECTIONS: tuple[Square, ...] = ((-1, 0), (0, -1), (1, 0), (0, 1))
+_DIAGONAL_DIRECTIONS: tuple[Square, ...] = ((-1, -1), (-1, 1), (1, -1), (1, 1))
+_KNIGHT_JUMPS: tuple[Square, ...] = (
+    (-2, -1),
+    (-2, 1),
+    (-1, -2),
+    (-1, 2),
+    (1, -2),
+    (1, 2),
+    (2, -1),
+    (2, 1),
+)
+_Ray = tuple[Square, ...]
+
+
+def _on_board(row: int, col: int) -> bool:
+    return 0 <= row < DIMENSION and 0 <= col < DIMENSION
+
+
+def _rays(directions: tuple[Square, ...]) -> tuple[tuple[_Ray, ...], ...]:
+    return tuple(
+        tuple(
+            tuple(
+                (r + dr * i, c + dc * i)
+                for i in range(1, DIMENSION)
+                if _on_board(r + dr * i, c + dc * i)
+            )
+            for dr, dc in directions
+        )
+        for r in range(DIMENSION)
+        for c in range(DIMENSION)
+    )
+
+
+def _steps(offsets: tuple[Square, ...]) -> tuple[_Ray, ...]:
+    return tuple(
+        tuple((r + dr, c + dc) for dr, dc in offsets if _on_board(r + dr, c + dc))
+        for r in range(DIMENSION)
+        for c in range(DIMENSION)
+    )
+
+
+_ORTHOGONAL_RAYS: tuple[tuple[_Ray, ...], ...] = _rays(_ORTHOGONAL_DIRECTIONS)
+_DIAGONAL_RAYS: tuple[tuple[_Ray, ...], ...] = _rays(_DIAGONAL_DIRECTIONS)
+_KNIGHT_TARGETS: tuple[_Ray, ...] = _steps(_KNIGHT_JUMPS)
+_KING_TARGETS: tuple[_Ray, ...] = _steps(_KING_STEPS)
+
 
 class GameState:
     """
@@ -355,6 +409,30 @@ class GameState:
         self.position_keys.append(key)
         self.position_history[key] = self.position_history.get(key, 0) + 1
 
+    def make_null_move(self) -> Square | None:
+        """Coup nul de la recherche (J10.2) : le trait passe sans rien jouer. Renvoie la
+        case d'en passant effacée, à rendre à ``undo_null_move``. La clé est empilée dans
+        ``position_keys`` (``undo_move`` y relit la clé précédente) mais pas comptée
+        dans les répétitions ; ``move_log`` n'est pas touché. Jamais en échec."""
+        old_enpassant = self.enpassant_possible
+        key = self.zobrist_key ^ ZOBRIST_BLACK_TO_MOVE ^ _zobrist_en_passant(old_enpassant)
+        self.enpassant_possible = None
+        self.white_to_move = not self.white_to_move
+        self.zobrist_key = key
+        self.position_keys.append(key)
+        self._valid_moves = None
+        return old_enpassant
+
+    def undo_null_move(self, old_enpassant: Square | None) -> None:
+        self.position_keys.pop()
+        self.zobrist_key = self.position_keys[-1]
+        self.white_to_move = not self.white_to_move
+        self.enpassant_possible = old_enpassant
+        self.checkmate = False
+        self.stalemate = False
+        self.termination = None
+        self._valid_moves = None
+
     def undo_move(self) -> None:
         """Annule le dernier mouvement effectué et restaure les compteurs et l'historique."""
         if not self.move_log:
@@ -495,6 +573,27 @@ class GameState:
         self._valid_moves = moves
         return moves
 
+    def has_legal_moves(self) -> bool:
+        """``bool(get_valid_moves())``, sans générer tous les coups quand c'est possible
+        (J10.1) : hors échec, un coup généré en tenant compte des clouages est légal, il
+        suffit donc d'en trouver un, puis de vérifier les nulles automatiques. Ne remplit
+        pas le cache des coups ; ``in_check`` est à jour au retour."""
+        if self._valid_moves is not None:
+            return bool(self._valid_moves)
+        self.in_check, self.pins, self.checks = self.check_for_pins_and_checks()
+        if self.in_check:
+            return bool(self.get_valid_moves())
+        ally = "w" if self.white_to_move else "b"
+        move_functions = self.move_functions
+        found: list[Move] = []
+        for r, row in enumerate(self.board):
+            for c, piece in enumerate(row):
+                if piece[0] == ally:
+                    move_functions[piece[1]](r, c, found)
+                    if found:
+                        return self._termination(found) is None
+        return False
+
     def _termination(self, moves: list["Move"]) -> Termination | None:
         if not moves:
             return Termination.CHECKMATE if self.in_check else Termination.STALEMATE
@@ -550,43 +649,44 @@ class GameState:
         la génération de coups. Cela prend notamment en compte le contrôle des cases
         vides par les pions, ce que la génération de coups ne fait pas.
         """
-        ally: str = "w" if self.white_to_move else "b"
+        board = self.board
         enemy: str = "b" if self.white_to_move else "w"
-        directions = [(-1, 0), (0, -1), (1, 0), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
-        for j, d in enumerate(directions):
-            for i in range(1, DIMENSION):
-                er = r + d[0] * i
-                ec = c + d[1] * i
-                if not (0 <= er < 8 and 0 <= ec < 8):
-                    break
-                piece = self.board[er][ec]
-                if piece == "--":
-                    continue
-                if piece[0] == ally:
-                    break
-                kind = piece[1]
-                if j <= 3:
-                    if kind in ("R", "Q"):
+        square = r * 8 + c
+        # Pions : un pion blanc attaque depuis la rangée du dessous (r + 1), un noir
+        # depuis celle du dessus.
+        pawn_row = r + 1 if enemy == "w" else r - 1
+        if 0 <= pawn_row < 8:
+            pawn = enemy + "p"
+            if (c > 0 and board[pawn_row][c - 1] == pawn) or (
+                c < 7 and board[pawn_row][c + 1] == pawn
+            ):
+                return True
+        knight = enemy + "N"
+        for er, ec in _KNIGHT_TARGETS[square]:
+            if board[er][ec] == knight:
+                return True
+        king = enemy + "K"
+        for er, ec in _KING_TARGETS[square]:
+            if board[er][ec] == king:
+                return True
+        # Pièces à longue portée : seule la première pièce de chaque rayon compte.
+        queen = enemy + "Q"
+        rook = enemy + "R"
+        for ray in _ORTHOGONAL_RAYS[square]:
+            for er, ec in ray:
+                piece = board[er][ec]
+                if piece != "--":
+                    if piece in (rook, queen):
                         return True
-                else:
-                    if kind in ("B", "Q"):
+                    break
+        bishop = enemy + "B"
+        for ray in _DIAGONAL_RAYS[square]:
+            for er, ec in ray:
+                piece = board[er][ec]
+                if piece != "--":
+                    if piece in (bishop, queen):
                         return True
-                    if i == 1 and kind == "p":
-                        if enemy == "w" and d[0] == 1:
-                            return True
-                        if enemy == "b" and d[0] == -1:
-                            return True
-                if i == 1 and kind == "K":
-                    return True
-                break
-        knight_moves = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
-        for m in knight_moves:
-            er = r + m[0]
-            ec = c + m[1]
-            if 0 <= er < 8 and 0 <= ec < 8:
-                piece = self.board[er][ec]
-                if piece != "--" and piece[0] == enemy and piece[1] == "N":
-                    return True
+                    break
         return False
 
     def get_all_possible_moves(self) -> list["Move"]:
@@ -678,102 +778,79 @@ class GameState:
         self.board[er][ec] = dest
         return in_check
 
+    def _take_pin(self, r: int, c: int, keep: bool = False) -> Square | None:
+        """Direction du clouage de la pièce en (r, c), ou None si elle n'est pas clouée.
+        Le clouage est retiré de ``pins``, sauf si ``keep`` (la dame le relit pour ses
+        coups de fou)."""
+        pins = self.pins
+        for i in range(len(pins) - 1, -1, -1):
+            pin = pins[i]
+            if pin[0] == r and pin[1] == c:
+                if not keep:
+                    pins.pop(i)
+                return (pin[2], pin[3])
+        return None
+
+    def _slider_moves(
+        self,
+        r: int,
+        c: int,
+        moves: list["Move"],
+        directions: tuple[Square, ...],
+        rays: tuple[_Ray, ...],
+        pin_direction: Square | None,
+    ) -> None:
+        """Coups le long des rayons, jusqu'à la première pièce (prise si adverse). Une
+        pièce clouée ne se déplace que sur la ligne du clouage, dans un sens ou l'autre."""
+        board = self.board
+        enemy_color = "b" if self.white_to_move else "w"
+        start = (r, c)
+        append = moves.append
+        for d, ray in zip(directions, rays, strict=True):
+            if pin_direction is not None and pin_direction != d and pin_direction != (-d[0], -d[1]):
+                continue
+            for end in ray:
+                end_piece = board[end[0]][end[1]]
+                if end_piece == "--":
+                    append(Move(start, end, board))
+                else:
+                    if end_piece[0] == enemy_color:
+                        append(Move(start, end, board))
+                    break
+
     def get_rook_moves(self, r: int, c: int, moves: list["Move"]) -> None:
         """
         Ajoute à la liste 'moves' tous les mouvements valides de la tour située en (r, c).
         Prend en compte les broches (pins).
         """
-        piece_pinned: bool = False
-        pin_direction: tuple[int, int] = (0, 0)
-        for i in range(len(self.pins) - 1, -1, -1):
-            if self.pins[i][0] == r and self.pins[i][1] == c:
-                piece_pinned = True
-                pin_direction = (self.pins[i][2], self.pins[i][3])
-                if self.board[r][c][1] != "Q":
-                    self.pins.pop(i)
-                break
-
-        directions: list[tuple[int, int]] = [(-1, 0), (0, -1), (1, 0), (0, 1)]
-        enemy_color: str = "b" if self.white_to_move else "w"
-        for d in directions:
-            for i in range(1, DIMENSION):
-                end_row: int = r + d[0] * i
-                end_col: int = c + d[1] * i
-                if 0 <= end_row < 8 and 0 <= end_col < 8:
-                    if not piece_pinned or pin_direction == d or pin_direction == (-d[0], -d[1]):
-                        end_piece: str = self.board[end_row][end_col]
-                        if end_piece == "--":
-                            moves.append(Move((r, c), (end_row, end_col), self.board))
-                        else:
-                            if end_piece[0] == enemy_color:
-                                moves.append(Move((r, c), (end_row, end_col), self.board))
-                            break
-                else:
-                    break
+        pin_direction = self._take_pin(r, c, keep=self.board[r][c][1] == "Q") if self.pins else None
+        self._slider_moves(
+            r, c, moves, _ORTHOGONAL_DIRECTIONS, _ORTHOGONAL_RAYS[r * 8 + c], pin_direction
+        )
 
     def get_knight_moves(self, r: int, c: int, moves: list["Move"]) -> None:
         """
         Ajoute à la liste 'moves' tous les mouvements valides du cavalier situé en (r, c).
         Les cavaliers ne bougent pas lorsqu'ils sont brochés.
         """
-        piece_pinned: bool = False
-        for i in range(len(self.pins) - 1, -1, -1):
-            if self.pins[i][0] == r and self.pins[i][1] == c:
-                piece_pinned = True
-                self.pins.pop(i)
-                break
-
-        knight_moves: list[tuple[int, int]] = [
-            (-2, -1),
-            (-2, 1),
-            (-1, -2),
-            (-1, 2),
-            (1, -2),
-            (1, 2),
-            (2, -1),
-            (2, 1),
-        ]
+        if self.pins and self._take_pin(r, c) is not None:
+            return
+        board = self.board
         ally_color: str = "w" if self.white_to_move else "b"
-        if not piece_pinned:
-            for m in knight_moves:
-                end_row: int = r + m[0]
-                end_col: int = c + m[1]
-                if 0 <= end_row < 8 and 0 <= end_col < 8:
-                    end_piece: str = self.board[end_row][end_col]
-                    if end_piece[0] != ally_color:
-                        moves.append(Move((r, c), (end_row, end_col), self.board))
+        start = (r, c)
+        for end in _KNIGHT_TARGETS[r * 8 + c]:
+            if board[end[0]][end[1]][0] != ally_color:
+                moves.append(Move(start, end, board))
 
     def get_bishop_moves(self, r: int, c: int, moves: list["Move"]) -> None:
         """
         Ajoute à la liste 'moves' tous les mouvements valides du fou situé en (r, c).
         Prend en compte les broches.
         """
-        piece_pinned: bool = False
-        pin_direction: tuple[int, int] = (0, 0)
-        for i in range(len(self.pins) - 1, -1, -1):
-            if self.pins[i][0] == r and self.pins[i][1] == c:
-                piece_pinned = True
-                pin_direction = (self.pins[i][2], self.pins[i][3])
-                self.pins.pop(i)
-                break
-
-        directions: list[tuple[int, int]] = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
-        enemy_color: str = "b" if self.white_to_move else "w"
-        for d in directions:
-            for i in range(1, DIMENSION):
-                end_row: int = r + d[0] * i
-                end_col: int = c + d[1] * i
-                if 0 <= end_row < 8 and 0 <= end_col < 8:
-                    if not piece_pinned or pin_direction == d or pin_direction == (-d[0], -d[1]):
-                        end_piece: str = self.board[end_row][end_col]
-                        if end_piece == "--":
-                            moves.append(Move((r, c), (end_row, end_col), self.board))
-                        else:
-                            if end_piece[0] == enemy_color:
-                                moves.append(Move((r, c), (end_row, end_col), self.board))
-                            break
-                else:
-                    break
+        pin_direction = self._take_pin(r, c) if self.pins else None
+        self._slider_moves(
+            r, c, moves, _DIAGONAL_DIRECTIONS, _DIAGONAL_RAYS[r * 8 + c], pin_direction
+        )
 
     def get_queen_moves(self, r: int, c: int, moves: list["Move"]) -> None:
         """
@@ -974,33 +1051,37 @@ class Move:
         is_castle_move: bool = False,
         promotion_piece: str | None = None,
     ) -> None:
-        self.start_row, self.start_col = start_sq
-        self.end_row, self.end_col = end_sq
-        self.piece_moved: str = board[self.start_row][self.start_col]
-        self.piece_captured: str = board[self.end_row][self.end_col]
-        self.is_pawn_promotion: bool = (self.piece_moved == "wp" and self.end_row == 0) or (
-            self.piece_moved == "bp" and self.end_row == 7
+        # Variables locales plutôt qu'attributs relus : ce constructeur est la fonction la
+        # plus appelée d'une recherche (J10.1).
+        start_row, start_col = start_sq
+        end_row, end_col = end_sq
+        self.start_row = start_row
+        self.start_col = start_col
+        self.end_row = end_row
+        self.end_col = end_col
+        piece_moved = board[start_row][start_col]
+        self.piece_moved: str = piece_moved
+        move_id = start_row * 1000 + start_col * 100 + end_row * 10 + end_col
+        is_pawn_promotion = (piece_moved == "wp" and end_row == 0) or (
+            piece_moved == "bp" and end_row == 7
         )
+        self.is_pawn_promotion: bool = is_pawn_promotion
         # Pièce de promotion : par défaut la dame. None hors promotion.
-        if self.is_pawn_promotion:
-            self.promotion_piece: str | None = (
-                promotion_piece if promotion_piece in ("Q", "R", "B", "N") else "Q"
-            )
+        if is_pawn_promotion:
+            promotion = promotion_piece if promotion_piece in ("Q", "R", "B", "N") else "Q"
+            self.promotion_piece: str | None = promotion
+            move_id += _PROMOTION_CODES[promotion] * 10000
         else:
             self.promotion_piece = None
-        promo_code: int = _PROMOTION_CODES.get(self.promotion_piece or "", 0)
-        self.move_id: int = (
-            promo_code * 10000
-            + self.start_row * 1000
-            + self.start_col * 100
-            + self.end_row * 10
-            + self.end_col
-        )
+        self.move_id: int = move_id
         self.is_enpassant_move: bool = is_enpassant_move
-        if self.is_enpassant_move:
-            self.piece_captured = "wp" if self.piece_moved == "bp" else "bp"
+        if is_enpassant_move:
+            piece_captured = "wp" if piece_moved == "bp" else "bp"
+        else:
+            piece_captured = board[end_row][end_col]
+        self.piece_captured: str = piece_captured
         self.is_castle_move: bool = is_castle_move
-        self.is_capture: bool = self.piece_captured != "--"
+        self.is_capture: bool = piece_captured != "--"
 
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, Move) and self.move_id == other.move_id
