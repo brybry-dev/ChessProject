@@ -976,6 +976,10 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 >   l'historique ; un coup joué ou annulé rend le bilan périmé. 20 nouveaux tests.
 > - Limite : un moteur de profondeur 3 ne voit pas les fautes stratégiques ni les
 >   tactiques longues ; le bilan signale surtout le matériel perdu et les mats.
+>
+> **Publication `v1.2.0` (2026-10-28)** : J9 terminé ; version, CHANGELOG et README à
+> jour, avec le correctif Windows de la 1.1.1 (pièces PNG si le SVG est rendu
+> transparent).
 
 #### J10 — v1.3 : moteur plus rapide (3–5 j)
 
