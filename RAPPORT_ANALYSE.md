@@ -1154,14 +1154,52 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 > **Publication `v1.4.0` (2026-10-28)** : J11 terminé ; version, CHANGELOG, README et
 > TESTS.md à jour. Suite rapide : 662 tests ; tests longs : 68.
 
+Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11. Les cinq jalons sont livrés (v1.4.0).
+
+### 4.8 Suite : feuille de route après la 1.4 (2026-10-28)
+
+Ce qui reste ouvert après J11 : la couverture des tests n'est pas mesurée, l'interface
+ne se pilote pas entièrement au clavier (pas de focus dans les fenêtres), la calibration
+de J8 repose sur peu de parties (IC de ± 276 à ± 905 Elo), aucun niveau ne convient aux
+grands débutants, et les techniques de J10.2 n'ont été mesurées qu'ensemble. Côté
+joueur, le bilan signale les fautes sans montrer le meilleur coup.
+
+#### J12 — v1.5 : qualité et accessibilité au clavier (2 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J12.1 | Couverture en CI (`pytest-cov`), badge dans le README | Couverture publiée à chaque push ; seuil bloquant sur `core` (≥ 90 %) | S |
+| J12.2 | Toutes les fenêtres utilisables au clavier : `Tab` / `Maj+Tab` entre les boutons, focus visible, `Entrée` ou `Espace` pour activer (WCAG 2.1.1 et 2.4.7) | Chaque fenêtre et l'écran « Nouvelle partie » parcourus sans souris dans un test ; focus à 3:1 dans `tools/contrast.py` | M |
+| J12.3 | Échiquier au clavier sans taper la notation : curseur de case (flèches en mode « échiquier »), `Entrée` pour prendre puis poser | Une partie complète jouée au curseur dans un test | M |
+
+#### J13 — v1.6 : apprendre en jouant (3 j)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J13.1 | Bilan : pour chaque faute, le meilleur coup en flèche et la variante, au clic sur la pastille | Variante légale ; position et flèche affichées depuis la fenêtre de bilan | M |
+| J13.2 | Export PGN annoté : symboles (`$2`, `$4`, `$6`) et évaluations en commentaires `{[%eval 0.42]}` | Relu par python-chess (NAG et commentaires) ; réimporté sans erreur | S |
+| J13.3 | Mode problèmes : positions de `tests/data/tactics.epd` (et suivantes), « trouvez le meilleur coup », indice, solution, score de la série | Chaque problème a une solution unique vérifiée par le moteur ; parcours testé sans écran | L |
+
+#### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
+
+| # | Tâche | Critère d'acceptation | Taille |
+|---|---|---|---|
+| J14.1 | Calibration refaite sur 100 parties par paire (`tools/calibrate.py --book-openings 50 --games 100`) | IC 95 % ≤ ± 150 Elo par niveau ; Elo affichés mis à jour | M |
+| J14.2 | Sixième niveau « Initiation » (≈ 800–1000) pour les grands débutants | Perd nettement contre Débutant (≥ 75 %) ; ne laisse pas une pièce en prise à chaque coup | M |
+| J14.3 | Chaque technique de J10.2 seule à 400 ms (environ 400 parties chacune), puis élagage pour les niveaux s'il gagne | Décision chiffrée ; si les niveaux changent, recalibrage (J14.1) | L |
+
+Le budget de calcul de J14 (plusieurs heures) est à fixer par le propriétaire, comme
+pour J10.2.
+
 #### En continu
 
-- Couverture des tests mesurée en CI, avec un badge.
 - Paquet AppImage pour Linux.
 - Signature des exécutables Windows et notarisation macOS : nécessite des certificats
   payants, décision du propriétaire du projet.
 
-Ordre proposé : J7, puis J8 (c'est ce qui se voit le plus en jouant), puis J9, J10, J11. Les cinq jalons sont livrés (v1.4.0).
+Ordre proposé : J12 (court, et il termine le travail d'accessibilité de J11.4), puis
+J13 (ce qui se voit le plus pour le joueur), puis J14 quand du temps de calcul est
+disponible.
 
 ---
 
