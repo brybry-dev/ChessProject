@@ -241,6 +241,10 @@ class TestRoundTrip(unittest.TestCase):
                 self.assertEqual(game.headers["Round"], str(index))
                 replayed = game.replay()
                 self.assertEqual(to_fen(replayed), to_fen(gs))
+                # La relecture suit les règles FIDE strictes (nulles à réclamer) ; la
+                # partie d'origine, jouée dans le jeu, a les nulles automatiques.
+                replayed.automatic_draws = gs.automatic_draws
+                replayed._valid_moves = None
                 self.assertEqual(replayed.result(), gs.result())
                 # Réexport identique (point fixe).
                 self.assertEqual(export_pgn(replayed, headers={"Round": str(index)}), text)
