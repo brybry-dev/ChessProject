@@ -695,6 +695,70 @@ class GameReviewTests(unittest.TestCase):
         self.assertEqual(self.gc.view_ply, 2)
         self.assertEqual(self.gc.live_ply, 4)
 
+    def _open_finished_review(self, sans):
+        self._play(sans)
+        self.gc.overlay = None
+        self.gc.end_dismissed = True
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_g))
+        self.gc.update()
+        self.gc.draw()
+
+    def _assert_best_move_shown(self, ply):
+        fault = self.gc.reviewer.result().moves[ply - 1]
+        self.assertIsNone(self.gc.overlay)
+        self.assertEqual(self.gc.view_ply, ply - 1)
+        state = self.gc.state_at(ply - 1)
+        best = notation.parse_san(state, fault.best[0])  # légal dans la position montrée
+        scene = self.gc._board_scene(state)
+        arrow = ((best.start_row, best.start_col), (best.end_row, best.end_col))
+        self.assertIn(arrow, scene.arrows)
+        self.assertNotIn(arrow, self.gc.arrows)  # pas mêlée aux flèches du joueur
+        line, info = self.gc._analysis_text()
+        self.assertEqual(line, "Meilleur coup : " + fault.best_line)
+        self.assertEqual(info, "au lieu de " + fault.san + fault.symbol)
+        self.gc.draw()
+        return arrow
+
+    def test_clicking_a_fault_shows_the_best_move_and_its_line(self):
+        """J13.1 : position d'avant la faute, meilleur coup en flèche, variante."""
+        self._open_finished_review(["f3", "e5", "g4", "Qh4#"])
+        dots = [b for b in self.gc.overlay.buttons if b.action[0] == "review_best"]
+        self.assertEqual([b.action for b in dots], [("review_best", 3)])  # g4??
+        self.gc.handle_event(_event(p.MOUSEBUTTONDOWN, pos=dots[0].rect.center, button=1))
+        arrow = self._assert_best_move_shown(3)
+        self.assertTrue(self.gc._move_rows())
+        # Ailleurs dans la partie, la flèche et la variante disparaissent.
+        self.gc._navigate("next")
+        self.assertNotIn(arrow, self.gc._board_scene(self.gc.state_at(3)).arrows)
+        self.assertIsNone(self.gc._analysis_text())
+        self.gc._navigate("prev")
+        self.assertIn(arrow, self.gc._board_scene(self.gc.state_at(2)).arrows)
+        # Un coup annulé change la partie : la faute n'est plus montrée.
+        self.gc._navigate("last")
+        self.gc._undo()
+        self.gc._view(2)
+        self.assertIsNone(self.gc._shown_fault())
+
+    def test_faults_are_reached_with_tab_in_move_order(self):
+        self._open_finished_review(["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"])
+        overlay = self.gc.overlay
+        faults = [m.ply for m in self.gc.reviewer.result().moves if m.judgement]
+        self.assertIn(6, faults)  # Nf6??
+        visited = []
+        for _ in range(len(overlay.buttons)):
+            self.gc.handle_event(_event(p.KEYDOWN, key=p.K_TAB, mod=0))
+            self.gc.draw()
+            action = overlay.focus.current(overlay.buttons).action
+            if action[0] == "review_best":
+                visited.append(action[1])
+        # Le × d'abord (en haut de la carte), puis les pastilles de gauche à droite.
+        self.assertEqual(visited, faults)
+        while overlay.focus.current(overlay.buttons).action != ("review_best", 6):
+            self.gc.handle_event(_event(p.KEYDOWN, key=p.K_TAB, mod=0))
+            self.gc.draw()
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_RETURN))
+        self._assert_best_move_shown(6)
+
     def test_progress_is_drawn_while_the_review_runs(self):
         self.gc.reviewer = review.Reviewer(process=_IdleProcess, make_queue=queue.Queue)
         self._play(["e4"])

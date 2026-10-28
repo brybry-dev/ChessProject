@@ -1237,6 +1237,20 @@ joueur, le bilan signale les fautes sans montrer le meilleur coup.
 | J13.2 | Export PGN annoté : symboles (`$2`, `$4`, `$6`) et évaluations en commentaires `{[%eval 0.42]}` | Relu par python-chess (NAG et commentaires) ; réimporté sans erreur | S |
 | J13.3 | Mode problèmes : positions de `tests/data/tactics.epd` (et suivantes), « trouvez le meilleur coup », indice, solution, score de la série | Chaque problème a une solution unique vérifiée par le moteur ; parcours testé sans écran | L |
 
+> **J13.1 ✅ (2026-10-28)** : le bilan garde la variante principale de chaque recherche
+> (`MoveReview.best`, en SAN). Chaque coup en est rejoué et vérifié ; la variante
+> s'arrête au premier coup qui ne serait pas légal (`review.legal_line`), une table de
+> transposition pouvant la prolonger par un coup d'une autre position. Dans la fenêtre
+> de bilan, chaque faute est une pastille cliquable sur la courbe, atteinte aussi par
+> `Tab` dans l'ordre des coups (`Button.order`) ; la survoler affiche le meilleur coup.
+> L'activer montre la position d'avant la faute, le meilleur coup en flèche (distincte
+> des flèches du joueur, qui restent) et, dans le panneau, la variante numérotée
+> (« Meilleur coup : 3... g6 4. Qf3 Nf6 · au lieu de Nf6?? »). Flèche et variante
+> suivent cette position : elles disparaissent quand on en change et reviennent quand
+> on y retourne. Testé : variante légale pour chaque coup de deux parties, meilleur
+> coup qui pare le mat du berger, troncature d'une variante illégale, clic et clavier
+> depuis la fenêtre de bilan.
+
 #### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
 
 | # | Tâche | Critère d'acceptation | Taille |

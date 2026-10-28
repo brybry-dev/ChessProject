@@ -23,6 +23,12 @@ référence, ce moteur à profondeur 3 voit des chutes allant jusqu'à 18 points
 coups pourtant corrects (lignes tactiques mal vues à cet horizon), alors qu'une pièce
 laissée en prise en coûte plus de 50 et un mat concédé 100 (``tests/test_review.py``).
 La perte moyenne par coup (en centipions, scores bornés à ±1000) complète le bilan.
+
+Meilleur coup (J13.1). La variante principale de chaque recherche est gardée, en SAN :
+pour une faute, c'est la suite que le moteur proposait à la place du coup joué. Chaque
+coup de la variante est rejoué et vérifié ; elle s'arrête au premier coup qui ne serait
+pas légal (une table de transposition peut prolonger une variante par un coup d'une
+autre position).
 """
 
 import contextlib
@@ -77,10 +83,17 @@ class MoveReview:
     loss_cp: int  # perte en centipions (scores bornés), 0 si le coup ne perd rien
     drop: float  # chute du score attendu du camp qui joue (0 à 1)
     judgement: str | None
+    number: int = 1  # numéro du coup (12 pour « 12... Nf6 »)
+    best: tuple[str, ...] = ()  # variante du moteur à la place de ce coup (SAN, J13.1)
 
     @property
     def symbol(self) -> str:
         return SYMBOLS.get(self.judgement or "", "")
+
+    @property
+    def best_line(self) -> str:
+        """Variante numérotée du meilleur coup : ``"12... Nc6 13. d4"`` (vide sans variante)."""
+        return " ".join(notation.format_move_lines(list(self.best), self.number, self.white))
 
 
 @dataclass(slots=True)
@@ -110,16 +123,20 @@ def build(
     white_starts: bool,
     start_fullmove: int,
     played: list[int] | None = None,
+    lines: list[tuple[str, ...]] | None = None,
 ) -> GameReview:
     """Bilan à partir des évaluations des positions (``len(sans) + 1``, meilleur coup) et
     des scores des coups joués (``played``, même horizon ; par défaut, l'évaluation de
-    la position suivante). Tous les scores sont du point de vue des Blancs."""
+    la position suivante). Tous les scores sont du point de vue des Blancs. ``lines`` :
+    variante du moteur dans chaque position (au moins une par coup joué)."""
     if len(evals) != len(sans) + 1:
         raise ValueError("une évaluation par position est attendue")
     if played is None:
         played = evals[1:]
     if len(played) != len(sans):
         raise ValueError("un score par coup joué est attendu")
+    if lines is not None and len(lines) < len(sans):
+        raise ValueError("une variante par coup joué est attendue")
     moves: list[MoveReview] = []
     losses: dict[bool, list[int]] = {True: [], False: []}
     sides = {True: SideSummary(), False: SideSummary()}
@@ -132,7 +149,10 @@ def build(
         loss = max(0, sign * (_cap(before) - _cap(after)))
         judgement = classify(drop)
         label = f"{number}. {san}" if white else f"{number}... {san}"
-        moves.append(MoveReview(i + 1, white, label, san, loss, max(0.0, drop), judgement))
+        best = lines[i] if lines is not None else ()
+        moves.append(
+            MoveReview(i + 1, white, label, san, loss, max(0.0, drop), judgement, number, best)
+        )
         losses[white].append(loss)
         side = sides[white]
         if judgement == INACCURACY:
@@ -167,6 +187,25 @@ def _search(
     return searcher.think(game_state, search.SearchLimits(depth=max(1, depth), nodes=nodes))
 
 
+def legal_line(game_state: engine.GameState, moves: list[engine.Move]) -> tuple[str, ...]:
+    """SAN de ``moves`` rejoués depuis ``game_state`` (rendu intact), jusqu'au premier
+    coup illégal exclu."""
+    sans: list[str] = []
+    played = 0
+    try:
+        for move in moves:
+            legal = next((m for m in game_state.get_valid_moves() if m == move), None)
+            if legal is None:
+                break
+            sans.append(notation.to_san(game_state, legal))
+            game_state.make_move(legal, validate=False)
+            played += 1
+    finally:
+        for _ in range(played):
+            game_state.undo_move()
+    return tuple(sans)
+
+
 def run(
     start_state: engine.GameState,
     moves: list[engine.Move],
@@ -175,8 +214,9 @@ def run(
     depth: int = REVIEW_DEPTH,
 ) -> None:
     """Point d'entrée du processus. Pour chaque position, de la position de départ à la
-    position finale : ``(demi-coup, évaluation, score du coup joué)`` (point de vue des
-    Blancs ; ``None`` pour le coup de la position finale), puis ``None``."""
+    position finale : ``(demi-coup, évaluation, score du coup joué, variante)`` (point
+    de vue des Blancs ; ``None`` pour le coup de la position finale ; variante en SAN,
+    vide si la partie est finie), puis ``None``."""
     game_state = copy.deepcopy(start_state)
     # Sans élagage : à horizon égal, le meilleur coup doit perdre exactement 0.
     searcher = search.Searcher(features=search.NO_FEATURES)
@@ -186,12 +226,13 @@ def run(
             terminal = _terminal_score(game_state)
             move = moves[ply] if ply < len(moves) else None
             if terminal is not None:
-                out_queue.put((ply, terminal, None if move is None else terminal))
+                out_queue.put((ply, terminal, None if move is None else terminal, ()))
                 if move is None:
                     break
                 game_state.make_move(move, validate=False)
                 continue
             best = _search(searcher, game_state, depth, nodes)
+            line = legal_line(game_state, best.pv or ([best.move] if best.move else []))
             played: int | None = None
             if move is not None:
                 if move == best.move:
@@ -204,7 +245,7 @@ def run(
                         played = sign * -reply.score
                     game_state.undo_move()
                 game_state.make_move(move, validate=False)
-            out_queue.put((ply, sign * best.score, played))
+            out_queue.put((ply, sign * best.score, played, line))
     finally:
         out_queue.put(None)
 
@@ -221,6 +262,7 @@ class Reviewer:
         self.key: object = None
         self.evals: list[int] = []
         self.played: list[int] = []
+        self.lines: list[tuple[str, ...]] = []
         self.sans: list[str] = []
         self.white_starts = True
         self.start_fullmove = 1
@@ -269,6 +311,7 @@ class Reviewer:
                 self.done = True
             else:
                 self.evals.append(item[1])
+                self.lines.append(item[3])
                 if item[2] is not None:
                     self.played.append(item[2])
         return len(self.evals)
@@ -277,7 +320,12 @@ class Reviewer:
         """Bilan complet, ou None tant que toutes les positions ne sont pas évaluées."""
         if self._result is None and len(self.evals) == self.total:
             self._result = build(
-                self.evals, self.sans, self.white_starts, self.start_fullmove, self.played
+                self.evals,
+                self.sans,
+                self.white_starts,
+                self.start_fullmove,
+                self.played,
+                self.lines,
             )
         return self._result
 
@@ -287,6 +335,6 @@ class Reviewer:
                 self._process.terminate()
         self._process = self._queue = None
         self.key = None
-        self.evals, self.played, self.sans = [], [], []
+        self.evals, self.played, self.lines, self.sans = [], [], [], []
         self.done = False
         self._result = None

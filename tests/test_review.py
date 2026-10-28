@@ -33,8 +33,9 @@ def evaluate_game(sans, nodes=review.REVIEW_NODES):
     assert [item[0] for item in items[:-1]] == list(range(len(sans) + 1))
     evals = [item[1] for item in items[:-1]]
     played = [item[2] for item in items[:-2]]
+    lines = [item[3] for item in items[:-1]]
     assert items[-2][2] is None
-    return review.build(evals, sans, True, 1, played)
+    return review.build(evals, sans, True, 1, played, lines)
 
 
 class TestThresholds(unittest.TestCase):
@@ -136,6 +137,60 @@ class TestReferenceGames(unittest.TestCase):
         )
 
 
+class TestBestLine(unittest.TestCase):
+    """J13.1 : pour chaque faute, le meilleur coup du moteur et sa variante."""
+
+    def assert_legal(self, sans, ply, line):
+        """La variante se rejoue depuis la position qui précède le coup ``ply``."""
+        gs = engine.GameState()
+        for san in sans[: ply - 1]:
+            gs.make_move(notation.parse_san(gs, san))
+        for san in line:
+            move = notation.parse_san(gs, san)
+            self.assertEqual(notation.to_san(gs, move), san)
+            gs.make_move(move)
+
+    def test_every_fault_comes_with_a_legal_better_line(self):
+        sans = ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"]
+        r = evaluate_game(sans)
+        nf6 = r.moves[5]
+        self.assertEqual(nf6.judgement, review.BLUNDER)
+        self.assertTrue(nf6.best)
+        self.assertNotEqual(nf6.best[0], "Nf6")
+        self.assert_legal(sans, nf6.ply, nf6.best)
+        # Le meilleur coup pare le mat : aucun coup des Blancs ne mate ensuite.
+        gs = engine.GameState()
+        for san in sans[:5]:
+            gs.make_move(notation.parse_san(gs, san))
+        gs.make_move(notation.parse_san(gs, nf6.best[0]))
+        for move in list(gs.get_valid_moves()):
+            self.assertFalse(notation.to_san(gs, move).endswith("#"))
+        self.assertTrue(nf6.best_line.startswith(f"3... {nf6.best[0]}"))
+        for move in r.moves:
+            with self.subTest(move=move.label):
+                self.assert_legal(sans, move.ply, move.best)
+
+    def test_the_line_stops_at_the_first_illegal_move(self):
+        gs = engine.GameState()
+        e4 = notation.parse_san(gs, "e4")
+        gs.make_move(e4)
+        e5 = notation.parse_san(gs, "e5")
+        gs.undo_move()
+        before = [row[:] for row in gs.board]
+        # e5 n'est pas jouable par les Blancs : la variante s'arrête là.
+        self.assertEqual(review.legal_line(gs, [e4, e5, e4]), ("e4", "e5"))
+        self.assertEqual(review.legal_line(gs, [e5, e4]), ())
+        self.assertEqual(gs.board, before)
+        self.assertEqual(gs.move_log, [])
+
+    def test_numbered_line(self):
+        r = review.build([0, 250, 250], ["Nf6", "Qxf7"], False, 12, lines=[("Nc6", "d4"), ()])
+        self.assertEqual(r.moves[0].best_line, "12... Nc6 13. d4")
+        self.assertEqual(r.moves[1].best_line, "")
+        with self.assertRaises(ValueError):
+            review.build([0, 250, 250], ["Nf6", "Qxf7"], False, 12, lines=[()])
+
+
 class _InlineProcess:
     def __init__(self, target, args=(), daemon=False):
         self._target, self._args = target, args
@@ -161,6 +216,8 @@ class TestReviewer(unittest.TestCase):
         result = reviewer.result()
         assert result is not None
         self.assertEqual(result.moves[2].san, "g4")
+        self.assertTrue(result.moves[2].best)  # variante gardée (J13.1)
+        self.assertEqual(result.moves[3].best[0], "Qh4#")
         reviewer.start(start, moves, "k")  # même partie : rien n'est relancé
         self.assertTrue(reviewer.done)
 

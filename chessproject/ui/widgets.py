@@ -268,6 +268,9 @@ class Button:
     selected: bool = False
     enabled: bool = True
     rect: p.Rect = field(default_factory=lambda: p.Rect(0, 0, 0, 0))
+    # Place dans l'ordre du focus quand ce n'est pas celle du rectangle (pastilles d'une
+    # courbe : de gauche à droite, quelle que soit leur hauteur).
+    order: tuple[int, int] | None = None
 
     @property
     def text(self) -> str:
@@ -369,7 +372,9 @@ class Focus:
 
     @staticmethod
     def order(buttons: Sequence[Button]) -> list[Button]:
-        return sorted((b for b in buttons if b.enabled), key=lambda b: (b.rect.y, b.rect.x))
+        return sorted(
+            (b for b in buttons if b.enabled), key=lambda b: b.order or (b.rect.y, b.rect.x)
+        )
 
     def current(self, buttons: Sequence[Button]) -> Button | None:
         if not self.visible:

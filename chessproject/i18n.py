@@ -318,9 +318,14 @@ EN: dict[str, str] = {
     "Marine": "Navy",
     # Bilan
     "Analyse des positions… {done} / {total}": "Analysing positions… {done} / {total}",
-    "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position.": (
-        "Hover over the graph to read the evaluation, click to see the position."
+    "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position, "
+    "ou sur une pastille pour le meilleur coup.": (
+        "Hover over the graph to read the evaluation, click to see the position, "
+        "or on a dot for the best move."
     ),
+    "meilleur : {san}": "best: {san}",
+    "Meilleur coup : {line}": "Best move: {line}",
+    "au lieu de {san}": "instead of {san}",
     "Position de départ": "Starting position",
     "Demi-coup {n}": "Ply {n}",
     "BLANCS": "WHITE",

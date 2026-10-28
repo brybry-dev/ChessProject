@@ -325,6 +325,9 @@ class GameController:
         self.hinter = analysis.Analyzer(limits=analysis.HINT_LIMITS)
         # Bilan de la partie (J9.3) : évaluation de chaque position, en arrière-plan.
         self.reviewer = review.Reviewer()
+        # Faute choisie dans le bilan (J13.1) : (clé de la partie, coup jugé), montrée
+        # tant que la position d'avant la faute est affichée.
+        self.review_fault: tuple[object, review.MoveReview] | None = None
 
         # Parties du PGN en cours d'import, en attente du choix de l'une d'elles (J11.1).
         self._pgn_games: list[pgn.PgnGame] = []
@@ -522,6 +525,9 @@ class GameController:
             elif kind == "review_goto":
                 self.overlay = None
                 self._view(action[1])
+            elif kind == "review_best":
+                self.overlay = None
+                self._show_best(action[1])
             elif kind == "setting":
                 self.set_setting(action[1], action[2])
             elif kind == "file":
@@ -987,6 +993,28 @@ class GameController:
             return
         self.reviewer.poll()
 
+    def _show_best(self, ply):
+        """Position d'avant le coup ``ply``, meilleur coup en flèche, variante dans le
+        panneau (J13.1)."""
+        result = self.reviewer.result() if self.reviewer.key == self._key() else None
+        if result is None or not 0 < ply <= len(result.moves):
+            return
+        fault = result.moves[ply - 1]
+        if not fault.best:
+            return
+        self.review_fault = (self._key(), fault)
+        self._view(ply - 1)
+        logger.info("Bilan : %s, meilleur %s", fault.label, fault.best_line)
+
+    def _shown_fault(self):
+        """Faute du bilan dont la position est affichée, ou None."""
+        if self.review_fault is None:
+            return None
+        key, fault = self.review_fault
+        if key != self._key() or self.current_ply != fault.ply - 1:
+            return None
+        return fault
+
     def _review_symbols(self):
         """Symbole (« ?! », « ? », « ?? ») de chaque coup, si le bilan est prêt."""
         result = self.reviewer.result() if self.reviewer.key == self._key() else None
@@ -1403,7 +1431,14 @@ class GameController:
         self.analyzer.poll()
 
     def _analysis_text(self):
-        """(variante, « +0,4 · prof. 9 ») pour le panneau, ou None."""
+        """(variante, « +0,4 · prof. 9 ») pour le panneau, ou None. Devant la position
+        d'une faute choisie dans le bilan : la variante du meilleur coup (J13.1)."""
+        fault = self._shown_fault()
+        if fault is not None:
+            return (
+                tr("Meilleur coup : {line}", line=fault.best_line),
+                tr("au lieu de {san}", san=fault.san + fault.symbol),
+            )
         if not self.settings.show_analysis:
             return None
         line = self.analyzer.line
@@ -1479,6 +1514,11 @@ class GameController:
         pending = None
         if self._right_start is not None and self._right_end not in (None, self._right_start):
             pending = (self._right_start, self._right_end)
+        arrows = self.arrows
+        fault = self._shown_fault()
+        if fault is not None:
+            best = notation.parse_san(state, fault.best[0])
+            arrows = arrows | {((best.start_row, best.start_col), (best.end_row, best.end_col))}
         return BoardScene(
             board=state.board,
             cursor=self.cursor,
@@ -1487,7 +1527,7 @@ class GameController:
             targets=targets,
             check=check,
             drag=self.drag,
-            arrows=self.arrows,
+            arrows=arrows,
             marks=self.marks,
             pending_arrow=pending,
         )
