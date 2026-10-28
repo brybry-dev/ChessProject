@@ -132,6 +132,8 @@ class PanelModel:
     can_draw: bool = True
     can_resign: bool = True
     draw_label: str = "Nulle"
+    # Coup tapé au clavier (J11.2) : (texte, erreur éventuelle), None si fermé.
+    move_input: tuple[str, str | None] | None = None
 
 
 ROW_HEIGHT = 34
@@ -322,20 +324,46 @@ class SidePanel:
 
         foot = p.Rect(rect.x, rect.bottom - 42, rect.width, 42)
         p.draw.line(surface, t.border, (rect.x, foot.y), (rect.right - 1, foot.y))
-        dot = {"accent": t.accent, "warning": th.WARNING_DOT}.get(model.status_kind, t.muted)
-        p.draw.circle(surface, dot, (foot.x + 20, foot.centery), 4)
-        f = th.font(13)
-        w.text(
-            surface,
-            w.ellipsize(model.status, f, foot.width - 48),
-            f,
-            t.text if model.status_kind != "info" else t.muted,
-            (foot.x + 32, foot.centery),
-            "midleft",
-        )
+        if model.move_input is not None:
+            self._draw_move_input(surface, foot, model.move_input, t)
+        else:
+            dot = {"accent": t.accent, "warning": th.WARNING_DOT}.get(model.status_kind, t.muted)
+            p.draw.circle(surface, dot, (foot.x + 20, foot.centery), 4)
+            f = th.font(13)
+            w.text(
+                surface,
+                w.ellipsize(model.status, f, foot.width - 48),
+                f,
+                t.text if model.status_kind != "info" else t.muted,
+                (foot.x + 32, foot.centery),
+                "midleft",
+            )
 
         self._list_rect = p.Rect(rect.x + 8, top + 6, rect.width - 16, foot.y - top - 12)
         self._draw_rows(surface, model, t, mouse)
+
+    def _draw_move_input(self, surface, foot: p.Rect, value, t: Theme) -> None:
+        """Ligne d'état remplacée par le coup en cours de frappe (J11.2)."""
+        text, error = value
+        box = foot.inflate(-12, -10)
+        w.rounded(surface, t.surface2, box, 6)
+        w.rounded(surface, th.WARNING_DOT if error else t.accent, box, 6, 1)
+        mono = th.font(14, "semibold", mono=True)
+        prompt = w.text(surface, "›", mono, t.accent, (box.x + 10, box.centery), "midleft")
+        typed = w.text(surface, text, mono, t.text, (prompt.right + 8, box.centery), "midleft")
+        p.draw.line(
+            surface, t.text, (typed.right + 2, box.y + 7), (typed.right + 2, box.bottom - 7), 2
+        )
+        f = th.font(12)
+        note = error or "Entrée : jouer · Échap : annuler"
+        w.text(
+            surface,
+            w.ellipsize(note, f, box.right - typed.right - 28),
+            f,
+            t.text if error else t.muted,
+            (box.right - 10, box.centery),
+            "midright",
+        )
 
     def _draw_rows(self, surface, model: PanelModel, t: Theme, mouse) -> None:
         area = self._list_rect

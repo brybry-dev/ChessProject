@@ -68,6 +68,7 @@ DRAG_THRESHOLD_PX = 4
 NOTICE_MS = 3500
 LOW_TIME_MS = 20_000
 EVAL_MOVETIME_MS = 25
+MOVE_INPUT_MAX_LENGTH = 12
 PIECE_VALUES = {"p": 1, "N": 3, "B": 3, "R": 5, "Q": 9, "K": 0}
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,15 @@ def evaluate_for_display(game_state) -> int:
     return found.score if game_state.white_to_move else -found.score
 
 
+def typed_move_error(error: notation.TypedMoveError) -> str:
+    """Message affiché pour un coup tapé refusé (J11.2)."""
+    if error.reason == "ambiguous":
+        return f"Coup ambigu : {' ou '.join(error.options)} ?"
+    if error.reason == "illegal":
+        return f"Coup illégal : {error.text}"
+    return f"Notation non reconnue : {error.text}"
+
+
 def eval_text(cp: int) -> str:
     """« +0,4 », « −1,2 » ou « #3 » / « −#3 » (mat en 3 coups)."""
     if abs(cp) >= search.MATE_THRESHOLD:
@@ -273,6 +283,9 @@ class GameController:
         self._start_clock()
 
         self.square_selected: tuple[int, int] | tuple[()] = ()
+        # Coup tapé au clavier (J11.2) : None tant que la saisie n'est pas ouverte.
+        self.move_input: str | None = None
+        self.move_input_error: str | None = None
         self.drag: Drag | None = None
         self._deselect_on_release = False
         self.arrows: set[tuple[tuple[int, int], tuple[int, int]]] = set()
@@ -421,6 +434,7 @@ class GameController:
 
     def _new_game(self, game_state, saved_clock=None):
         self.game_state = game_state
+        self._close_move_input()
         self.external_result = None
         self.draw_offer = None
         self._start_clock(saved_clock)
@@ -462,6 +476,8 @@ class GameController:
             action = self.overlay.handle_event(e)
             if action is not None:
                 self._run_action(action)
+            return
+        if self.move_input is not None and self._handle_move_input(e):
             return
         if e.type == p.MOUSEWHEEL:
             self.panel.scroll_by(p.mouse.get_pos(), e.y)
@@ -700,10 +716,74 @@ class GameController:
             p.K_DOWN: lambda: self._navigate("last"),
             p.K_END: lambda: self._navigate("last"),
             p.K_ESCAPE: self._escape,
+            p.K_RETURN: self._open_move_input,
+            p.K_KP_ENTER: self._open_move_input,
+            p.K_SPACE: self._open_move_input,
         }
         handler = keys.get(e.key)
         if handler is not None:
             handler()
+
+    # -- coup tapé au clavier (J11.2) --------------------------------------
+    def _open_move_input(self):
+        if self.game_over:
+            self._notify("La partie est terminée")
+            return
+        if self.mode == "CvC" or not self.human_turn():
+            self._notify("Ce n'est pas à vous de jouer")
+            return
+        self.view_ply = None
+        self._reset_selection()
+        self.move_input, self.move_input_error = "", None
+
+    def _close_move_input(self):
+        self.move_input = self.move_input_error = None
+
+    def _handle_move_input(self, e):
+        """Saisie ouverte : les touches vont au coup tapé (aucun raccourci) ; un clic la
+        ferme et garde son effet habituel. Renvoie True si l'événement est consommé."""
+        assert self.move_input is not None
+        if e.type == p.TEXTINPUT:
+            typed = "".join(c for c in e.text if c.isalnum() or c in "-=+#:")
+            self.move_input = (self.move_input + typed)[:MOVE_INPUT_MAX_LENGTH]
+            self.move_input_error = None
+            return True
+        if e.type == p.KEYDOWN:
+            if e.key in (p.K_RETURN, p.K_KP_ENTER):
+                self._submit_move_input()
+            elif e.key == p.K_ESCAPE:
+                self._close_move_input()
+            elif e.key == p.K_BACKSPACE:
+                if self.move_input:
+                    self.move_input = self.move_input[:-1]
+                    self.move_input_error = None
+                else:
+                    self._close_move_input()
+            return True
+        if e.type == p.MOUSEBUTTONDOWN:
+            self._close_move_input()
+        return False
+
+    def _submit_move_input(self):
+        text = self.move_input or ""
+        if not text:
+            self._close_move_input()
+            return
+        if self.game_over or not self.human_turn():
+            self._close_move_input()
+            return
+        try:
+            moves = notation.parse_typed_move(self.game_state, text)
+        except notation.TypedMoveError as ex:
+            self.move_input_error = typed_move_error(ex)
+            logger.info("Coup tapé refusé : %s (%s)", text, ex.reason)
+            return
+        self._close_move_input()
+        move = moves[0]
+        if len(moves) == 1:
+            self._play(move, animate=True)
+        else:  # promotion sans pièce indiquée : le choix s'ouvre comme à la souris
+            self._try_move((move.start_row, move.start_col), (move.end_row, move.end_col), True)
 
     def _escape(self):
         if self.square_selected:
@@ -754,6 +834,7 @@ class GameController:
         # joueur. En PvP/CvC, un seul undo.
         if self.mode == "PvC" and self.game_state.move_log and not self.human_turn():
             self.game_state.undo_move()
+        self._close_move_input()
         self.external_result = None  # annuler rouvre une partie abandonnée ou nulle
         self.draw_offer = None
         self.end_dismissed = False
@@ -1503,6 +1584,9 @@ class GameController:
             can_draw=can_act,
             can_resign=can_act,
             draw_label=draw_label,
+            move_input=(
+                None if self.move_input is None else (self.move_input, self.move_input_error)
+            ),
         )
 
 

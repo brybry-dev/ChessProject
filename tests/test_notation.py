@@ -18,10 +18,12 @@ from chessproject.core import engine
 from chessproject.core.fen import load_fen
 from chessproject.core.notation import (
     NotationError,
+    TypedMoveError,
     format_move_lines,
     move_list_to_san,
     parse_san,
     parse_square,
+    parse_typed_move,
     parse_uci,
     san_history,
     square_name,
@@ -361,6 +363,89 @@ class HistoryTests(unittest.TestCase):
             format_move_lines(["Nf6", "d4", "d5"], 12, False), ["12... Nf6", "13. d4 d5"]
         )
         self.assertEqual(format_move_lines([], 5, False), [])
+
+
+class TypedMoveTests(unittest.TestCase):
+    """Saisie au clavier (J11.2) : SAN tolérante, coordonnées, initiales françaises."""
+
+    def _typed(self, fen, text):
+        gs = load_fen(fen)
+        return [to_uci(m) for m in parse_typed_move(gs, text)]
+
+    def _refused(self, fen, text):
+        with self.assertRaises(TypedMoveError) as ctx:
+            parse_typed_move(load_fen(fen), text)
+        return ctx.exception
+
+    def test_tolerant_spellings(self):
+        cases = {
+            "e4": "e2e4",
+            " e4 ": "e2e4",
+            "E4": "e2e4",
+            "e2e4": "e2e4",
+            "e2-e4": "e2e4",
+            "Nf3": "g1f3",
+            "nf3": "g1f3",
+            "Nf3+": "g1f3",
+            "Ng1f3": "g1f3",
+            "Cf3": "g1f3",  # cavalier
+        }
+        for text, uci in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(self._typed(START, text), [uci])
+
+    def test_castling_in_every_usual_form(self):
+        fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
+        for text in ("O-O", "0-0", "o-o", "OO", "e1g1"):
+            with self.subTest(text=text):
+                self.assertEqual(self._typed(fen, text), ["e1g1"])
+        for text in ("O-O-O", "0-0-0", "ooo"):
+            with self.subTest(text=text):
+                self.assertEqual(self._typed(fen, text), ["e1c1"])
+
+    def test_pieces_and_captures(self):
+        fen = "r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3"
+        self.assertEqual(self._typed(fen, "Bc5"), ["f8c5"])
+        self.assertEqual(self._typed(fen, "bc5"), ["f8c5"], "fou en minuscule")
+        self.assertEqual(self._typed(fen, "Fc5"), ["f8c5"], "fou en français")
+        self.assertEqual(self._typed(fen, "Dh4"), ["d8h4"], "dame en français")
+        self.assertEqual(self._typed(KIWIPETE, "Bxa6"), ["e2a6"])
+        self.assertEqual(self._typed(KIWIPETE, "Ba6"), ["e2a6"], "prise sans x")
+        self.assertEqual(self._typed(KIWIPETE, "dxe6"), ["d5e6"])
+
+    def test_english_rook_comes_before_the_french_king(self):
+        fen = "4k3/8/8/8/8/8/8/R3K3 w Q - 0 1"
+        self.assertEqual(self._typed(fen, "Rd1"), ["a1d1"], "R : tour (anglais)")
+        self.assertEqual(self._typed(fen, "Re2"), ["e1e2"], "aucune tour en e2 : roi (français)")
+        self.assertEqual(self._typed(fen, "Td1"), ["a1d1"], "tour en français")
+
+    def test_promotion_with_or_without_the_piece(self):
+        fen = "7k/P7/8/8/8/8/8/K7 w - - 0 1"
+        self.assertEqual(self._typed(fen, "a8=Q"), ["a7a8q"])
+        self.assertEqual(self._typed(fen, "a8N"), ["a7a8n"])
+        self.assertEqual(self._typed(fen, "a8=C"), ["a7a8n"], "cavalier en français")
+        self.assertEqual(self._typed(fen, "a7a8r"), ["a7a8r"])
+        self.assertEqual(
+            sorted(self._typed(fen, "a8")),
+            ["a7a8b", "a7a8n", "a7a8q", "a7a8r"],
+            "pièce non indiquée : les quatre promotions, au joueur de choisir",
+        )
+        self.assertEqual(len(self._typed(fen, "a7a8")), 4)
+
+    def test_errors_say_why_the_move_is_refused(self):
+        self.assertEqual(self._refused(START, "zz").reason, "unreadable")
+        self.assertEqual(self._refused(START, "").reason, "unreadable")
+        self.assertEqual(self._refused(START, "e5").reason, "illegal")
+        self.assertEqual(self._refused(START, "Nf6").reason, "illegal")
+        self.assertEqual(self._refused(START, "O-O").reason, "illegal")
+        self.assertEqual(self._refused(START, "e2e5").reason, "illegal")
+
+    def test_ambiguous_moves_list_the_possibilities(self):
+        fen = "4k3/8/8/8/8/8/8/1N1K1N2 w - - 0 1"
+        error = self._refused(fen, "Nd2")
+        self.assertEqual(error.reason, "ambiguous")
+        self.assertEqual(error.options, ("Nbd2", "Nfd2"))
+        self.assertEqual(self._typed(fen, "Nbd2"), ["b1d2"])
 
 
 if __name__ == "__main__":

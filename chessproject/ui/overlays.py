@@ -18,6 +18,7 @@ from chessproject.ui import widgets as w
 from chessproject.ui.theme import Theme
 
 SHORTCUTS: list[tuple[str, str]] = [
+    ("Entrée", "Taper un coup (e4, Nf3, O-O)"),
     ("Z", "Annuler le dernier coup"),
     ("N", "Proposer / accepter la nulle"),
     ("A", "Abandonner"),
