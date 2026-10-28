@@ -95,17 +95,21 @@ class TestAnalyzer(unittest.TestCase):
         _FakeProcess.started = []
         self.analyzer = analysis.Analyzer(process=_FakeProcess, make_queue=queue.Queue)
 
+    def _depth(self):
+        line = self.analyzer.poll()
+        return None if line is None else line.depth
+
     def test_start_then_poll_keeps_the_deepest_line(self):
         self.analyzer.start(engine.GameState(), "a")
         process = _FakeProcess.started[-1]
         out = process.args[1]
         out.put(analysis.AnalysisLine(1, 10, ("e4",), 1, True))
         out.put(analysis.AnalysisLine(2, 20, ("d4", "d5"), 1, True))
-        self.assertEqual(self.analyzer.poll().depth, 2)
-        self.assertEqual(self.analyzer.poll().depth, 2)  # rien de neuf : dernière ligne
+        self.assertEqual(self._depth(), 2)
+        self.assertEqual(self._depth(), 2)  # rien de neuf : dernière ligne
         self.assertTrue(self.analyzer.running)
         out.put(None)
-        self.assertEqual(self.analyzer.poll().depth, 2)
+        self.assertEqual(self._depth(), 2)
         self.assertFalse(self.analyzer.running)
 
     def test_same_key_does_not_restart(self):
