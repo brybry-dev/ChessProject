@@ -166,6 +166,7 @@ class FeaturesTests(unittest.TestCase):
         result = Searcher(features=search.SearchFeatures.parse("all")).think(
             gs, SearchLimits(depth=4)
         )
+        assert result.move is not None
         self.assertEqual(to_san(gs, result.move), "Rd8#")
         self.assertEqual(_state(gs), before)
         gs = load_fen(KIWIPETE)
