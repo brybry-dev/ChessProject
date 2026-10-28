@@ -64,11 +64,12 @@ def tr(text: str, /, **values: object) -> str:
     return text.format(**values) if values else text
 
 
-def plural(n: int, singular: str, plural_form: str, /) -> str:
-    """``tr`` de la forme qui convient à ``n`` (le champ ``{n}`` est rempli). En
-    français le singulier va jusqu'à 1, en anglais seul 1 est au singulier."""
+def plural(n: int, singular: str, plural_form: str, /, **values: object) -> str:
+    """``tr`` de la forme qui convient à ``n`` (le champ ``{n}`` est rempli, les autres
+    par ``values``). En français le singulier va jusqu'à 1, en anglais seul 1 est au
+    singulier."""
     one = n == 1 if _language == "en" else abs(n) <= 1
-    return tr(singular if one else plural_form, n=n)
+    return tr(singular if one else plural_form, n=n, **values)
 
 
 def decimal(value: float, digits: int = 1) -> str:
@@ -318,9 +319,16 @@ EN: dict[str, str] = {
     "Marine": "Navy",
     # Bilan
     "Analyse des positions… {done} / {total}": "Analysing positions… {done} / {total}",
-    "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position.": (
-        "Hover over the graph to read the evaluation, click to see the position."
+    "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position, "
+    "ou sur une pastille pour le meilleur coup.": (
+        "Hover over the graph to read the evaluation, click to see the position, "
+        "or on a dot for the best move."
     ),
+    "meilleur : {san}": "best: {san}",
+    "Exporter PGN annoté": "Export annotated PGN",
+    "PGN annoté exporté : {path}": "Annotated PGN exported: {path}",
+    "Meilleur coup : {line}": "Best move: {line}",
+    "au lieu de {san}": "instead of {san}",
     "Position de départ": "Starting position",
     "Demi-coup {n}": "Ply {n}",
     "BLANCS": "WHITE",
@@ -355,4 +363,36 @@ EN: dict[str, str] = {
     "Documents": "Documents",
     "Téléchargements": "Downloads",
     "partie": "game",
+    # Problèmes (J13.3)
+    "Problèmes": "Puzzles",
+    "Trouvez le meilleur coup : {n} problèmes, du mat en 1 au mat en 3.": (
+        "Find the best move: {n} puzzles, from mate in 1 to mate in 3."
+    ),
+    "Chaque problème est une position de partie : jouez le coup qui mate ou gagne du "
+    "matériel. Réussi du premier coup, sans aide, il compte dans le score de la série.": (
+        "Each puzzle is a position from a game: play the move that mates or wins "
+        "material. Solved at the first try without help, it counts towards your score."
+    ),
+    "AIDES": "HELP",
+    "Sans pendule. Indice (B) : la pièce à jouer ; solution (O) ; problème suivant (N).": (
+        "No clock. Hint (B): the piece to move; solution (O); next puzzle (N)."
+    ),
+    "Indice": "Hint",
+    "Solution": "Solution",
+    "Suivant": "Next",
+    "Ce n'est pas le meilleur coup : réessayez": "Not the best move: try again",
+    "Indice : la pièce à jouer est marquée": "Hint: the piece to move is marked",
+    "Série terminée": "Series complete",
+    "{n} problème réussi sur {total}.": "{n} puzzle solved out of {total}.",
+    "{n} problèmes réussis sur {total}.": "{n} puzzles solved out of {total}.",
+    "Bien joué ! N : fin de la série": "Well done! N: end of the series",
+    "Bien joué ! N : problème suivant": "Well done! N: next puzzle",
+    "Solution : {san} · N : problème suivant": "Solution: {san} · N: next puzzle",
+    "Les blancs": "White",
+    "Les noirs": "Black",
+    "{side} jouent et matent en {n} coup": "{side} to play and mate in {n}",
+    "{side} jouent et matent en {n} coups": "{side} to play and mate in {n}",
+    "{side} jouent et gagnent du matériel": "{side} to play and win material",
+    "{index} / {total}": "{index} / {total}",
+    "Score {score} / {done}": "Score {score} / {done}",
 }

@@ -1,12 +1,13 @@
 """Tests du bilan de partie (J9.3) : seuils, parties de référence, pilotage du processus."""
 
+import io
 import queue
 import unittest
 
 import pytest
 
 from chessproject.ai import review, search
-from chessproject.core import engine, notation
+from chessproject.core import engine, notation, pgn
 
 MATE = search.MATE
 
@@ -33,8 +34,9 @@ def evaluate_game(sans, nodes=review.REVIEW_NODES):
     assert [item[0] for item in items[:-1]] == list(range(len(sans) + 1))
     evals = [item[1] for item in items[:-1]]
     played = [item[2] for item in items[:-2]]
+    lines = [item[3] for item in items[:-1]]
     assert items[-2][2] is None
-    return review.build(evals, sans, True, 1, played)
+    return review.build(evals, sans, True, 1, played, lines)
 
 
 class TestThresholds(unittest.TestCase):
@@ -136,6 +138,95 @@ class TestReferenceGames(unittest.TestCase):
         )
 
 
+class TestBestLine(unittest.TestCase):
+    """J13.1 : pour chaque faute, le meilleur coup du moteur et sa variante."""
+
+    def assert_legal(self, sans, ply, line):
+        """La variante se rejoue depuis la position qui précède le coup ``ply``."""
+        gs = engine.GameState()
+        for san in sans[: ply - 1]:
+            gs.make_move(notation.parse_san(gs, san))
+        for san in line:
+            move = notation.parse_san(gs, san)
+            self.assertEqual(notation.to_san(gs, move), san)
+            gs.make_move(move)
+
+    def test_every_fault_comes_with_a_legal_better_line(self):
+        sans = ["e4", "e5", "Qh5", "Nc6", "Bc4", "Nf6", "Qxf7#"]
+        r = evaluate_game(sans)
+        nf6 = r.moves[5]
+        self.assertEqual(nf6.judgement, review.BLUNDER)
+        self.assertTrue(nf6.best)
+        self.assertNotEqual(nf6.best[0], "Nf6")
+        self.assert_legal(sans, nf6.ply, nf6.best)
+        # Le meilleur coup pare le mat : aucun coup des Blancs ne mate ensuite.
+        gs = engine.GameState()
+        for san in sans[:5]:
+            gs.make_move(notation.parse_san(gs, san))
+        gs.make_move(notation.parse_san(gs, nf6.best[0]))
+        for move in list(gs.get_valid_moves()):
+            self.assertFalse(notation.to_san(gs, move).endswith("#"))
+        self.assertTrue(nf6.best_line.startswith(f"3... {nf6.best[0]}"))
+        for move in r.moves:
+            with self.subTest(move=move.label):
+                self.assert_legal(sans, move.ply, move.best)
+
+    def test_the_line_stops_at_the_first_illegal_move(self):
+        gs = engine.GameState()
+        e4 = notation.parse_san(gs, "e4")
+        gs.make_move(e4)
+        e5 = notation.parse_san(gs, "e5")
+        gs.undo_move()
+        before = [row[:] for row in gs.board]
+        # e5 n'est pas jouable par les Blancs : la variante s'arrête là.
+        self.assertEqual(review.legal_line(gs, [e4, e5, e4]), ("e4", "e5"))
+        self.assertEqual(review.legal_line(gs, [e5, e4]), ())
+        self.assertEqual(gs.board, before)
+        self.assertEqual(gs.move_log, [])
+
+    def test_numbered_line(self):
+        r = review.build([0, 250, 250], ["Nf6", "Qxf7"], False, 12, lines=[("Nc6", "d4"), ()])
+        self.assertEqual(r.moves[0].best_line, "12... Nc6 13. d4")
+        self.assertEqual(r.moves[1].best_line, "")
+        with self.assertRaises(ValueError):
+            review.build([0, 250, 250], ["Nf6", "Qxf7"], False, 12, lines=[()])
+
+
+class TestPgnAnnotations(unittest.TestCase):
+    """J13.2 : symboles en NAG et évaluations en commentaires ``[%eval]``."""
+
+    def test_eval_format(self):
+        self.assertEqual(review.pgn_eval(42), "0.42")
+        self.assertEqual(review.pgn_eval(-130), "-1.30")
+        self.assertEqual(review.pgn_eval(0), "0.00")
+        self.assertEqual(review.pgn_eval(MATE - 1), "#1")
+        self.assertEqual(review.pgn_eval(MATE - 5), "#3")
+        self.assertEqual(review.pgn_eval(-(MATE - 4)), "#-2")
+        self.assertIsNone(review.pgn_eval(-MATE))  # position matée : rien à évaluer
+        self.assertEqual(review.NAGS, {"inaccuracy": 6, "mistake": 2, "blunder": 4})
+
+    def test_annotated_game_read_back_by_python_chess(self):
+        chess_pgn = pytest.importorskip("chess.pgn")
+        sans = ["f3", "e5", "g4", "Qh4#"]
+        r = evaluate_game(sans)
+        gs = engine.GameState()
+        for san in sans:
+            gs.make_move(notation.parse_san(gs, san))
+        text = pgn.export_pgn(gs, annotations=review.pgn_annotations(r))
+        game = chess_pgn.read_game(io.StringIO(text))
+        self.assertEqual(game.errors, [])
+        nodes = list(game.mainline())
+        self.assertEqual([n.san() for n in nodes], sans)
+        self.assertEqual(nodes[2].nags, {4})  # g4??
+        self.assertEqual(nodes[2].eval().white().mate(), -1)  # mat en 1 pour les Noirs
+        self.assertIsNone(nodes[3].eval())  # mat sur l'échiquier : pas d'évaluation
+        for node, move in zip(nodes[:3], r.moves[:3], strict=True):
+            self.assertEqual(node.nags, {review.NAGS[move.judgement]} if move.judgement else set())
+        self.assertEqual(nodes[0].eval().white().score(), r.evals[1])
+        # Et notre import relit le fichier.
+        self.assertEqual(pgn.parse_pgn(text)[0].moves, sans)
+
+
 class _InlineProcess:
     def __init__(self, target, args=(), daemon=False):
         self._target, self._args = target, args
@@ -161,6 +252,8 @@ class TestReviewer(unittest.TestCase):
         result = reviewer.result()
         assert result is not None
         self.assertEqual(result.moves[2].san, "g4")
+        self.assertTrue(result.moves[2].best)  # variante gardée (J13.1)
+        self.assertEqual(result.moves[3].best[0], "Qh4#")
         reviewer.start(start, moves, "k")  # même partie : rien n'est relancé
         self.assertTrue(reviewer.done)
 

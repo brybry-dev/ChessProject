@@ -5,6 +5,31 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.6.0] - 2026-10-28
+
+Apprendre en jouant.
+
+### Ajouté
+
+- **Mode problèmes** : quatrième mode de l'écran « Nouvelle partie ». 39 positions
+  « trouvez le meilleur coup », du mat en 1 au mat en 3 en passant par les gains de
+  matériel, chacune à solution unique vérifiée. Un coup faux n'est pas joué et peut être
+  corrigé ; indice (`B`, la pièce à jouer), solution (`O`), problème suivant (`N`).
+  Score de la série : problèmes trouvés du premier coup, sans aide. L'évaluation reste
+  cachée tant que le problème n'est pas terminé.
+- **Bilan : le meilleur coup de chaque faute** : chaque faute est une pastille sur la
+  courbe du bilan ; un clic (ou `Tab` puis `Entrée`) montre la position d'avant la
+  faute, le meilleur coup en flèche et la variante du moteur dans le panneau.
+- **Export PGN annoté** : une fois le bilan calculé, le PGN exporté porte les symboles
+  des fautes (`$6` ?!, `$2` ?, `$4` ??) et l'évaluation de chaque position en
+  commentaire (`{[%eval 0.42]}`), lisibles par les autres logiciels d'échecs. Bouton
+  « Exporter PGN annoté » dans la fenêtre de bilan.
+
+### Modifié
+
+- La suite tactique est livrée avec le jeu (`chessproject/assets/tactics.epd`) ;
+  `tools/tactics.py` la lit à ce nouvel emplacement.
+
 ## [1.5.0] - 2026-10-28
 
 Qualité et accessibilité au clavier.

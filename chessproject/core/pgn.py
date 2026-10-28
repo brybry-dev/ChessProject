@@ -14,7 +14,10 @@ pygame.
 - les autres en-têtes fournis (``TimeControl``…), dans l'ordre donné ;
 - les coups en SAN, numérotés depuis le numéro de coup de départ (« 12... Nf6 » si les
   Noirs commencent), terminés par le résultat, en lignes d'au plus 80 caractères coupées
-  entre deux jetons (un jeton n'est jamais coupé).
+  entre deux jetons (un jeton n'est jamais coupé) ;
+- sur demande, une annotation par coup (J13.2, :class:`MoveAnnotation`) : NAG ``$n`` et
+  commentaire ``{...}`` après la SAN (le coup noir qui suit un commentaire reprend son
+  numéro, « 12... »).
 
 **Import** — :func:`parse_pgn` lit un texte contenant une ou plusieurs parties.
 Commentaires ``{...}`` et ``;`` (jusqu'à la fin de la ligne), lignes d'échappement ``%``,
@@ -41,7 +44,7 @@ from __future__ import annotations
 import copy
 import os
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 
 from chessproject.core.engine import GameResult, GameState, Termination
@@ -182,18 +185,43 @@ def wrap_tokens(tokens: list[str], width: int = MAX_LINE_LENGTH) -> list[str]:
     return lines
 
 
-def movetext_tokens(sans: list[str], start_fullmove: int, white_starts: bool) -> list[str]:
+@dataclass(frozen=True, slots=True)
+class MoveAnnotation:
+    """Annotation d'un coup à l'export (J13.2) : NAG (``2`` pour « ? ») et commentaire
+    (sans accolades ; une accolade fermante y est retirée, elle terminerait le
+    commentaire)."""
+
+    nag: int | None = None
+    comment: str | None = None
+
+
+def movetext_tokens(
+    sans: list[str],
+    start_fullmove: int,
+    white_starts: bool,
+    annotations: Sequence[MoveAnnotation | None] = (),
+) -> list[str]:
     """Jetons du texte des coups : ``["1.", "e4", "e5", "2.", ...]`` ou
-    ``["12...", "Nf6", "13.", ...]`` si les Noirs commencent."""
+    ``["12...", "Nf6", "13.", ...]`` si les Noirs commencent. ``annotations`` : une par
+    coup au plus, placée après sa SAN (``"$2"``, ``"{...}"``)."""
     tokens: list[str] = []
     number = start_fullmove
     white = white_starts
+    commented = False
     for index, san in enumerate(sans):
         if white:
             tokens.append(f"{number}.")
-        elif index == 0:
+        elif index == 0 or commented:
             tokens.append(f"{number}...")
         tokens.append(san)
+        note = annotations[index] if index < len(annotations) else None
+        commented = False
+        if note is not None:
+            if note.nag is not None:
+                tokens.append(f"${note.nag}")
+            if note.comment:
+                tokens.append("{" + note.comment.replace("}", "") + "}")
+                commented = True
         if not white:
             number += 1
         white = not white
@@ -204,6 +232,7 @@ def export_pgn(
     game_state: GameState,
     result: GameResult | None = None,
     headers: dict[str, str] | None = None,
+    annotations: Sequence[MoveAnnotation | None] = (),
 ) -> str:
     """Texte PGN complet de la partie ``game_state`` (laissée intacte).
 
@@ -213,7 +242,9 @@ def export_pgn(
     valeurs par défaut du Seven Tag Roster (Event, White, Date « AAAA.MM.JJ »,
     TimeControl…). ``SetUp`` / ``FEN`` sont toujours calculés depuis la partie ;
     ``Termination`` est déduit du résultat (cf. :data:`TERMINATION_TAGS`) sauf s'il est
-    fourni. Lève ``ValueError`` pour un nom d'en-tête invalide ou une date mal formée.
+    fourni. ``annotations`` : NAG et commentaire de chaque coup (cf.
+    :func:`movetext_tokens`). Lève ``ValueError`` pour un nom d'en-tête invalide ou une
+    date mal formée.
     """
     if result is None:
         result = game_state.result()
@@ -246,7 +277,7 @@ def export_pgn(
         tags["Termination"] = TERMINATION_TAGS[result.termination]
 
     lines = [f'[{name} "{_escape(value)}"]' for name, value in tags.items()]
-    tokens = movetext_tokens(sans, start.start_fullmove, start.white_to_move)
+    tokens = movetext_tokens(sans, start.start_fullmove, start.white_to_move, annotations)
     tokens.append(result.pgn)
     return "\n".join([*lines, "", *wrap_tokens(tokens)]) + "\n"
 

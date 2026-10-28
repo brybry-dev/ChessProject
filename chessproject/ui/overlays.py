@@ -337,7 +337,11 @@ class EndGameOverlay(Overlay):
 # --------------------------------------------------------------------------
 class ReviewOverlay(Overlay):
     """Bilan de la partie (J9.3) : courbe d'évaluation (un clic montre la position) et,
-    pour chaque camp, imprécisions, erreurs, gaffes et perte moyenne par coup."""
+    pour chaque camp, imprécisions, erreurs, gaffes et perte moyenne par coup.
+
+    Chaque faute est une pastille sur la courbe (J13.1) : un clic, ou ``Tab`` puis
+    ``Entrée``, montre la position d'avant la faute avec le meilleur coup en flèche et
+    sa variante (``("review_best", demi-coup)``)."""
 
     def __init__(self, reviewer: review.Reviewer, eval_text: Callable[[int], str]) -> None:
         super().__init__()
@@ -360,9 +364,29 @@ class ReviewOverlay(Overlay):
     def on_event(self, e):
         if e.type == p.KEYDOWN and e.key in (p.K_g, p.K_RETURN):
             return "close"
-        if e.type == p.MOUSEBUTTONDOWN and e.button == 1 and self.chart.collidepoint(e.pos):
-            return ("review_goto", self.ply_at(e.pos[0]))
+        if e.type == p.KEYDOWN and e.key == p.K_e and self.reviewer.result() is not None:
+            return "export"
+        if e.type == p.MOUSEBUTTONDOWN and e.button == 1:
+            button = w.hovered_button(self.buttons, e.pos)
+            if button is not None:
+                return self.press(button)
+            if self.chart.collidepoint(e.pos):
+                return ("review_goto", self.ply_at(e.pos[0]))
         return super().on_event(e)
+
+    def _fault_buttons(self, result) -> list[w.Button]:
+        """Une pastille par faute, cliquable et atteinte par ``Tab`` dans l'ordre des coups."""
+        buttons: list[w.Button] = []
+        if result is None:
+            return buttons
+        for move in result.moves:
+            if move.judgement and move.best:
+                b = w.Button(("review_best", move.ply), variant="ghost")
+                b.rect = p.Rect(0, 0, 20, 20)
+                b.rect.center = self._point(move.ply, result.evals[move.ply])
+                b.order = (self.chart.y, b.rect.centerx)
+                buttons.append(b)
+        return buttons
 
     def draw(self, surface, t, mouse, now_ms):
         width = min(720, surface.get_width() - 48)
@@ -376,19 +400,27 @@ class ReviewOverlay(Overlay):
             )
         else:
             subtitle = tr(
-                "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position."
+                "Survolez la courbe pour lire l'évaluation, cliquez pour voir la position, "
+                "ou sur une pastille pour le meilleur coup."
             )
         y = self._title(surface, t, tr("Bilan de la partie"), subtitle)
         self.chart = p.Rect(card.x + 32, y + 26, card.width - 64, 180)
-        self._draw_chart(surface, t, mouse, result)
+        faults = self._fault_buttons(result)
+        self._draw_chart(surface, t, mouse, result, faults)
         self._draw_summary(surface, t, self.chart.bottom + 28, result)
         close = w.Button("close", "Fermer", variant="primary")
         close.rect = p.Rect(0, 0, 120, 44)
         close.rect.bottomright = (card.right - 32, card.bottom - 24)
-        self.buttons = [close, _close_button(card)]
-        w.draw_buttons(surface, t, self.buttons, mouse)
+        # Export annoté (J13.2) : symboles et évaluations, une fois le bilan complet.
+        export = w.Button("export", "Exporter PGN annoté", icon="download", hint="E")
+        export.rect = p.Rect(0, 0, 250, 44)
+        export.rect.bottomright = (close.rect.left - 10, close.rect.bottom)
+        export.enabled = result is not None
+        actions = [export, close, _close_button(card)]
+        self.buttons = [*faults, *actions]
+        w.draw_buttons(surface, t, actions, mouse)
 
-    def _draw_chart(self, surface, t, mouse, result) -> None:
+    def _draw_chart(self, surface, t, mouse, result, faults) -> None:
         chart = self.chart
         w.rounded(surface, th.EVAL_BLACK, chart, 6)
         evals = self.reviewer.evals
@@ -409,6 +441,11 @@ class ReviewOverlay(Overlay):
                     p.draw.circle(surface, color, center, 5)
         if chart.collidepoint(mouse) and evals:
             ply = min(self.ply_at(mouse[0]), len(evals) - 1)
+            fault = None
+            dot = w.hovered_button(faults, mouse)
+            if dot is not None and result is not None:
+                ply = self.ply_at(dot.rect.centerx)
+                fault = result.moves[ply - 1]
             x, y = self._point(ply, evals[ply])
             p.draw.line(surface, t.accent_ink, (x, chart.y), (x, chart.bottom - 1))
             p.draw.circle(surface, t.accent_ink, (x, y), 4)
@@ -419,6 +456,8 @@ class ReviewOverlay(Overlay):
             elif ply > 0:
                 label = tr("Demi-coup {n}", n=ply)
             text = f"{label} · {self.eval_text(evals[ply])}"
+            if fault is not None:
+                text += " · " + tr("meilleur : {san}", san=fault.best[0])
             w.text(
                 surface, text, th.font(13, "medium"), t.text, (chart.x, chart.y - 8), "bottomleft"
             )

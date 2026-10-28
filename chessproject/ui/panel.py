@@ -129,6 +129,9 @@ class PanelModel:
     opening: str | None = None  # « ECO · nom » de l'ouverture (J8.3)
     # Analyse (J9.1) : (variante numérotée, « +0,4 · prof. 9 »), None si désactivée.
     analysis: tuple[str, str] | None = None
+    # Mode problèmes (J13.3) : boutons indice, solution, suivant (actifs ou non) à la
+    # place des actions de partie.
+    puzzle: tuple[bool, bool, bool] | None = None
     can_undo: bool = True
     can_draw: bool = True
     can_resign: bool = True
@@ -162,12 +165,18 @@ class SidePanel:
             w.Button("draw", "Nulle", icon="equal", hint="N"),
             w.Button("resign", "Abandonner", icon="flag", hint="A"),
         ]
+        self.puzzle_actions = [
+            w.Button("hint", "Indice", icon="bulb", hint="B"),
+            w.Button("puzzle_solution", "Solution", icon="check", hint="O"),
+            w.Button("puzzle_next", "Suivant", icon="next", hint="N"),
+        ]
+        self._shown_actions = self.actions
         self._hover: w.Button | None = None
         self._hover_since = 0
 
     # -- interaction -----------------------------------------------------
     def hit(self, pos: tuple[int, int]):
-        for button in (*self.nav, *self.actions):
+        for button in (*self.nav, *self._shown_actions):
             if button.hit(pos):
                 return button.action
         if self._list_rect.collidepoint(pos):
@@ -459,13 +468,18 @@ class SidePanel:
 
     def _draw_actions(self, surface, rect, model: PanelModel, t: Theme, mouse) -> None:
         width = (rect.width - 2 * 8) // 3
-        enabled = (model.can_undo, model.can_draw, model.can_resign)
-        for i, button in enumerate(self.actions):
+        if model.puzzle is not None:
+            actions, enabled = self.puzzle_actions, model.puzzle
+        else:
+            actions = self.actions
+            enabled = (model.can_undo, model.can_draw, model.can_resign)
+            self.actions[1].label = model.draw_label
+        self._shown_actions = actions
+        for i, button in enumerate(actions):
             button.rect = p.Rect(rect.x + i * (width + 8), rect.y, width, rect.height)
             button.enabled = enabled[i]
-        self.actions[1].label = model.draw_label
         compact = width < 130
-        for button in self.actions:
+        for button in actions:
             hint = button.hint
             if compact:
                 button.hint = None

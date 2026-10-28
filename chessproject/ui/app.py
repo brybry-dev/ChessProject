@@ -29,7 +29,7 @@ from chessproject import __version__, i18n, paths, serialization
 from chessproject import settings as settings_module
 from chessproject.ai import analysis, book, levels, review, search
 from chessproject.core import clock as chess_clock_module
-from chessproject.core import engine, notation, pgn
+from chessproject.core import engine, notation, pgn, puzzles
 from chessproject.i18n import plural, tr
 from chessproject.settings import Settings
 from chessproject.ui import layout as layout_module
@@ -37,7 +37,7 @@ from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.board_view import BoardScene, Drag, PieceSet, Renderer
 from chessproject.ui.files import FileDialog, GamePickerOverlay
-from chessproject.ui.new_game import GameConfig, NewGameMenu, config_from
+from chessproject.ui.new_game import PUZZLE, GameConfig, NewGameMenu, config_from
 from chessproject.ui.overlays import (
     AppearanceOverlay,
     ConfirmOverlay,
@@ -325,6 +325,11 @@ class GameController:
         self.hinter = analysis.Analyzer(limits=analysis.HINT_LIMITS)
         # Bilan de la partie (J9.3) : évaluation de chaque position, en arrière-plan.
         self.reviewer = review.Reviewer()
+        # Faute choisie dans le bilan (J13.1) : (clé de la partie, coup jugé), montrée
+        # tant que la position d'avant la faute est affichée.
+        self.review_fault: tuple[object, review.MoveReview] | None = None
+        # Série de problèmes en cours (J13.3) ; None pendant une partie.
+        self.puzzles: puzzles.PuzzleRun | None = None
 
         # Parties du PGN en cours d'import, en attente du choix de l'une d'elles (J11.1).
         self._pgn_games: list[pgn.PgnGame] = []
@@ -444,7 +449,8 @@ class GameController:
             if not self.chess_clock.undo_press():
                 break
 
-    def _new_game(self, game_state, saved_clock=None):
+    def _new_game(self, game_state, saved_clock=None, puzzle_run=None):
+        self.puzzles = puzzle_run
         self.game_state = game_state
         self._close_move_input()
         self.external_result = None
@@ -522,6 +528,9 @@ class GameController:
             elif kind == "review_goto":
                 self.overlay = None
                 self._view(action[1])
+            elif kind == "review_best":
+                self.overlay = None
+                self._show_best(action[1])
             elif kind == "setting":
                 self.set_setting(action[1], action[2])
             elif kind == "file":
@@ -556,6 +565,9 @@ class GameController:
             "rematch": self._restart,
             "confirm_resign": self._resign,
             "confirm_restart": self._restart,
+            "puzzle_next": self._puzzle_next,
+            "puzzle_solution": self._puzzle_solution,
+            "puzzle_restart": self.start_puzzles,
         }
         if action in ("close", "review"):
             if isinstance(self.overlay, EndGameOverlay):
@@ -614,6 +626,8 @@ class GameController:
             self.view_ply = None  # un clic sur l'échiquier ramène à la position actuelle
             return
         if self.game_over or not self.human_turn():
+            return
+        if self.puzzles is not None and self.puzzles.solved:
             return
         row, col = square
         my_color = "w" if self.game_state.white_to_move else "b"
@@ -696,6 +710,8 @@ class GameController:
         return True
 
     def _play(self, move, animate):
+        if self.puzzles is not None and not self._puzzle_answer(move):
+            return
         self.game_state.make_move(move)
         if self.settings.sound:
             _play_move_sound(move)
@@ -735,6 +751,12 @@ class GameController:
             p.K_KP_ENTER: self._open_move_input,
             p.K_SPACE: self._open_move_input,
         }
+        if self.puzzles is not None:
+            # Problèmes (J13.3) : ni annulation, ni nulle, ni abandon, ni revanche.
+            for key in (p.K_z, p.K_r, p.K_a):
+                del keys[key]
+            keys[p.K_n] = self._puzzle_next
+            keys[p.K_o] = self._puzzle_solution
         handler = keys.get(e.key)
         if handler is not None:
             handler()
@@ -948,6 +970,9 @@ class GameController:
 
     def _hint(self):
         """Cherche le meilleur coup de la position actuelle ; update() le dessine."""
+        if self.puzzles is not None:
+            self._puzzle_hint()
+            return
         if not self._can_hint():
             return
         self.view_ply = None
@@ -971,6 +996,116 @@ class GameController:
         self._notify(tr("Indice : {san}", san=line.pv[0]), "accent")
         logger.info("Indice : %s", line.pv[0])
 
+    # -- problèmes (J13.3) ---------------------------------------------
+    def start_puzzles(self, run=None):
+        """Commence une série de problèmes (par défaut toute la série, au début)."""
+        if run is None:
+            run = puzzles.PuzzleRun(puzzles.series(paths.TACTICS_FILE))
+        self.mode, self.player_one, self.player_two = "PvP", True, True
+        self.time_control = chess_clock_module.UNLIMITED
+        self._load_puzzle(run)
+
+    def _load_puzzle(self, run):
+        state = run.position()
+        state.automatic_draws = True
+        self._new_game(state, puzzle_run=run)
+        self.renderer.flip_board = not run.current.white_to_move
+        logger.info("Problème %d / %d : %s", run.index + 1, len(run.puzzles), run.current.name)
+
+    def _puzzle_answer(self, move):
+        """Coup proposé pour le problème : vrai si c'est la solution (il est joué), faux
+        sinon (la pièce revient ; plus rien ne se joue une fois le problème résolu)."""
+        run = self.puzzles
+        assert run is not None
+        if run.solved:
+            return False
+        if not run.answer(self.game_state, move):
+            self._reset_selection()
+            self._notify(tr("Ce n'est pas le meilleur coup : réessayez"), "warning")
+            logger.info("Problème %s : %s refusé", run.current.name, move)
+            return False
+        self.notice = None
+        logger.info("Problème %s résolu", run.current.name)
+        return True
+
+    def _puzzle_hint(self):
+        """Indice : la pièce à jouer est marquée."""
+        run = self.puzzles
+        assert run is not None
+        if run.finished:
+            return
+        run.hint()
+        move = run.solution_move(self.game_state)
+        self.view_ply = None
+        self.marks = {(move.start_row, move.start_col)}
+        self._notify(tr("Indice : la pièce à jouer est marquée"), "accent")
+
+    def _puzzle_solution(self):
+        """Solution en flèche ; le problème compte comme raté, le coup reste jouable."""
+        run = self.puzzles
+        if run is None or run.solved:
+            return
+        run.show_solution()
+        move = run.solution_move(self.game_state)
+        self.view_ply = None
+        self.marks.clear()
+        self.arrows = {((move.start_row, move.start_col), (move.end_row, move.end_col))}
+        self.notice = None
+
+    def _puzzle_next(self):
+        run = self.puzzles
+        if run is None:
+            return
+        if run.next():
+            self._load_puzzle(run)
+            return
+        self._open(
+            ConfirmOverlay(
+                tr("Série terminée"),
+                plural(
+                    run.score,
+                    "{n} problème réussi sur {total}.",
+                    "{n} problèmes réussis sur {total}.",
+                    total=len(run.puzzles),
+                ),
+                tr("Recommencer"),
+                "puzzle_restart",
+            )
+        )
+
+    def _eval_hidden(self):
+        """Évaluation cachée tant que le problème n'est pas terminé."""
+        return self.puzzles is not None and not self.puzzles.finished
+
+    def _puzzle_actions(self):
+        """Boutons du panneau en mode problèmes (indice, solution, suivant) : actifs ?"""
+        if self.puzzles is None:
+            return None
+        open_ = not self.puzzles.finished
+        return (open_, not self.puzzles.solved, True)
+
+    def _puzzle_status(self):
+        run = self.puzzles
+        assert run is not None
+        side = tr("Les blancs") if run.current.white_to_move else tr("Les noirs")
+        if run.solved:
+            if run.is_last:
+                return tr("Bien joué ! N : fin de la série"), "accent"
+            return tr("Bien joué ! N : problème suivant"), "accent"
+        if run.solution_shown:
+            return tr("Solution : {san} · N : problème suivant", san=run.solution), "warning"
+        if run.current.mate_in is not None:
+            return (
+                plural(
+                    run.current.mate_in,
+                    "{side} jouent et matent en {n} coup",
+                    "{side} jouent et matent en {n} coups",
+                    side=side,
+                ),
+                "info",
+            )
+        return tr("{side} jouent et gagnent du matériel", side=side), "info"
+
     # -- bilan (J9.3) ---------------------------------------------------
     def _open_review(self):
         if not self.game_state.move_log:
@@ -986,6 +1121,28 @@ class GameController:
             self.reviewer.stop()  # coup joué ou annulé : le bilan ne correspond plus
             return
         self.reviewer.poll()
+
+    def _show_best(self, ply):
+        """Position d'avant le coup ``ply``, meilleur coup en flèche, variante dans le
+        panneau (J13.1)."""
+        result = self.reviewer.result() if self.reviewer.key == self._key() else None
+        if result is None or not 0 < ply <= len(result.moves):
+            return
+        fault = result.moves[ply - 1]
+        if not fault.best:
+            return
+        self.review_fault = (self._key(), fault)
+        self._view(ply - 1)
+        logger.info("Bilan : %s, meilleur %s", fault.label, fault.best_line)
+
+    def _shown_fault(self):
+        """Faute du bilan dont la position est affichée, ou None."""
+        if self.review_fault is None:
+            return None
+        key, fault = self.review_fault
+        if key != self._key() or self.current_ply != fault.ply - 1:
+            return None
+        return fault
 
     def _review_symbols(self):
         """Symbole (« ?! », « ? », « ?? ») de chaque coup, si le bilan est prêt."""
@@ -1114,7 +1271,15 @@ class GameController:
         opening = book.identify(self.game_state)
         if opening is not None:
             headers["ECO"], headers["Opening"] = opening.eco, i18n.opening_name(opening.name)
-        text = pgn.export_pgn(self.game_state, result=self.result, headers=headers)
+        # Bilan prêt pour cette partie : symboles et évaluations dans le PGN (J13.2).
+        annotations = []
+        result = self.reviewer.result() if self.reviewer.key == self._key() else None
+        if result is not None:
+            annotations = review.pgn_annotations(result)
+            headers["Annotator"] = "ChessProject"
+        text = pgn.export_pgn(
+            self.game_state, result=self.result, headers=headers, annotations=annotations
+        )
         path = Path(path)
         try:
             path.write_text(text, encoding="utf-8")
@@ -1123,7 +1288,8 @@ class GameController:
             self._notify(tr("Export PGN impossible (voir le journal)"), "warning")
             return False
         logger.info("Partie exportée en PGN dans %s", path)
-        self._notify(tr("PGN exporté : {path}", path=path), "accent")
+        message = "PGN annoté exporté : {path}" if annotations else "PGN exporté : {path}"
+        self._notify(tr(message, path=path), "accent")
         self._remember_pgn_dir(path)
         return True
 
@@ -1385,6 +1551,7 @@ class GameController:
 
         if (
             self.game_over
+            and self.puzzles is None
             and self.overlay is None
             and not self.end_dismissed
             and not self.renderer.animating(now)
@@ -1403,7 +1570,14 @@ class GameController:
         self.analyzer.poll()
 
     def _analysis_text(self):
-        """(variante, « +0,4 · prof. 9 ») pour le panneau, ou None."""
+        """(variante, « +0,4 · prof. 9 ») pour le panneau, ou None. Devant la position
+        d'une faute choisie dans le bilan : la variante du meilleur coup (J13.1)."""
+        fault = self._shown_fault()
+        if fault is not None:
+            return (
+                tr("Meilleur coup : {line}", line=fault.best_line),
+                tr("au lieu de {san}", san=fault.san + fault.symbol),
+            )
         if not self.settings.show_analysis:
             return None
         line = self.analyzer.line
@@ -1452,6 +1626,15 @@ class GameController:
             self.overlay.focus.draw(self.screen, t, self.overlay.buttons)
 
     def _info_text(self):
+        if self.puzzles is not None:
+            run = self.puzzles
+            return " · ".join(
+                [
+                    tr("Problèmes"),
+                    tr("{index} / {total}", index=run.index + 1, total=len(run.puzzles)),
+                    tr("Score {score} / {done}", score=run.score, done=run.done),
+                ]
+            )
         mode = {"PvC": "Joueur vs IA", "PvP": "Joueur vs Joueur", "CvC": "IA vs IA"}[self.mode]
         parts = [tr(mode)]
         if self.mode != "PvP":
@@ -1479,6 +1662,11 @@ class GameController:
         pending = None
         if self._right_start is not None and self._right_end not in (None, self._right_start):
             pending = (self._right_start, self._right_end)
+        arrows = self.arrows
+        fault = self._shown_fault()
+        if fault is not None:
+            best = notation.parse_san(state, fault.best[0])
+            arrows = arrows | {((best.start_row, best.start_col), (best.end_row, best.end_col))}
         return BoardScene(
             board=state.board,
             cursor=self.cursor,
@@ -1487,7 +1675,7 @@ class GameController:
             targets=targets,
             check=check,
             drag=self.drag,
-            arrows=self.arrows,
+            arrows=arrows,
             marks=self.marks,
             pending_arrow=pending,
         )
@@ -1518,8 +1706,8 @@ class GameController:
     def _draw_eval_bar(self, t, state):
         rect = self.layout.eval_bar
         assert rect is not None
-        cp = self._eval(state, self.current_ply)
-        target = eval_share(cp)
+        # Problème en cours : la barre reste au milieu, elle trahirait la solution.
+        target = 0.5 if self._eval_hidden() else eval_share(self._eval(state, self.current_ply))
         self._eval_shown += (target - self._eval_shown) * 0.25
         w.rounded(self.screen, th.EVAL_BLACK, rect, 6)
         white_h = round(rect.height * self._eval_shown)
@@ -1627,6 +1815,8 @@ class GameController:
             return text, "accent"
         if self.notice is not None:
             return self.notice[0], self.notice[1]
+        if self.puzzles is not None:
+            return self._puzzle_status()
         if self.game_over:
             return tr(self.result.description), "accent"
         white = self.game_state.white_to_move
@@ -1661,7 +1851,7 @@ class GameController:
             else tr("Nulle")
         )
         eval_label = None
-        if self.layout.eval_bar is not None:
+        if self.layout.eval_bar is not None and not self._eval_hidden():
             eval_label = eval_text(self._eval(state, ply))
         return PanelModel(
             top=top,
@@ -1674,6 +1864,7 @@ class GameController:
             eval_text=eval_label,
             opening=self._opening_label(state, ply),
             analysis=self._analysis_text(),
+            puzzle=self._puzzle_actions(),
             can_undo=bool(self.game_state.move_log),
             can_draw=can_act,
             can_resign=can_act,
@@ -1775,7 +1966,12 @@ class App:
             )
         )
         config = action[1] if isinstance(action, tuple) else config_from(self.settings)
+        puzzle = config.mode == PUZZLE
+        if puzzle:  # problèmes (J13.3) : deux « humains », le joueur joue le camp au trait
+            config = replace(config, mode="PvP")
         game = self._ensure_game(config)
+        if puzzle and action not in ("load", "import"):
+            game.start_puzzles()
         game.suspended = False
         self.scene = game
         if action == "load":

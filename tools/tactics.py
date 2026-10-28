@@ -1,7 +1,8 @@
 """
 Suite tactique (J3.0) : vérification des solutions et mesure de l'IA par UCI
 ---------------------------------------------------------------------------
-Format EPD (``tests/data/tactics.epd``), une position par ligne ::
+Format EPD (``chessproject/assets/tactics.epd``, lu par
+:mod:`chessproject.core.puzzles`), une position par ligne ::
 
     <4 champs FEN> bm <coup SAN> [<coup SAN> ...]; [dm <N>;] id "<nom>";
 
@@ -28,7 +29,6 @@ Mesure ::
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 import time
 from collections.abc import Sequence
@@ -37,71 +37,25 @@ from pathlib import Path
 
 from uci_client import EngineError, UciProcess, go_command, move_timeout
 
+from chessproject import paths
 from chessproject.core.engine import GameState, Move
-from chessproject.core.fen import load_fen
 from chessproject.core.notation import NotationError, parse_san, to_san, to_uci
+from chessproject.core.puzzles import Puzzle as Tactic
+from chessproject.core.puzzles import format_epd, parse_epd_line
+from chessproject.core.puzzles import load_suite as _load_suite
 
-DEFAULT_SUITE = Path(__file__).resolve().parent.parent / "tests" / "data" / "tactics.epd"
+DEFAULT_SUITE = paths.TACTICS_FILE
 DEFAULT_ENGINE = "python -m chessproject.uci"
 
 
 # --------------------------------------------------------------------------
-# Format EPD
+# Format EPD : lecture et écriture dans chessproject.core.puzzles (J13.3)
 # --------------------------------------------------------------------------
-@dataclass(frozen=True)
-class Tactic:
-    fen: str  # 4 champs
-    best_moves: tuple[str, ...]  # SAN
-    mate_in: int | None
-    name: str
-
-    def game_state(self) -> GameState:
-        return load_fen(self.fen)
-
-    def best_moves_uci(self) -> set[str]:
-        gs = self.game_state()
-        return {to_uci(parse_san(gs, san)) for san in self.best_moves}
-
-
-_OPERATION_RE = re.compile(r'\s*([A-Za-z][A-Za-z0-9_]*)\s+("[^"]*"|[^;]*);')
-
-
-def parse_epd_line(line: str) -> Tactic:
-    """Lit une ligne EPD (``ValueError`` si elle est mal formée)."""
-    fields = line.split(maxsplit=4)
-    if len(fields) < 5:
-        raise ValueError(f"Ligne EPD incomplète : {line!r}")
-    fen = " ".join(fields[:4])
-    operations: dict[str, str] = {}
-    rest = fields[4]
-    position = 0
-    for match in _OPERATION_RE.finditer(rest):
-        if rest[position : match.start()].strip():
-            raise ValueError(f"Opération EPD illisible dans : {line!r}")
-        operations[match.group(1)] = match.group(2).strip().strip('"')
-        position = match.end()
-    if rest[position:].strip():
-        raise ValueError(f"Fin de ligne EPD illisible : {line!r}")
-    if "bm" not in operations or "id" not in operations:
-        raise ValueError(f"Opérations bm et id obligatoires : {line!r}")
-    mate_in = int(operations["dm"]) if "dm" in operations else None
-    return Tactic(fen, tuple(operations["bm"].split()), mate_in, operations["id"])
+__all__ = ["Tactic", "format_epd", "load_suite", "parse_epd_line"]
 
 
 def load_suite(path: Path = DEFAULT_SUITE) -> list[Tactic]:
-    tactics = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line and not line.startswith("#"):
-            tactics.append(parse_epd_line(line))
-    return tactics
-
-
-def format_epd(tactic: Tactic) -> str:
-    ops = f"bm {' '.join(tactic.best_moves)};"
-    if tactic.mate_in is not None:
-        ops += f" dm {tactic.mate_in};"
-    return f'{tactic.fen} {ops} id "{tactic.name}";'
+    return _load_suite(path)
 
 
 # --------------------------------------------------------------------------

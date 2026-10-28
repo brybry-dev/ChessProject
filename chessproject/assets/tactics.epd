@@ -5,6 +5,7 @@
 # - mats : solveur exhaustif ; bm = tous les coups qui matent en N, aucun mat plus court ;
 # - gains : minimax matériel 4 demi-coups + captures ; bm = l'unique coup qui gagne au
 #   moins la valeur d'un cavalier.
+# Le mode problèmes du jeu (J13.3) propose les positions dont bm ne compte qu'un coup.
 # Sources : mats et pièges d'ouverture classiques (partie de l'Opéra, Immortelle,
 # Toujours jeune, Réti-Tartakower 1910, Ed. Lasker-Thomas 1912, mat de Légal, du berger,
 # mat étouffé, pièges de Lasker et Englund…), WAC.001, positions construites (fourchettes,

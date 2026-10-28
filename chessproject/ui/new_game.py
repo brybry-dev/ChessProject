@@ -8,19 +8,26 @@ choix sont mémorisés dans les préférences pour la partie suivante.
 
 import random
 from dataclasses import dataclass, replace
+from functools import cache
 
 import pygame as p
 
-from chessproject import i18n
+from chessproject import i18n, paths
 from chessproject.ai import levels
-from chessproject.core import clock
+from chessproject.core import clock, puzzles
 from chessproject.i18n import tr
 from chessproject.settings import Settings
 from chessproject.ui import theme as th
 from chessproject.ui import widgets as w
 from chessproject.ui.theme import Theme
 
-MODES = [("PvC", "Joueur vs IA"), ("PvP", "Joueur vs Joueur"), ("CvC", "IA vs IA")]
+PUZZLE = "Puzzle"
+MODES = [
+    ("PvC", "Joueur vs IA"),
+    ("PvP", "Joueur vs Joueur"),
+    ("CvC", "IA vs IA"),
+    (PUZZLE, "Problèmes"),
+]
 COLORS = [("w", "Blancs"), ("r", "Au hasard"), ("b", "Noirs")]
 LEVEL_HINTS = {
     "Débutant": "pour débuter",
@@ -50,6 +57,9 @@ class GameConfig:
 def config_from(settings: Settings, rng: random.Random | None = None) -> GameConfig:
     """Partie décrite par les choix mémorisés (couleur « au hasard » tirée ici)."""
     mode = settings.mode
+    if mode == PUZZLE:
+        # Problèmes (J13.3) : le joueur joue le camp au trait, sans pendule.
+        return GameConfig(mode, True, True, settings.level, clock.UNLIMITED)
     if mode == "PvP":
         white, black = True, True
     elif mode == "CvC":
@@ -60,6 +70,15 @@ def config_from(settings: Settings, rng: random.Random | None = None) -> GameCon
             color = (rng or random.Random()).choice("wb")
         white, black = color == "w", color == "b"
     return GameConfig(mode, white, black, settings.level, settings.control)
+
+
+@cache
+def puzzle_count() -> int:
+    """Nombre de problèmes de la série (0 si le fichier manque)."""
+    try:
+        return len(puzzles.series(paths.TACTICS_FILE))
+    except (OSError, ValueError):
+        return 0
 
 
 def _strength_label(level: levels.Level) -> str:
@@ -95,6 +114,11 @@ class NewGameMenu:
         else:
             cadence = tr("cadence {control}", control=control.label)
         level = tr(s.level)
+        if s.mode == PUZZLE:
+            return tr(
+                "Trouvez le meilleur coup : {n} problèmes, du mat en 1 au mat en 3.",
+                n=puzzle_count(),
+            )
         if s.mode == "PvP":
             return tr("Deux joueurs sur le même écran, {cadence}.", cadence=cadence)
         if s.mode == "CvC":
@@ -168,12 +192,12 @@ class NewGameMenu:
 
         w.text(surface, tr("MODE"), label, t.muted, (x, y))
         y += 24
-        third = (inner - 20) // 3
+        quarter = (inner - 30) // 4
         for i, (value, text) in enumerate(MODES):
             b = w.Button(
                 ("choose", "mode", value), text, variant="choice", selected=s.mode == value
             )
-            b.rect = p.Rect(x + i * (third + 10), y, third, 52)
+            b.rect = p.Rect(x + i * (quarter + 10), y, quarter, 52)
             buttons.append(b)
         y += 52 + 26
 
@@ -191,7 +215,7 @@ class NewGameMenu:
                 buttons.append(b)
                 decorations.append(("color", (b.rect, value, text)))
             level_x = x + color_w + 28
-        if s.mode != "PvP":
+        if s.mode not in ("PvP", PUZZLE):
             level_w = x + inner - level_x
             w.text(surface, tr("NIVEAU DE L'IA"), label, t.muted, (level_x, y))
             lw = (level_w - 4 * 8) // 5
@@ -204,24 +228,37 @@ class NewGameMenu:
                 b.rect = p.Rect(level_x + i * (lw + 8), y + 24, lw, 92)
                 buttons.append(b)
                 decorations.append(("level", (b.rect, i, level)))
-        else:
-            box = p.Rect(x, y + 24, inner, 92)
-            w.rounded(surface, t.surface2, box, 10)
-            w.text(
+        elif s.mode == PUZZLE:
+            self._note(
                 surface,
-                tr("Deux joueurs se partagent l'écran : l'échiquier reste côté blancs."),
-                th.font(14),
-                t.muted,
-                box.center,
-                "center",
+                t,
+                p.Rect(x, y + 24, inner, 92),
+                "Chaque problème est une position de partie : jouez le coup qui mate "
+                "ou gagne du matériel. Réussi du premier coup, sans aide, il compte "
+                "dans le score de la série.",
+            )
+        else:
+            self._note(
+                surface,
+                t,
+                p.Rect(x, y + 24, inner, 92),
+                "Deux joueurs se partagent l'écran : l'échiquier reste côté blancs.",
             )
         y += 24 + 92 + 26
 
-        w.text(surface, tr("CADENCE"), label, t.muted, (x, y))
+        w.text(surface, tr("CADENCE" if s.mode != PUZZLE else "AIDES"), label, t.muted, (x, y))
         y += 24
         sixth = (inner - 5 * 8) // 6
         current = s.control
-        for i, control in enumerate(clock.PRESETS):
+        if s.mode == PUZZLE:
+            self._note(
+                surface,
+                t,
+                p.Rect(x, y, inner, 64),
+                "Sans pendule. Indice (B) : la pièce à jouer ; solution (O) ; "
+                "problème suivant (N).",
+            )
+        for i, control in enumerate(clock.PRESETS if s.mode != PUZZLE else ()):
             b = w.Button(
                 ("choose", "time_control", control.pgn_tag),
                 variant="choice",
@@ -281,6 +318,15 @@ class NewGameMenu:
         for kind, data in decorations:
             self._decorate(surface, t, kind, data)
         self.focus.draw(surface, t, buttons)
+
+    def _note(self, surface, t: Theme, box: p.Rect, text: str) -> None:
+        """Encadré d'explication à la place de réglages sans objet dans ce mode."""
+        w.rounded(surface, t.surface2, box, 10)
+        f = th.font(14)
+        lines = w.wrap(tr(text), f, box.width - 48)
+        for i, line in enumerate(lines):
+            center = (box.centerx, box.centery + round((i - (len(lines) - 1) / 2) * 20))
+            w.text(surface, line, f, t.muted, center, "center")
 
     def _decorate(self, surface, t: Theme, kind: str, data) -> None:
         if kind == "color":

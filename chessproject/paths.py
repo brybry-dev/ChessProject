@@ -20,6 +20,7 @@ IMAGES_DIR = ASSETS_DIR / "images"
 SOUNDS_DIR = ASSETS_DIR / "sounds"
 PIECES_DIR = ASSETS_DIR / "pieces"  # jeu vectoriel « Chessnut » (Apache 2.0)
 FONTS_DIR = ASSETS_DIR / "fonts"  # IBM Plex Sans / Mono (SIL OFL 1.1)
+TACTICS_FILE = ASSETS_DIR / "tactics.epd"  # suite tactique (J3.0), problèmes (J13.3)
 
 SAVE_FILE_NAME = "saved_game.json"
 SAVES_DIR_NAME = "saves"

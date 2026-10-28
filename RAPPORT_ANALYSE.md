@@ -1237,6 +1237,66 @@ joueur, le bilan signale les fautes sans montrer le meilleur coup.
 | J13.2 | Export PGN annoté : symboles (`$2`, `$4`, `$6`) et évaluations en commentaires `{[%eval 0.42]}` | Relu par python-chess (NAG et commentaires) ; réimporté sans erreur | S |
 | J13.3 | Mode problèmes : positions de `tests/data/tactics.epd` (et suivantes), « trouvez le meilleur coup », indice, solution, score de la série | Chaque problème a une solution unique vérifiée par le moteur ; parcours testé sans écran | L |
 
+> **J13.1 ✅ (2026-10-28)** : le bilan garde la variante principale de chaque recherche
+> (`MoveReview.best`, en SAN). Chaque coup en est rejoué et vérifié ; la variante
+> s'arrête au premier coup qui ne serait pas légal (`review.legal_line`), une table de
+> transposition pouvant la prolonger par un coup d'une autre position. Dans la fenêtre
+> de bilan, chaque faute est une pastille cliquable sur la courbe, atteinte aussi par
+> `Tab` dans l'ordre des coups (`Button.order`) ; la survoler affiche le meilleur coup.
+> L'activer montre la position d'avant la faute, le meilleur coup en flèche (distincte
+> des flèches du joueur, qui restent) et, dans le panneau, la variante numérotée
+> (« Meilleur coup : 3... g6 4. Qf3 Nf6 · au lieu de Nf6?? »). Flèche et variante
+> suivent cette position : elles disparaissent quand on en change et reviennent quand
+> on y retourne. Testé : variante légale pour chaque coup de deux parties, meilleur
+> coup qui pare le mat du berger, troncature d'une variante illégale, clic et clavier
+> depuis la fenêtre de bilan.
+>
+> **J13.2 ✅ (2026-10-28)** : `pgn.export_pgn` accepte une annotation par coup
+> (`MoveAnnotation` : NAG et commentaire, placés après la SAN ; le coup noir qui suit un
+> commentaire reprend son numéro, « 1... e5 » ; une `}` est retirée du commentaire).
+> `review.pgn_annotations` traduit le bilan : `$6` ?!, `$2` ?, `$4` ?? et
+> `{[%eval 0.42]}` pour la position atteinte (pions, point de vue des Blancs ; `#-3` pour
+> un mat des Noirs en 3 ; rien pour une position déjà matée). L'export est annoté dès que
+> le bilan de la partie est complet, avec l'en-tête `[Annotator "ChessProject"]` ; la
+> fenêtre de bilan a son bouton « Exporter PGN annoté » (`E`), actif une fois le bilan
+> fini. Testé : python-chess relit NAG et évaluations sans erreur (`node.nags`,
+> `node.eval()`), sur un texte construit et sur le bilan réel du mat du lion, et notre
+> import relit les mêmes fichiers.
+>
+> **J13.3 ✅ (2026-10-28)** : quatrième mode sur l'écran « Nouvelle partie »,
+> « Problèmes ». La suite tactique passe dans le paquet (`chessproject/assets/tactics.epd`,
+> livrée avec le jeu et les exécutables) ; sa lecture passe de `tools/tactics.py` à
+> `chessproject.core.puzzles`, que l'outil réutilise. La série reprend les 39 positions
+> à solution unique (sur 44 ; les 5 autres acceptent plusieurs coups), des mats en 1 aux
+> mats en 3, gains de matériel entre les deux.
+>
+> - **Déroulement** (`PuzzleRun`) : le joueur joue le camp au trait, sans pendule, à la
+>   souris, au curseur ou en tapant le coup. Un coup faux n'est pas joué (« Ce n'est pas
+>   le meilleur coup : réessayez ») ; le bon coup est joué et termine le problème (pas
+>   de carte de fin de partie après un mat). Indice (`B`) : la pièce à jouer est
+>   marquée. Solution (`O`) : le coup en flèche, qui reste jouable. Suivant (`N`). Les
+>   trois boutons remplacent Annuler / Nulle / Abandonner, dont les touches sont
+>   inactives. L'évaluation (barre et chiffre) est cachée tant que le problème n'est
+>   pas terminé : elle trahirait la solution.
+> - **Score** : un problème compte s'il est trouvé du premier coup, sans indice ni
+>   solution ; un problème sauté est raté. L'en-tête affiche « Problèmes · 10 / 39 ·
+>   Score 7 / 9 » ; la fin de la série donne le total et propose de recommencer.
+> - **Solutions vérifiées** (`tests/test_puzzles.py`) : chacune est unique (solveur
+>   exhaustif de `tools/tactics.py` : `bm` est l'ensemble exact des coups qui matent en
+>   N, ou l'unique gain d'au moins un cavalier) et trouvée par le moteur du jeu en
+>   recherche complète (sans élagage) à la profondeur du mat annoncé, le mat étant
+>   trouvé exactement à cette distance ; 4 demi-coups pour les gains. Avec l'élagage du
+>   jeu (J10.2), un mat en 3 (Lasker-Thomas) ne se trouve qu'à la profondeur 7 : la
+>   vérification se fait donc sans. Les 6 mats en 3 (≈ 20 s) sont dans les tests longs.
+> - **Parcours sans écran** : la série entière au clavier (solution tapée, un problème
+>   sur trois avec d'abord un coup faux, score attendu), la fin de série et une nouvelle
+>   série ; coup faux, indice et coup juste à la souris ; solution puis coup joué ;
+>   sortie du mode par « Nouvelle partie » ; écrans du mode en anglais sans un mot de
+>   français.
+>
+> **Publication `v1.6.0` (2026-10-28)** : J13 terminé ; version, CHANGELOG, README et
+> TESTS.md à jour. Suite rapide : 738 tests ; tests longs : 74.
+
 #### J14 — v1.7 : niveaux mieux mesurés (budget de calcul à fixer)
 
 | # | Tâche | Critère d'acceptation | Taille |

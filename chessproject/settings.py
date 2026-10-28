@@ -27,7 +27,7 @@ SETTINGS_VERSION = 1
 
 THEMES = ("sombre", "clair")
 BOARDS = ("Ardoise", "Noyer", "Forêt", "Marine")
-MODES = ("PvC", "PvP", "CvC")
+MODES = ("PvC", "PvP", "CvC", "Puzzle")  # Puzzle : série de problèmes (J13.3)
 COLORS = ("w", "r", "b")  # blancs, au hasard, noirs
 
 
