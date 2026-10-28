@@ -5,6 +5,28 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.3.0] - 2026-10-28
+
+Moteur plus rapide.
+
+### Modifié
+
+- **Moteur environ 1,8 fois plus rapide** (19 000 positions par seconde au lieu de
+  10 000 sur la machine de mesure), sans changer ses coups : les niveaux gardent leur
+  force et leur Elo, et réfléchissent environ deux fois moins longtemps (Expert ≈ 2 s).
+- **Analyse, indice et moteur UCI plus forts** : la recherche à pleine force élague
+  les coups peu prometteurs (PVS, coup nul, réduction des coups tardifs) et voit plus
+  loin dans le même temps, environ +24 Elo mesurés à 400 ms par coup. Les niveaux de
+  difficulté et le bilan de partie n'utilisent pas cet élagage.
+- Moteur UCI : le temps de réflexion par coup (`go wtime/btime`) est calculé comme
+  pour la pendule du jeu : un peu moins de temps en début de partie, jamais plus du
+  tiers du temps restant.
+
+### Ajouté
+
+- `tools/bench.py` : mesure de la vitesse du moteur (positions par seconde) et profil ;
+  option `--features` du moteur UCI pour comparer les techniques de recherche.
+
 ## [1.2.0] - 2026-10-28
 
 Mode analyse : variante principale, indice et bilan de la partie.

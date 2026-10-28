@@ -1068,6 +1068,10 @@ Une réécriture en bitboards ne serait envisagée que si J10.1–J10.2 ne suffi
 > début de partie à 60 s : 1,5 s par coup au lieu de 2 s, jamais plus du tiers du temps
 > restant. Tests communs dans `tests/test_clock.py` ; `tests/test_uci.py` vérifie que
 > `go` passe par ce calcul avec les bons arguments.
+>
+> **Publication `v1.3.0` (2026-10-28)** : J10 terminé ; version et CHANGELOG à jour. Une
+> réécriture en bitboards n'est pas engagée : le gain de J10.1–J10.2 suffit aux niveaux
+> actuels.
 
 #### J11 — v1.4 : confort (2–3 j)
 
