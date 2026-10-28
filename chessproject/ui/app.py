@@ -1591,6 +1591,13 @@ def main(argv: list[str] | None = None) -> None:
 
     _configure_logging()
     p.init()
+    logger.info(
+        "pygame %s, SDL %s, SDL_image %s, système %s",
+        p.version.ver,
+        ".".join(map(str, p.get_sdl_version())),
+        ".".join(map(str, p.image.get_sdl_image_version() or ())),
+        sys.platform,
+    )
     if not args.smoke_test:
         _load_sounds()
     info = p.display.Info()
