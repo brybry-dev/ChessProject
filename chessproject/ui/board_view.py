@@ -57,13 +57,13 @@ class PieceSet:
             data = re.sub(r"<svg\b", f'<svg width="{size}" height="{size}"', data, count=1)
             image = p.image.load(io.BytesIO(data.encode("utf-8")), "piece.svg")
             if image.get_size() != (size, size):
-                image = p.transform.smoothscale(image, (size, size))
+                image = w.smoothscale(image, (size, size))
         except (OSError, p.error, ValueError) as ex:
             logger.warning("Pièce %s : SVG indisponible (%s), image PNG utilisée", piece, ex)
             png = self.images_dir / f"{piece}.png"
             if not png.exists():
                 raise FileNotFoundError(f"Image not found: {png}") from ex
-            image = p.transform.smoothscale(p.image.load(str(png)), (size, size))
+            image = w.smoothscale(p.image.load(str(png)), (size, size))
         if p.display.get_surface() is not None:
             image = image.convert_alpha()
         return image

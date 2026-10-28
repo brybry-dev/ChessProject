@@ -5,6 +5,14 @@ Toutes les évolutions notables du projet. Format inspiré de
 [sémantique](https://semver.org/lang/fr/). Le détail des tâches et des mesures est dans
 [RAPPORT_ANALYSE.md](RAPPORT_ANALYSE.md).
 
+## [1.1.1] - 2026-10-28
+
+### Corrigé
+
+- **Windows** : pièces, icônes et pastilles des coups possibles n'apparaissaient pas.
+  Le lissage des images utilise maintenant le même filtre sur tous les systèmes, et les
+  tests vérifient que ces images ont des pixels visibles, pas seulement leur taille.
+
 ## [1.1.0] - 2026-10-25
 
 Un adversaire calibré : niveaux resserrés et mesurés en Elo, livre d'ouvertures.
@@ -77,6 +85,7 @@ PGN, interface refondue, exécutables pour Windows, macOS et Linux.
 
 Version initiale : jeu Pygame avec IA NegaMax, trois modes de jeu.
 
+[1.1.1]: https://github.com/brybry-dev/ChessProject/releases/tag/v1.1.1
 [1.1.0]: https://github.com/brybry-dev/ChessProject/releases/tag/v1.1.0
 [1.0.0]: https://github.com/brybry-dev/ChessProject/releases/tag/v1.0.0
 [0.1.0]: https://github.com/brybry-dev/ChessProject/commits/master

@@ -35,6 +35,12 @@ from chessproject.ui.new_game import GameConfig, NewGameMenu, config_from
 PIECES: PieceSet = PieceSet() if _PYGAME_OK else None  # type: ignore[assignment]
 
 
+def _opaque_pixels(image: p.Surface) -> int:
+    """Nombre de pixels visibles (alpha >= 128) : une image transparente n'en a aucun."""
+    width, height = image.get_size()
+    return sum(image.get_at((x, y)).a >= 128 for x in range(width) for y in range(height))
+
+
 def _event(kind, **data):
     return p.event.Event(kind, data)
 
@@ -433,19 +439,44 @@ class OverlayTests(unittest.TestCase):
     def test_icons_render(self):
         for name in widgets.ICONS:
             with self.subTest(icon=name):
-                self.assertEqual(widgets.icon(name, 20, (255, 255, 255)).get_size(), (20, 20))
+                image = widgets.icon(name, 20, (255, 255, 255))
+                self.assertEqual(image.get_size(), (20, 20))
+                self.assertGreater(_opaque_pixels(image), 0)
+
+    def test_discs_render(self):
+        disc = widgets._disc((255, 255, 255, 255), 10, 0)
+        self.assertGreater(_opaque_pixels(disc), 0)
+
+    def test_smoothscale_keeps_the_image_whatever_the_native_filter(self):
+        # Sous Windows, les filtres MMX / SSE de pygame rendaient pièces et icônes
+        # invisibles : widgets.smoothscale doit donner la même image quel que soit le
+        # filtre choisi auparavant.
+        source = p.Surface((80, 80), p.SRCALPHA)
+        source.fill((200, 30, 30, 255))
+        for backend in ("GENERIC", "MMX", "SSE"):
+            with self.subTest(backend=backend):
+                try:
+                    p.transform.set_smoothscale_backend(backend)
+                except ValueError:
+                    continue  # filtre absent sur cette machine
+                image = widgets.smoothscale(source, (20, 20))
+                self.assertEqual(tuple(image.get_at((10, 10))), (200, 30, 30, 255))
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
 class PieceSetTests(unittest.TestCase):
     def test_vector_pieces_are_rendered_at_the_requested_size(self):
         for size in (24, 77, 120):
-            self.assertEqual(PIECES.get_image("bQ", size).get_size(), (size, size))
+            image = PIECES.get_image("bQ", size)
+            self.assertEqual(image.get_size(), (size, size))
+            self.assertGreater(_opaque_pixels(image), size * size // 10)
 
     def test_falls_back_to_the_png_images(self):
         pieces = PieceSet(pieces_dir=Path("/inexistant"))
         with self.assertLogs("chessproject.ui.board_view", "WARNING"):
-            self.assertEqual(pieces.get_image("wK", 50).get_size(), (50, 50))
+            image = pieces.get_image("wK", 50)
+        self.assertEqual(image.get_size(), (50, 50))
+        self.assertGreater(_opaque_pixels(image), 50 * 50 // 10)
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
