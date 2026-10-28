@@ -925,6 +925,18 @@ Le livre ne joue qu'à partir de la position initiale : les mini-ligues partent 
 | J9.2 | Bouton « Indice » (meilleur coup en flèche) | Désactivé en partie classée contre l'IA si l'utilisateur le choisit | S |
 | J9.3 | Courbe d'évaluation et bilan de fin de partie (imprécisions, erreurs, gaffes selon la chute d'évaluation) | Seuils documentés et testés sur des parties de référence | M |
 
+> **J9.1 ✅ (2026-10-28)** : `Searcher.think(..., on_iteration=…)` signale chaque
+> profondeur achevée avec sa variante principale (lue dans la table de transposition).
+> `ai/analysis.py` : processus d'analyse de la position affichée (une ligne SAN par
+> profondeur, score du point de vue des Blancs, arrêt de lui-même après 15 s) et
+> `Analyzer`, qui le relance quand la position affichée change (coup joué, revue de la
+> partie) et l'arrête quand l'option est coupée. Option « Variante principale » dans
+> « Apparence » et touche `V`, désactivée par défaut ; la ligne s'affiche au-dessus de
+> l'historique (« 4. Bxc6 dxc6 5. Nxe5 Nf6 · +0,7 · prof. 4 ») et la barre
+> d'évaluation reprend son score. Analyse et IA tournent dans deux processus : la force
+> de l'IA, bornée en nœuds, n'en dépend pas ; seul le plafond de temps peut être atteint
+> plus tôt sur une machine chargée. 21 nouveaux tests.
+
 #### J10 — v1.3 : moteur plus rapide (3–5 j)
 
 | # | Tâche | Critère d'acceptation | Taille |

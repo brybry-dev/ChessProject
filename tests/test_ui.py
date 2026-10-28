@@ -5,9 +5,11 @@ pygame au contrôleur et on vérifie l'état de la partie, pas les pixels.
 """
 
 import os
+import queue
 import random
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -24,7 +26,7 @@ except Exception:  # pragma: no cover - environnement sans SDL
     _PYGAME_OK = False
 
 from chessproject import settings as settings_module
-from chessproject.ai import levels
+from chessproject.ai import analysis, levels, search
 from chessproject.core import clock, engine, notation
 from chessproject.core.fen import load_fen
 from chessproject.settings import Settings
@@ -83,6 +85,7 @@ class SettingsTests(unittest.TestCase):
             theme="clair",
             board="Noyer",
             show_eval=False,
+            show_analysis=True,
             mode="PvP",
             level="Expert",
             time_control=clock.RAPID_10_5.pgn_tag,
@@ -354,6 +357,84 @@ class PanelContentTests(unittest.TestCase):
         self.assertEqual(gc._status()[0], "À vous de jouer")
         gc._notify("Partie sauvegardée", "accent")
         self.assertEqual(gc._status(), ("Partie sauvegardée", "accent"))
+
+
+class _InlineProcess:
+    """Faux multiprocessing.Process : exécute la cible au démarrage."""
+
+    def __init__(self, target, args=(), daemon=False):
+        self._target, self._args = target, args
+
+    def start(self):
+        self._target(*self._args)
+
+    def is_alive(self):
+        return False
+
+    def terminate(self):
+        pass
+
+
+@unittest.skipUnless(_PYGAME_OK, "SDL indisponible")
+class AnalysisTests(unittest.TestCase):
+    """J9.1 : variante principale de la position affichée, désactivée par défaut."""
+
+    def setUp(self):
+        self.gc = _controller()
+        self.gc.analyzer = analysis.Analyzer(
+            process=_InlineProcess, make_queue=queue.Queue, limits=search.SearchLimits(depth=2)
+        )
+        for san in ["e4", "e5", "Nf3"]:
+            self.gc.game_state.make_move(notation.parse_san(self.gc.game_state, san))
+        self.gc.move_made = True
+
+    def _analysis(self):
+        self.gc.update()
+        return self.gc._panel_model(self.gc.state_at(self.gc.current_ply)).analysis
+
+    def test_off_by_default(self):
+        self.assertFalse(Settings().show_analysis)
+        self.assertIsNone(self._analysis())
+        self.assertIsNone(self.gc.analyzer.key)
+
+    def test_v_shows_the_line_of_the_current_position(self):
+        changes: list[Settings] = []
+        self.gc.on_settings_change = changes.append
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_v))
+        self.assertTrue(changes[-1].show_analysis)
+        line, info = self._analysis()
+        self.assertTrue(line.startswith("2... "), line)  # les noirs au trait
+        self.assertIn("prof. 2", info)
+        self.gc.draw()
+
+    def test_the_evaluation_comes_from_the_analysis(self):
+        self.gc.set_setting("show_analysis", True)
+        self._analysis()
+        ply = self.gc.current_ply
+        self.gc.analyzer.line = replace(self.gc.analyzer.line, score=-321)
+        self.assertEqual(self.gc._eval(self.gc.state_at(ply), ply), -321)
+        self.gc._navigate("first")  # autre position : pas encore analysée
+        self.assertNotEqual(self.gc._eval(self.gc.state_at(0), 0), -321)
+
+    def test_the_line_follows_the_reviewed_position(self):
+        self.gc.set_setting("show_analysis", True)
+        self._analysis()
+        self.gc._navigate("first")
+        line, _ = self._analysis()
+        self.assertTrue(line.startswith("1. "), line)
+        self.assertEqual(self.gc.live_ply, 3)  # la partie n'a pas bougé
+
+    def test_turning_it_off_stops_the_analysis(self):
+        self.gc.set_setting("show_analysis", True)
+        self._analysis()
+        self.gc.handle_event(_event(p.KEYDOWN, key=p.K_v))
+        self.assertIsNone(self._analysis())
+        self.assertIsNone(self.gc.analyzer.key)
+
+    def test_finished_game_has_no_line(self):
+        self.gc._new_game(load_fen("R5k1/5ppp/8/8/8/8/8/6K1 b - - 0 1"))
+        self.gc.set_setting("show_analysis", True)
+        self.assertIsNone(self._analysis())
 
 
 @unittest.skipUnless(_PYGAME_OK, "SDL indisponible")

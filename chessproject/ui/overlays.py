@@ -27,6 +27,7 @@ SHORTCUTS: list[tuple[str, str]] = [
     ("I", "Importer un PGN"),
     ("F", "Retourner l'échiquier"),
     ("C", "Apparence"),
+    ("V", "Afficher la variante principale"),
     ("H", "Afficher les raccourcis"),
     ("← →", "Coup précédent / suivant"),
     ("Orig. Fin", "Début / position actuelle"),
@@ -124,6 +125,7 @@ class ShortcutsOverlay(Overlay):
 # --------------------------------------------------------------------------
 TOGGLES: list[tuple[str, str]] = [
     ("show_eval", "Barre d'évaluation"),
+    ("show_analysis", "Variante principale (analyse)"),
     ("show_coordinates", "Coordonnées sur l'échiquier"),
     ("show_legal_moves", "Coups possibles de la pièce choisie"),
     ("sound", "Sons"),
@@ -142,7 +144,7 @@ class AppearanceOverlay(Overlay):
 
     def draw(self, surface, t, mouse, now_ms):
         s = self.settings
-        self._frame(surface, t, (560, 540))
+        self._frame(surface, t, (560, 580))
         y = self._title(surface, t, "Apparence")
         x = self.card.x + 32
         inner = self.card.width - 64

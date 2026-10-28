@@ -27,7 +27,7 @@ import pygame as p
 
 from chessproject import __version__, paths, serialization
 from chessproject import settings as settings_module
-from chessproject.ai import book, levels, search
+from chessproject.ai import analysis, book, levels, search
 from chessproject.core import clock as chess_clock_module
 from chessproject.core import engine, notation, pgn
 from chessproject.settings import Settings
@@ -294,6 +294,8 @@ class GameController:
         self.ai_level = level or levels.DEFAULT_LEVEL.name
         self.move_finder_process: Any = None
         self.return_queue: Any = None
+        # Variante principale de la position affichée (J9.1), en arrière-plan.
+        self.analyzer = analysis.Analyzer()
 
         self.promotion_popup: PromotionPopup | None = None
         # Les 4 coups légaux de promotion (Q, R, B, N) de la case choisie.
@@ -439,6 +441,7 @@ class GameController:
     def handle_event(self, e):
         if e.type == p.QUIT:
             self._stop_ai()  # ne pas attendre la fin de la recherche (B45)
+            self.analyzer.stop()
             p.quit()
             sys.exit()
         if self.promotion_popup:
@@ -656,6 +659,7 @@ class GameController:
             p.K_n: self._offer_draw,
             p.K_f: self._flip,
             p.K_c: lambda: self._open(AppearanceOverlay(self.settings)),
+            p.K_v: lambda: self.set_setting("show_analysis", not self.settings.show_analysis),
             p.K_h: lambda: self._open(ShortcutsOverlay()),
             p.K_LEFT: lambda: self._navigate("prev"),
             p.K_RIGHT: lambda: self._navigate("next"),
@@ -1033,6 +1037,7 @@ class GameController:
 
         if not frozen:
             self.update_ai()
+        self._update_analysis()
 
         if (
             self.game_over
@@ -1043,6 +1048,24 @@ class GameController:
             self.overlay = self._end_game_overlay()
         if self.notice is not None and now >= self.notice[2]:
             self.notice = None
+
+    def _update_analysis(self):
+        """Analyse la position affichée tant que l'option est active (J9.1)."""
+        if not self.settings.show_analysis:
+            self.analyzer.stop()
+            return
+        ply = self.current_ply
+        self.analyzer.start(self.state_at(ply), (self._key(), ply))
+        self.analyzer.poll()
+
+    def _analysis_text(self):
+        """(variante, « +0,4 · prof. 9 ») pour le panneau, ou None."""
+        if not self.settings.show_analysis:
+            return None
+        line = self.analyzer.line
+        if line is None:
+            return ("Analyse…", "") if self.analyzer.running else None
+        return analysis.format_pv(line), f"{eval_text(line.score)} · prof. {line.depth}"
 
     def _end_game_overlay(self):
         result = self.result
@@ -1131,6 +1154,10 @@ class GameController:
 
     def _eval(self, state, ply):
         key = (self._key(), ply)
+        # L'analyse en cours, plus profonde, remplace l'évaluation rapide (J9.1).
+        line = self.analyzer.line
+        if self.settings.show_analysis and line is not None and self.analyzer.key == key:
+            return line.score
         if key not in self._eval_cache:
             if len(self._eval_cache) > 512:
                 self._eval_cache.clear()
@@ -1287,6 +1314,7 @@ class GameController:
             status_kind=kind,
             eval_text=eval_label,
             opening=self._opening_label(state, ply),
+            analysis=self._analysis_text(),
             can_undo=bool(self.game_state.move_log),
             can_draw=can_act,
             can_resign=can_act,
@@ -1385,6 +1413,7 @@ class App:
         if e.type == p.QUIT:
             if self.game is not None:
                 self.game._stop_ai()  # ne pas attendre la fin de la recherche (B45)
+                self.game.analyzer.stop()
             p.quit()
             sys.exit()
         if e.type == p.VIDEORESIZE:

@@ -53,8 +53,9 @@ chessproject
   thèmes sombre et clair, 4 échiquiers, pièces vectorielles nettes à toutes les tailles,
   fenêtre redimensionnable. Glisser-déposer ou clic-clic, coups possibles affichés,
   flèches et marques au clic droit, historique SAN cliquable pour revoir la partie,
-  matériel pris, barre d'évaluation (désactivable), pendule du camp au trait mise en
-  avant, carte de fin de partie. Les préférences sont mémorisées.
+  matériel pris, barre d'évaluation (désactivable), variante principale du moteur pour la
+  position affichée (mode analyse, touche `V`), pendule du camp au trait mise en avant,
+  carte de fin de partie. Les préférences sont mémorisées.
 
 | Écran « Nouvelle partie » | Thème clair |
 |---|---|
@@ -82,6 +83,7 @@ chessproject
 | `N` | Proposer la nulle (en Joueur contre Joueur, l'adversaire accepte avec `N`) |
 | `F` | Retourner l'échiquier |
 | `C` | Apparence : thème, échiquier, aides visuelles, sons |
+| `V` | Afficher ou masquer la variante principale (mode analyse) |
 | `H` | Afficher les raccourcis |
 | `←` / `→` | Coup précédent / suivant dans l'historique |
 | `Origine` / `Fin` | Position de départ / position actuelle |

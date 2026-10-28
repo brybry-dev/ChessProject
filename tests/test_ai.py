@@ -13,7 +13,7 @@ from unittest import mock
 
 from chessproject.ai import search
 from chessproject.core import engine
-from chessproject.core.fen import load_fen
+from chessproject.core.fen import load_fen, to_fen
 
 
 class FakeQueue:
@@ -248,3 +248,37 @@ class TestTactics(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIterationCallback(unittest.TestCase):
+    """J9.1 : ``think`` signale chaque profondeur achevée avec sa variante principale."""
+
+    @staticmethod
+    def assert_legal_line(game_state: engine.GameState, line: list[engine.Move]) -> None:
+        state = load_fen(to_fen(game_state))
+        for move in line:
+            assert move in state.get_valid_moves(), move
+            state.make_move(move, validate=False)
+
+    def test_each_completed_depth_is_reported(self):
+        gs = engine.GameState()
+        fen_before = to_fen(gs)
+        seen: list[search.SearchResult] = []
+        result = search.think(gs, search.SearchLimits(depth=4), on_iteration=seen.append)
+        self.assertEqual([r.depth for r in seen], [1, 2, 3, 4])
+        for r in seen:
+            self.assertTrue(r.pv)
+            self.assertEqual(r.pv[0], r.move)
+            self.assert_legal_line(gs, r.pv)
+        last = seen[-1]
+        self.assertEqual((last.move, last.score, last.depth), (result.move, result.score, 4))
+        self.assertEqual(last.pv, result.pv)
+        self.assertEqual(to_fen(gs), fen_before)
+
+    def test_interrupted_depth_is_not_reported(self):
+        seen: list[search.SearchResult] = []
+        result = search.think(
+            engine.GameState(), search.SearchLimits(nodes=3000), on_iteration=seen.append
+        )
+        self.assertTrue(seen)
+        self.assertEqual(seen[-1].depth, result.depth)

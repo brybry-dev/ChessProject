@@ -16,6 +16,7 @@ Conventions de score :
 
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -118,7 +119,14 @@ class Searcher:
         self._history: dict[tuple[str, int, int], int] = {}
 
     # -- interface ------------------------------------------------------
-    def think(self, game_state: engine.GameState, limits: SearchLimits) -> SearchResult:
+    def think(
+        self,
+        game_state: engine.GameState,
+        limits: SearchLimits,
+        on_iteration: Callable[[SearchResult], None] | None = None,
+    ) -> SearchResult:
+        """Approfondissement itératif jusqu'à ``limits``. ``on_iteration`` reçoit le
+        résultat de chaque profondeur achevée, variante principale comprise (J9.1)."""
         start = self.clock()
         self.nodes = 0
         self._deadline = (
@@ -146,6 +154,17 @@ class Searcher:
                 break  # profondeur inachevée : on garde le résultat de la précédente
             if move is not None:
                 result.move, result.score, result.depth = move, score, depth
+                if on_iteration is not None:
+                    on_iteration(
+                        SearchResult(
+                            move,
+                            score,
+                            depth,
+                            self.nodes,
+                            int((self.clock() - start) * 1000),
+                            self._principal_variation(game_state, depth),
+                        )
+                    )
             if abs(score) >= MATE_THRESHOLD:
                 break  # mat trouvé (pour l'un ou l'autre camp) : chercher plus loin est inutile
         result.nodes = self.nodes
@@ -340,10 +359,13 @@ def _history_key(move: engine.Move) -> tuple[str, int, int]:
 
 
 def think(
-    game_state: engine.GameState, limits: SearchLimits, searcher: Searcher | None = None
+    game_state: engine.GameState,
+    limits: SearchLimits,
+    searcher: Searcher | None = None,
+    on_iteration: Callable[[SearchResult], None] | None = None,
 ) -> SearchResult:
     """Meilleur coup de la position selon ``limits`` (profondeur, temps, nœuds)."""
-    return (searcher or Searcher()).think(game_state, limits)
+    return (searcher or Searcher()).think(game_state, limits, on_iteration)
 
 
 def find_best_move(
